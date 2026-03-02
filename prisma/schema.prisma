@@ -1,0 +1,701 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 用户与认证 ====================
+
+enum Role {
+  USER
+  TRUSTED_USER
+  MODERATOR
+  ADMIN
+  DCR_HELPER
+  SUPER_ADMIN
+}
+
+model User {
+  id              String   @id @default(cuid())
+  email           String?  @unique
+  nickname        String?
+  avatar          String?
+  bio             String?
+  role            Role     @default(USER)
+  isBanned        Boolean  @default(false)
+  isShadowBanned  Boolean  @default(false)
+  isAnonymous     Boolean  @default(false)
+  reputationScore Int      @default(100)
+  violationCount  Int      @default(0)
+  onboardingDone  Boolean  @default(false)
+  psychAccess     Boolean  @default(false)
+  dcrAccess       Boolean  @default(false)
+  dcrPledgeSigned Boolean  @default(false)
+  quizPassed      Boolean  @default(false)
+  phone           String?  @unique // 手机号
+  passwordHash    String? // bcrypt 哈希密码
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // NextAuth 关联
+  accounts Account[]
+  sessions Session[]
+
+  // 内容关联
+  posts     Post[]
+  comments  Comment[]
+  likes     Like[]
+  bookmarks Bookmark[]
+
+  // 举报
+  reportsFiled    Report[] @relation("ReportFiler")
+  reportsReceived Report[] @relation("ReportTarget")
+
+  // DCR
+  casesSubmitted Case[] @relation("CaseSubmitter")
+  casesHandled   Case[] @relation("CaseHandler")
+  caseHandlers   CaseHandler[]
+
+  // 心理区
+  confideRequests ConfideRequest[] @relation("ConfideRequester")
+  listeningTaken  ConfideRequest[] @relation("ConfideListener")
+
+  // 通知
+  notifications Notification[]
+
+  // 审计
+  auditLogs AuditLog[]
+
+  // 消息
+  messagesSent     Message[] @relation("MessageSender")
+  messagesReceived Message[] @relation("MessageReceiver")
+
+  // 邀请码
+  inviteCode     InviteCode?  @relation("InviteUsedBy")
+  invitesCreated InviteCode[] @relation("InviteCreator")
+
+  // 准入申请
+  accessApplications AccessApplication[]
+
+  // 互助任务
+  tasksRequested MutualAidTask[] @relation("TaskRequester")
+}
+
+// NextAuth 模型
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== 板块与标签 ====================
+
+enum BoardZone {
+  PUBLIC // 公开区
+  PSYCHOLOGY // 半私密心理区
+  DCR // 私密 DCR 区
+}
+
+model Board {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  zone        BoardZone
+  sortWeight  Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  posts Post[]
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  posts PostTag[]
+}
+
+model PostTag {
+  postId String
+  tagId  String
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+}
+
+// ==================== 帖子与评论 ====================
+
+enum PostStatus {
+  DRAFT
+  PENDING // 待审核
+  PUBLISHED
+  REJECTED
+  DELETED // 软删除
+}
+
+enum PostVisibility {
+  PUBLIC // 公开
+  MATCHED // 仅匹配方可见
+  MODS_ONLY // 仅版主可见
+}
+
+enum DCRCategory {
+  TUTORING          // 补课
+  FEES              // 收费
+  WEEKENDS          // 双休
+  OTHER             // 其他
+  EARLY_START       // 提前开学
+  NO_WEEKENDS       // 不双休
+  EXTERNAL_TRAINING // 校外培训
+}
+
+model Post {
+  id           String         @id @default(cuid())
+  title        String
+  content      String
+  summary      String?
+  images       String[] // 图片 URL 数组
+  status       PostStatus     @default(PUBLISHED)
+  visibility   PostVisibility @default(PUBLIC)
+  isAnonymous  Boolean        @default(false)
+  anonymousId  String? // 匿名标识
+  dcrCategory  DCRCategory?
+  likeCount    Int            @default(0)
+  commentCount Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  authorId String
+  boardId  String
+
+  caseId   String?
+
+  author      User              @relation(fields: [authorId], references: [id])
+  board       Board             @relation(fields: [boardId], references: [id])
+  case_       Case?             @relation(fields: [caseId], references: [id])
+  tags        PostTag[]
+  comments    Comment[]
+  likes       Like[]
+  bookmarks   Bookmark[]
+  reports     Report[]          @relation("ReportedPost")
+  editHistory PostEditHistory[]
+}
+
+model PostEditHistory {
+  id         String   @id @default(cuid())
+  postId     String
+  oldTitle   String?
+  oldContent String?
+  editedAt   DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  content     String
+  isDeleted   Boolean  @default(false)
+  isAnonymous Boolean  @default(false)
+  anonymousId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  authorId String
+  postId   String
+  parentId String? // 嵌套回复
+
+  author  User      @relation(fields: [authorId], references: [id])
+  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies Comment[] @relation("CommentReplies")
+  reports Report[]  @relation("ReportedComment")
+}
+
+model Like {
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+}
+
+model Bookmark {
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+}
+
+// ==================== 举报 ====================
+
+enum ReportStatus {
+  PENDING // 待处理
+  IN_PROGRESS // 处理中
+  RESOLVED // 已处理
+  DISMISSED // 驳回
+}
+
+model Report {
+  id         String       @id @default(cuid())
+  reason     String
+  details    String?
+  status     ReportStatus @default(PENDING)
+  resolution String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  reporterId      String
+  targetUserId    String?
+  targetPostId    String?
+  targetCommentId String?
+
+  reporter      User     @relation("ReportFiler", fields: [reporterId], references: [id])
+  targetUser    User?    @relation("ReportTarget", fields: [targetUserId], references: [id])
+  targetPost    Post?    @relation("ReportedPost", fields: [targetPostId], references: [id])
+  targetComment Comment? @relation("ReportedComment", fields: [targetCommentId], references: [id])
+}
+
+// ==================== DCR 工单 ====================
+
+enum CaseStatus {
+  OPENED
+  IN_PROGRESS
+  NEED_MORE_INFO
+  CLOSED
+}
+
+model Case {
+  id         String      @id @default(cuid())
+  category   DCRCategory
+  formData   Json // 委托表结构化数据
+  status     CaseStatus  @default(OPENED)
+  pledgeText String // 强制声明内容
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  submitterId String
+  handlerId   String?
+
+  submitter User            @relation("CaseSubmitter", fields: [submitterId], references: [id])
+  handler   User?           @relation("CaseHandler", fields: [handlerId], references: [id])
+  handlers  CaseHandler[]
+  posts     Post[]
+  timeline  TimelineEvent[]
+  messages  Message[]
+}
+
+model TimelineEvent {
+  id        String   @id @default(cuid())
+  action    String // 状态变更描述
+  oldStatus String?
+  newStatus String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  caseId String
+  case_  Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model CaseHandler {
+  id       String   @id @default(cuid())
+  caseId   String
+  userId   String
+  joinedAt DateTime @default(now())
+  case_    Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([caseId, userId])
+}
+
+// ==================== 消息 ====================
+
+model Message {
+  id          String   @id @default(cuid())
+  content     String
+  isAnonymous Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  senderId   String
+  receiverId String
+  caseId     String?
+  sessionId  String? // 倾听会话 ID
+
+  sender   User  @relation("MessageSender", fields: [senderId], references: [id])
+  receiver User  @relation("MessageReceiver", fields: [receiverId], references: [id])
+  case_    Case? @relation(fields: [caseId], references: [id])
+}
+
+// ==================== 心理区 ====================
+
+enum ConfideStatus {
+  WAITING // 等待匹配
+  MATCHED // 已匹配
+  ACTIVE // 会话进行中
+  CLOSED // 已关闭
+}
+
+model ConfideRequest {
+  id          String        @id @default(cuid())
+  summary     String // 倾诉摘要
+  anonymousId String // 匿名标识
+  status      ConfideStatus @default(WAITING)
+  expiresAt   DateTime // 30 天后自动清理
+  createdAt   DateTime      @default(now())
+  closedAt    DateTime?
+
+  requesterId String
+  listenerId  String?
+
+  requester User  @relation("ConfideRequester", fields: [requesterId], references: [id])
+  listener  User? @relation("ConfideListener", fields: [listenerId], references: [id])
+}
+
+// ==================== 通知 ====================
+
+enum NotificationType {
+  COMMENT // 评论通知
+  LIKE // 点赞通知
+  REPORT_RESULT // 举报结果
+  CASE_UPDATE // 工单状态变更
+  DCR_ACCESS // DCR 准入结果
+  PSYCH_MATCH // 倾诉匹配
+  SYSTEM // 系统通知
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  content   String
+  isRead    Boolean          @default(false)
+  link      String? // 跳转链接
+  createdAt DateTime         @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==================== 审计日志 ====================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String // 操作类型
+  targetType String // 目标对象类型
+  targetId   String // 目标对象 ID
+  details    Json? // 操作详情
+  ipHash     String? // IP 哈希
+  createdAt  DateTime @default(now())
+
+  operatorId String
+  operator   User   @relation(fields: [operatorId], references: [id])
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([operatorId])
+}
+
+// ==================== 邀请码 ====================
+
+model InviteCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  isUsed    Boolean   @default(false)
+  isRevoked Boolean   @default(false)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
+
+  creatorId String
+  usedById  String? @unique
+
+  creator User  @relation("InviteCreator", fields: [creatorId], references: [id])
+  usedBy  User? @relation("InviteUsedBy", fields: [usedById], references: [id])
+}
+
+// ==================== 知识库 ====================
+
+enum ArticleVisibility {
+  PUBLIC // 所有用户可见
+  DCR_ONLY // 仅 DCR 区用户可见
+}
+
+model KnowledgeArticle {
+  id          String            @id @default(cuid())
+  title       String
+  content     String
+  category    String
+  visibility  ArticleVisibility @default(PUBLIC)
+  isPublished Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+// ==================== 准入申请 ====================
+
+enum ApplicationType {
+  PSYCHOLOGY // 心理区准入
+  DCR // DCR 区准入
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model AccessApplication {
+  id         String            @id @default(cuid())
+  type       ApplicationType
+  status     ApplicationStatus @default(PENDING)
+  pledgeText String? // 签署的守则声明
+  reviewNote String?
+  createdAt  DateTime          @default(now())
+  reviewedAt DateTime?
+
+  applicantId String
+  applicant   User   @relation(fields: [applicantId], references: [id])
+}
+
+// ==================== 敏感词 ====================
+
+enum SensitiveWordCategory {
+  PII // 个人可识别信息
+  RISK // 风险触发词
+  PHISHING // 钓鱼诱导
+  PROFANITY // 不当言论
+}
+
+model SensitiveWord {
+  id        String                @id @default(cuid())
+  word      String                @unique
+  category  SensitiveWordCategory
+  isActive  Boolean               @default(true)
+  createdAt DateTime              @default(now())
+}
+
+// ==================== 每周推荐 ====================
+
+model WeeklyRecommendation {
+  id        String   @id @default(cuid())
+  title     String
+  postId    String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==================== 互助任务枚举 ====================
+
+enum TaskStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  OPEN
+  CLAIMED
+  IN_PROGRESS
+  EVIDENCE_PENDING
+  COMPLETED
+  REJECTED
+  CLOSED
+  DISPUTED
+}
+
+enum UrgencyLevel {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum EvidenceItemType {
+  EVIDENCE_ITEM
+  NOTE
+  OUTCOME
+  FOLLOW_UP
+}
+
+// ==================== 互助任务 ====================
+
+model MutualAidTask {
+  id                String       @id @default(cuid())
+  title             String
+  category          DCRCategory
+  summary           String
+  expectedHelpType  String
+  urgencyLevel      UrgencyLevel @default(MEDIUM)
+  structuredFields  Json
+  attachments       String[]
+  riskFlags         Json?
+  status            TaskStatus   @default(DRAFT)
+  rejectionReason   String?
+  closureReason     String?
+  completionReport  Json?
+  requesterConfirmed Boolean     @default(false)
+  helperConfirmed    Boolean     @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  requesterId       String
+  requester         User         @relation("TaskRequester", fields: [requesterId], references: [id])
+
+  helpSession       HelpSession?
+  timeline          TaskTimelineEvent[]
+
+  @@index([status])
+  @@index([requesterId])
+  @@index([urgencyLevel])
+  @@index([createdAt])
+}
+
+model TaskTimelineEvent {
+  id        String     @id @default(cuid())
+  action    String
+  oldStatus String?
+  newStatus String?
+  details   String?
+  createdAt DateTime   @default(now())
+
+  taskId    String
+  task      MutualAidTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  operatorId String?
+
+  @@index([taskId])
+}
+
+// ==================== 互助会话 ====================
+
+model HelpSession {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  closedAt    DateTime?
+
+  taskId      String   @unique
+  task        MutualAidTask @relation(fields: [taskId], references: [id])
+
+  helperId    String
+  requesterId String
+
+  helpChat     HelpChat?
+  evidenceRoom EvidenceRoom?
+}
+
+// ==================== 私聊 ====================
+
+model HelpChat {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  sessionId String   @unique
+  session   HelpSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  messages  HelpChatMessage[]
+}
+
+model HelpChatMessage {
+  id              String   @id @default(cuid())
+  content         String
+  fileUrl         String?
+  quotedMessageId String?
+  isSystemMessage Boolean  @default(false)
+  isEvidence      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  chatId   String
+  chat     HelpChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderId String
+
+  @@index([chatId, createdAt])
+}
+
+// ==================== 证据空间 ====================
+
+model EvidenceRoom {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  sessionId String   @unique
+  session   HelpSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  items     EvidenceItem[]
+}
+
+model EvidenceItem {
+  id          String           @id @default(cuid())
+  type        EvidenceItemType
+  description String
+  fileUrl     String?
+  fileName    String?
+  fileSize    Int?
+  createdAt   DateTime         @default(now())
+
+  roomId      String
+  room        EvidenceRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  uploaderId  String
+
+  @@index([roomId, type])
+}
+
+// ==================== 管理处置 ====================
+
+model ModerationAction {
+  id          String   @id @default(cuid())
+  actionType  String
+  targetType  String
+  targetId    String
+  reason      String
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  operatorId  String
+
+  @@index([targetType, targetId])
+  @@index([operatorId])
+  @@index([createdAt])
+}
