@@ -3,6 +3,9 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { dcrCategorySchema, paginationSchema } from "@/lib/validators";
+import { extractFields, type DelegationInput } from "@/lib/dcr-field-extractor";
+import { reviewDelegation } from "@/lib/dcr-review-rules";
+import { scanContent } from "@/lib/sensitive-engine";
 import { z } from "zod";
 
 // ==================== Schemas ====================
@@ -11,6 +14,13 @@ const createCaseSchema = z.object({
   category: dcrCategorySchema,
   formData: z.record(z.unknown()),
   pledgeText: z.string().min(1, "强制声明不能为空"),
+  // 委托表结构化字段
+  grade: z.string().optional(),
+  timeRange: z.string().optional(),
+  province: z.string().optional(),
+  city: z.string().optional(),
+  expectedHelperProvince: z.string().optional(),
+  riskPreference: z.string().optional(),
 });
 
 const caseStatusEnum = z.enum(["OPENED", "IN_PROGRESS", "NEED_MORE_INFO", "CLOSED"]);
@@ -27,6 +37,8 @@ const listQuerySchema = paginationSchema.extend({
       return val.split(",").map((s) => s.trim());
     })
     .pipe(z.array(caseStatusEnum).min(1).optional()),
+  // 按委托表审核状态筛选
+  requestStatus: z.enum(["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"]).optional(),
   handlerId: z.string().optional(),
 });
 
@@ -34,7 +46,9 @@ const listQuerySchema = paginationSchema.extend({
  * POST /api/cases
  * Create a new DCR case (委托).
  * - Requires auth
- * - Creates Case with status OPENED
+ * - Runs field extraction + review rules engine
+ * - Stores extractedFields, missingFields, requestStatus
+ * - Creates Case with requestStatus determined by review engine
  * - Auto-creates AccessApplication (type=DCR) if user has no dcrAccess and no PENDING application
  * - Generates initial TimelineEvent
  * - Logs audit
@@ -64,21 +78,71 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { category, formData, pledgeText } = parsed.data;
+    const {
+      category, formData, pledgeText,
+      grade, timeRange, province, city,
+      expectedHelperProvince, riskPreference,
+    } = parsed.data;
 
-    // Create case with initial timeline event
+    // ---- 敏感词扫描 ----
+    const formText = Object.values(formData).join(" ");
+    const sensitiveMatches = await scanContent(formText + " " + pledgeText);
+    const sensitiveHitCount = sensitiveMatches.length;
+
+    // ---- 字段抽取 ----
+    const input: DelegationInput = {
+      contentType: (formData as Record<string, unknown>).contentType as string | undefined,
+      schoolName: (formData as Record<string, unknown>).schoolName as string | undefined,
+      schoolCategory: (formData as Record<string, unknown>).schoolCategory as string | undefined,
+      schoolType: (formData as Record<string, unknown>).schoolType as string | undefined,
+      schoolAddress: (formData as Record<string, unknown>).schoolAddress as string | undefined,
+      reportChannels: (formData as Record<string, unknown>).reportChannels as string | undefined,
+      description: (formData as Record<string, unknown>).description as string | undefined,
+      feeStatus: (formData as Record<string, unknown>).feeStatus as string | undefined,
+      feeDetails: (formData as Record<string, unknown>).feeDetails as string | undefined,
+      demands: (formData as Record<string, unknown>).demands as string[] | undefined,
+      otherDemand: (formData as Record<string, unknown>).otherDemand as string | undefined,
+      pledgeText,
+      grade,
+      timeRange,
+      province,
+      city,
+      expectedHelperProvince,
+      riskPreference,
+    };
+
+    const extraction = extractFields(input);
+
+    // ---- 审核规则判定 ----
+    const rawText = formText + " " + pledgeText;
+    const reviewResult = reviewDelegation(extraction, rawText);
+
+    // ---- 创建 Case ----
     const caseRecord = await prisma.case.create({
       data: {
         category,
         formData: formData as unknown as import("@prisma/client").Prisma.InputJsonValue,
         pledgeText,
         status: "OPENED",
+        requestStatus: reviewResult.decision,
+        reviewNote: reviewResult.reason,
+        extractedFields: extraction.extractedFields as unknown as import("@prisma/client").Prisma.InputJsonValue,
+        missingFields: reviewResult.missingFields,
+        sensitiveHitCount,
+        grade,
+        timeRange,
+        province,
+        city,
+        expectedHelperProvince,
+        riskPreference,
         submitterId: userId,
         timeline: {
           create: {
             action: "委托创建",
             newStatus: "OPENED",
-            details: "用户提交了新的委托",
+            details: reviewResult.decision === "APPROVED"
+              ? "委托表审核通过，进入可匹配池"
+              : `审核结果: ${reviewResult.decision} - ${reviewResult.reason}`,
           },
         },
       },
@@ -113,10 +177,22 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       "CREATE_CASE",
       AuditTargetType.CASE,
       caseRecord.id,
-      { category, status: "OPENED" },
+      {
+        category,
+        requestStatus: reviewResult.decision,
+        missingFields: reviewResult.missingFields,
+        sensitiveHitCount,
+      },
     );
 
-    return NextResponse.json({ case: caseRecord }, { status: 201 });
+    return NextResponse.json({
+      case: caseRecord,
+      review: {
+        decision: reviewResult.decision,
+        reason: reviewResult.reason,
+        missingFields: reviewResult.missingFields,
+      },
+    }, { status: 201 });
   } catch (error) {
     console.error("POST /api/cases error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
@@ -156,6 +232,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       page: searchParams.get("page") ?? undefined,
       pageSize: searchParams.get("pageSize") ?? undefined,
       status: searchParams.get("status") ?? undefined,
+      requestStatus: searchParams.get("requestStatus") ?? undefined,
       handlerId: searchParams.get("handlerId") ?? undefined,
     });
 
@@ -166,11 +243,16 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { page, pageSize, status, handlerId } = parsed.data;
+    const { page, pageSize, status, requestStatus, handlerId } = parsed.data;
     const skip = (page - 1) * pageSize;
 
     // Build where clause based on role
     const where: Record<string, unknown> = {};
+
+    // 按委托表审核状态筛选
+    if (requestStatus) {
+      where.requestStatus = requestStatus;
+    }
 
     // If handlerId is specified, filter by handler
     if (handlerId) {
@@ -218,11 +300,22 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
-        include: {
+        select: {
+          id: true,
+          category: true,
+          formData: true,
+          pledgeText: true,
+          status: true,
+          requestStatus: true,
+          reviewNote: true,
+          missingFields: true,
+          extractedFields: true,
+          sensitiveHitCount: true,
+          createdAt: true,
+          updatedAt: true,
           submitter: { select: { id: true, nickname: true } },
           handler: { select: { id: true, nickname: true } },
-          handlers: { select: { userId: true, user: { select: { id: true, nickname: true } } } },
-        } as Record<string, unknown>,
+        },
       }),
       prisma.case.count({ where }),
     ]);

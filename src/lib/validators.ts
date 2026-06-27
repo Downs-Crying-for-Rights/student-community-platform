@@ -265,6 +265,13 @@ export const delegationFormSchema = z.object({
   demands: z.array(z.string()).min(1, '请至少选择一项诉求'),
   otherDemand: z.string().max(500).optional(),
   confirmations: z.tuple([z.literal(true), z.literal(true), z.literal(true)]),
+  // 新增结构化字段 (P1-5)
+  grade: z.string().max(20).optional(),
+  timeRange: z.string().max(200).optional(),
+  province: z.string().max(50).optional(),
+  city: z.string().max(50).optional(),
+  expectedHelperProvince: z.string().max(50).optional(),
+  riskPreference: z.enum(['仅站内沟通', '可电话', '仅模板咨询']).optional(),
 });
 
 export const quizAnswerSchema = z.object({

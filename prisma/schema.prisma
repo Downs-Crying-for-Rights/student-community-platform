@@ -84,6 +84,10 @@ model User {
 
   // 互助任务
   tasksRequested MutualAidTask[] @relation("TaskRequester")
+
+  // 站内私信
+  dmThreadsAsP1 DMThread[] @relation("DMThreadP1")
+  dmThreadsAsP2 DMThread[] @relation("DMThreadP2")
 }
 
 // NextAuth 模型
@@ -310,12 +314,41 @@ enum CaseStatus {
   CLOSED
 }
 
+/// 委托表审核状态 (DCR 委托表审核流程专用)
+/// PENDING → NEED_MORE_INFO / APPROVED / REJECTED / MANUAL_REVIEW
+enum RequestStatus {
+  PENDING
+  NEED_MORE_INFO
+  APPROVED
+  REJECTED
+  MANUAL_REVIEW
+}
+
 model Case {
   id         String      @id @default(cuid())
   category   DCRCategory
-  formData   Json // 委托表结构化数据
+  formData   Json // 委托表结构化数据 (前端 DelegatePage 提交的原始表单)
   status     CaseStatus  @default(OPENED)
   pledgeText String // 强制声明内容
+  // ====== 委托表审核字段 ======
+  requestStatus  RequestStatus @default(PENDING) // 委托表审核状态
+  reviewNote     String?       // 审核备注/驳回理由
+  /// 字段抽取结果 (如 schoolName/city/grade/timeRange 等)
+  extractedFields Json?
+  /// 缺项清单 (如 ["缺少年级", "缺少区号电话"])
+  missingFields   String[]     @default([])
+  /// 敏感检测命中数
+  sensitiveHitCount Int        @default(0)
+  // ====== 委托表结构化字段 ======
+  grade            String?     // 年级 (如 "高一"/"高二"/"高三")
+  timeRange        String?     // 补课时间范围 (如 "周六 8:30-17:30" 或日期范围)
+  province         String?     // 省份
+  city             String?     // 城市
+  // ====== 可选字段 ======
+  expectedHelperProvince String? // 期望互助人省份 (避免同省)
+  riskPreference           String? // 风险偏好: 仅站内/可电话/仅模板
+  evidenceChecklist        String[] @default([]) // 证据类型清单
+
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 
@@ -698,4 +731,38 @@ model ModerationAction {
   @@index([targetType, targetId])
   @@index([operatorId])
   @@index([createdAt])
+}
+
+// ==================== 通用站内私信 (DM) ====================
+
+model DMThread {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 参与者 (双向关系)
+  participant1Id String
+  participant2Id String
+
+  participant1 User @relation("DMThreadP1", fields: [participant1Id], references: [id], onDelete: Cascade)
+  participant2 User @relation("DMThreadP2", fields: [participant2Id], references: [id], onDelete: Cascade)
+
+  messages DMMessage[]
+
+  @@unique([participant1Id, participant2Id])
+  @@index([participant1Id, updatedAt])
+  @@index([participant2Id, updatedAt])
+}
+
+model DMMessage {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  threadId String
+  thread   DMThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  senderId String
+
+  @@index([threadId, createdAt])
 }

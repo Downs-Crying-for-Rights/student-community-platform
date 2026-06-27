@@ -8,6 +8,8 @@ import { WaterfallGrid } from "@/components/feed/WaterfallGrid";
 import { PostCard, type PostCardProps } from "@/components/feed/PostCard";
 import { CardSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
+import Link from "next/link";
+import { BookOpen, Lightbulb, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SortMode = "popular" | "latest";
@@ -138,6 +140,39 @@ export default function HomePage() {
       <Sidebar />
 
       <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60")}>
+        {/* 电子扫盲精选 Banner */}
+        <div className="mb-5 rounded-2xl bg-gradient-to-r from-indigo-50 via-blue-50 to-cyan-50 p-5 dark:from-indigo-950/30 dark:via-blue-950/20 dark:to-cyan-950/20 border border-indigo-100 dark:border-indigo-800/30">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap className="h-5 w-5 text-indigo-500" />
+            <h2 className="text-base font-bold text-indigo-700 dark:text-indigo-300">电子扫盲 · 学习交流</h2>
+          </div>
+          <p className="text-sm text-indigo-600/80 dark:text-indigo-400/80 mb-3">
+            学生交流社区 — 从认知开始，拒绝信息差。浏览电子扫盲知识、学术讨论与娱乐分享。
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/kb"
+              className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-800/40 dark:text-indigo-300 dark:hover:bg-indigo-800/60 transition-colors"
+            >
+              <BookOpen className="h-3 w-3" />
+              知识库
+            </Link>
+            <Link
+              href="/discover"
+              className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-800/40 dark:text-blue-300 dark:hover:bg-blue-800/60 transition-colors"
+            >
+              <Lightbulb className="h-3 w-3" />
+              发现话题
+            </Link>
+            <Link
+              href="/help/policies"
+              className="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-3 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-800/40 dark:text-cyan-300 dark:hover:bg-cyan-800/60 transition-colors"
+            >
+              社区规则
+            </Link>
+          </div>
+        </div>
+
         {/* Tabs */}
         <div className="mb-4 flex gap-2" role="tablist" aria-label="帖子排序">
           <button

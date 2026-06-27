@@ -1,5 +1,6 @@
 import type { Role } from "@prisma/client";
 import { getAccountAgeDays } from "@/lib/utils";
+import { computeTrustLevel, getDailyPostLimit, canPostInPsychology, canSendDM as tlCanSendDM, type TrustLevel } from "@/lib/trust-level";
 
 // ==================== Types ====================
 
@@ -33,20 +34,22 @@ export interface ABACPolicyResult {
   canAccessDCR: boolean;
   /** Whether the user can access the psychology zone */
   canAccessPsychology: boolean;
-  /** Whether the user is considered a newcomer (account < 7 days) */
+  /** Whether the user is considered a newcomer (account < 7 days / trustLevel < 2) */
   isNewcomer: boolean;
   /** Whether the user has passed the onboarding quiz */
   hasPassedQuiz: boolean;
+  /** Current trust level (0-5) */
+  trustLevel: TrustLevel;
   /** Reasons for any active restrictions */
   restrictions: string[];
 }
 
 // ==================== Constants ====================
 
-/** Account age threshold in days for newcomer restrictions */
+/** Account age threshold in days for newcomer restrictions (legacy, now covered by trustLevel) */
 export const NEWCOMER_AGE_DAYS = 7;
 
-/** Daily post limit for newcomers (account age < 7 days) */
+/** Daily post limit for newcomers (account age < 7 days) — legacy, now trustLevel-based */
 export const NEWCOMER_DAILY_POST_LIMIT = 3;
 
 /** Violation count threshold that triggers stricter limits */
@@ -56,24 +59,26 @@ export const VIOLATION_THRESHOLD = 3;
 export const VIOLATION_DAILY_POST_LIMIT = 1;
 
 /** Minimum account age in days required for DCR access */
-export const DCR_MIN_ACCOUNT_AGE_DAYS = 7;
+export const DCR_MIN_ACCOUNT_AGE_DAYS = 1; // lowered from 7; trustLevel handles the gating
 
 // ==================== Policy Evaluation ====================
 
 /**
  * Evaluate ABAC policies for a user and return computed restrictions.
  *
- * Rules applied (in priority order):
- * 1. Account age < 7 days → max 3 posts/day, no private zone, no DMs
- * 2. Violation count > 3 → max 1 post/day (overrides newcomer limit if stricter)
- * 3. Quiz not passed → limited features (no private zone access)
- * 4. DCR access requires: dcrAccess=true, dcrPledgeSigned=true, account age >= 7 days
- * 5. Psychology access requires: psychAccess=true
+ * New trustLevel-based rules (replaces raw account-age / violation gating):
+ * 1. SUPER_ADMIN / ADMIN bypass all restrictions
+ * 2. trustLevel 0: 1 post/day, no private zone, no DM, no psychology posting
+ * 3. trustLevel 1: 2 posts/day, no DM, no DCR
+ * 4. trustLevel 2+: psychology browsing, DM unlocked, DCR application eligible
+ * 5. trustLevel 3+: psychology posting, DCR access
+ * 6. Violation count > 3 → caps max posts to 1/day regardless of trustLevel
  */
 export function evaluateABACPolicy(
   user: ABACUserAttributes,
 ): ABACPolicyResult {
-  if (user.role === "SUPER_ADMIN") {
+  // Admin bypass
+  if (user.role === "SUPER_ADMIN" || user.role === "ADMIN") {
     return {
       maxDailyPosts: null,
       canAccessPrivateZone: true,
@@ -82,73 +87,59 @@ export function evaluateABACPolicy(
       canAccessPsychology: true,
       isNewcomer: false,
       hasPassedQuiz: true,
+      trustLevel: 5 as TrustLevel,
       restrictions: [],
     };
   }
 
   const accountAgeDays = getAccountAgeDays(user.createdAt);
-  const isNewcomer = accountAgeDays < NEWCOMER_AGE_DAYS;
+  const trustLevel = computeTrustLevel(user.reputationScore);
+  const isNewcomer = trustLevel < 2;
   const hasExcessiveViolations = user.violationCount > VIOLATION_THRESHOLD;
 
   const restrictions: string[] = [];
 
-  // --- Daily post limit ---
-  let maxDailyPosts: number | null = null;
+  // --- Daily post limit (trustLevel-based, overridden by violations) ---
+  let maxDailyPosts = getDailyPostLimit(trustLevel);
 
-  if (hasExcessiveViolations) {
+  if (hasExcessiveViolations && (maxDailyPosts === null || VIOLATION_DAILY_POST_LIMIT < maxDailyPosts)) {
     maxDailyPosts = VIOLATION_DAILY_POST_LIMIT;
     restrictions.push(
       `违规次数超过 ${VIOLATION_THRESHOLD} 次，每日发帖限制为 ${VIOLATION_DAILY_POST_LIMIT} 篇`,
     );
   }
 
-  if (isNewcomer) {
-    // If violation limit is already stricter, keep it; otherwise apply newcomer limit
-    if (maxDailyPosts === null || NEWCOMER_DAILY_POST_LIMIT < maxDailyPosts) {
-      maxDailyPosts = NEWCOMER_DAILY_POST_LIMIT;
-    }
+  if (trustLevel < 2) {
     restrictions.push(
-      `账号年龄不足 ${NEWCOMER_AGE_DAYS} 天，每日发帖上限 ${NEWCOMER_DAILY_POST_LIMIT} 篇`,
+      `信任等级 ${trustLevel} (${getTrustLevelLabel(trustLevel)})，每日发帖上限 ${maxDailyPosts} 篇`,
     );
   }
 
   // --- Private zone access ---
-  let canAccessPrivateZone = !isNewcomer;
-  if (isNewcomer) {
-    restrictions.push("新手期间禁止进入私密区");
+  const canAccessPrivateZone = trustLevel >= 2;
+  if (!canAccessPrivateZone) {
+    restrictions.push("信任等级不足，禁止进入私密区 (需 L2+)");
   }
 
-  // --- DM access ---
-  let canSendDM = !isNewcomer;
-  if (isNewcomer) {
-    restrictions.push("新手期间禁止私信");
+  // --- DM access (trustLevel-based) ---
+  const canSendDM = tlCanSendDM(trustLevel, accountAgeDays);
+  if (!canSendDM) {
+    restrictions.push("信任等级不足，禁止发送私信 (需 L1+)");
   }
 
   // --- DCR zone access ---
   const canAccessDCR =
     user.dcrAccess &&
     user.dcrPledgeSigned &&
-    accountAgeDays >= DCR_MIN_ACCOUNT_AGE_DAYS;
-
+    trustLevel >= 2;
   if (!canAccessDCR && user.dcrAccess) {
-    if (!user.dcrPledgeSigned) {
-      restrictions.push("未签署 DCR 私密区守则");
-    }
-    if (accountAgeDays < DCR_MIN_ACCOUNT_AGE_DAYS) {
-      restrictions.push(
-        `账号年龄不足 ${DCR_MIN_ACCOUNT_AGE_DAYS} 天，无法进入 DCR 区`,
-      );
-    }
+    restrictions.push("信任等级不足，暂时无法使用 DCR (需 L2+)");
   }
 
   // --- Psychology zone access ---
-  const canAccessPsychology = user.psychAccess;
-
-  // --- Quiz check ---
-  if (!user.quizPassed) {
-    restrictions.push("未通过新手测验，部分功能受限");
-    // Quiz not passed further restricts private zone access
-    canAccessPrivateZone = false;
+  const canAccessPsychology = canPostInPsychology(trustLevel, user.psychAccess);
+  if (!canAccessPsychology) {
+    restrictions.push("信任等级不足，心理区仅可浏览 (需 L2+ 可浏览, L3+ 可发帖)");
   }
 
   return {
@@ -159,9 +150,15 @@ export function evaluateABACPolicy(
     canAccessPsychology,
     isNewcomer,
     hasPassedQuiz: user.quizPassed,
+    trustLevel,
     restrictions,
   };
 }
+
+// Re-export helpers
+import { getTrustLevelLabel } from "@/lib/trust-level";
+export { computeTrustLevel, getTrustLevelLabel } from "@/lib/trust-level";
+export type { TrustLevel } from "@/lib/trust-level";
 
 // ==================== Specific Checks ====================
 

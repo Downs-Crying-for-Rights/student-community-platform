@@ -100,6 +100,30 @@ export const knowledgeArticles = [
     category: "faq",
     visibility: "PUBLIC" as const,
   },
+  {
+    title: "什么是电子扫盲？",
+    content: "# 什么是电子扫盲？\n\n电子扫盲（Digital Literacy）是指帮助人们掌握基础数字技能、识别信息真伪、安全使用互联网的能力。\n\n## 核心目标\n\n- 学会使用常见的数字工具（浏览器、搜索引擎、办公软件）\n- 辨别网络信息的真伪，识别谣言和诈骗\n- 保护个人隐私和网络安全\n- 利用网络资源进行自主学习\n\n## 为什么需要电子扫盲？\n\n在信息时代，不具备数字素养的人容易被虚假信息误导、被网络诈骗侵害、在学习和工作中处于劣势。",
+    category: "digital-literacy",
+    visibility: "PUBLIC" as const,
+  },
+  {
+    title: "网络安全基础：保护你的账号",
+    content: "# 网络安全基础\n\n## 密码安全\n\n1. 使用至少 12 位包含大小写字母、数字和符号的密码\n2. 不同平台使用不同密码\n3. 启用两步验证（2FA）\n4. 定期更换重要账户密码\n\n## 个人信息保护\n\n- 不在公开平台发布手机号、身份证号\n- 谨慎处理含个人信息的截图（打码后再发）\n- 定期检查各平台的隐私设置\n\n## 识别钓鱼攻击\n\n- 检查网址是否正确（留意拼写错误的域名）\n- 不要点击来路不明的链接\n- 正规机构不会通过短信/私信索要密码",
+    category: "digital-literacy",
+    visibility: "PUBLIC" as const,
+  },
+  {
+    title: "信息甄别：如何分辨真假新闻",
+    content: "# 如何分辨真假新闻\n\n## 三步法\n\n1. **查来源**：信息发布者是否可信？是否有原始出处？\n2. **查佐证**：其他可信来源是否报道了同一事件？\n3. **查时间**：信息是否过时或被断章取义？\n\n## 警惕特征\n\n- 标题极度夸张、煽动情绪\n- 不标明具体时间地点\n- 只有截图没有链接\n- 要求转发扩散\n\n## 工具推荐\n\n- 使用搜索引擎逆向搜索图片\n- 关注官方辟谣平台",
+    category: "digital-literacy",
+    visibility: "PUBLIC" as const,
+  },
+  {
+    title: "常用学习工具与资源推荐",
+    content: "# 常用学习工具与资源\n\n## 搜索与资料\n\n- 学术搜索：Google Scholar、知网、万方\n- 百科：Wikipedia、百度百科（注意对比验证）\n- 公开课：中国大学MOOC、B站知识区\n\n## 笔记与整理\n\n- 笔记工具：Notion、Obsidian、Typora\n- 思维导图：XMind、ProcessOn\n\n## 编程学习\n\n- 入门：Codecademy、freeCodeCamp、菜鸟教程\n- 练习：LeetCode、GitHub\n\n## 效率工具\n\n- 翻译：DeepL、Google 翻译\n- 写作辅助：Grammarly、写作猫",
+    category: "digital-literacy",
+    visibility: "PUBLIC" as const,
+  },
 ];
 
 export const sensitiveWords = {

@@ -59,17 +59,78 @@ export async function loadSensitiveWords(): Promise<SensitiveWordEntry[]> {
   return entries;
 }
 
+// ==================== Regex Patterns ====================
+
 /**
- * Scan text content for sensitive words using simple string matching (indexOf).
- * Returns all matches with their positions.
+ * Built-in regex patterns for sensitive PII detection.
+ * These run alongside the DB word list — no caching needed.
+ */
+export const PII_REGEX_PATTERNS: { pattern: RegExp; label: string; category: SensitiveWordCategory }[] = [
+  // 中国大陆手机号: 1 开头 10 位数字
+  { pattern: /1[3-9]\d{9}/g, label: "手机号", category: "PII" as SensitiveWordCategory },
+  // 身份证号: 18 位 (17 位数字 + 数字/X) 或 15 位老版
+  { pattern: /\b\d{17}[\dXx]\b/g, label: "身份证号", category: "PII" as SensitiveWordCategory },
+  { pattern: /\b\d{15}\b/g, label: "身份证号(15位)", category: "PII" as SensitiveWordCategory },
+  // 学号: 常见格式 (年份+数字 或 纯数字8-12位上下文)
+  { pattern: /学号[：:\s]*(\d{6,12})/g, label: "学号", category: "PII" as SensitiveWordCategory },
+  // 班级: 如 高一3班、2024级1班
+  { pattern: /(?:高[一二三]|初[一二三]|小[一二三四五六]|[12]\d级)\s*\d{1,2}\s*班/g, label: "班级信息", category: "PII" as SensitiveWordCategory },
+  // QQ号: 5-12位数字
+  { pattern: /QQ[号：:\s]*(\d{5,12})/gi, label: "QQ号", category: "PII" as SensitiveWordCategory },
+  // 微信号: wxid_xxx 或 字母+数字组合
+  { pattern: /微信[号：:\s]*[a-zA-Z0-9_-]{6,20}/g, label: "微信号", category: "PII" as SensitiveWordCategory },
+  // 电子邮箱
+  { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, label: "电子邮箱", category: "PII" as SensitiveWordCategory },
+  // 精确定位: 经度+纬度 或 "E/W + N/S" 格式
+  { pattern: /(?:东经|西经|E|W)\s*\d{2,3}[°°]\d{1,2}['']\d{1,2}[''′]?\s*[,，]\s*(?:北纬|南纬|N|S)\s*\d{2,3}[°°]\d{1,2}['']\d{1,2}[''′]?/g, label: "精确定位", category: "PII" as SensitiveWordCategory },
+];
+
+/**
+ * Scan text with built-in regex patterns for PII detection.
+ * Pure function — no DB/Redis dependency, always available.
+ */
+export function scanWithRegex(text: string): SensitiveMatch[] {
+  if (!text || text.length === 0) return [];
+
+  const matches: SensitiveMatch[] = [];
+  const seen = new Set<string>(); // deduplicate overlapping matches
+
+  for (const { pattern, label, category } of PII_REGEX_PATTERNS) {
+    // Reset lastIndex for global regex
+    pattern.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(text)) !== null) {
+      const key = `${m.index}:${m.index + m[0].length}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      matches.push({
+        word: m[0],
+        category,
+        startIndex: m.index,
+        endIndex: m.index + m[0].length,
+      });
+    }
+  }
+
+  return matches.sort((a, b) => a.startIndex - b.startIndex);
+}
+
+/**
+ * Scan text content for sensitive words using simple string matching (indexOf)
+ * AND built-in PII regex patterns.
+ * Returns all matches with their positions, deduplicated.
  */
 export async function scanContent(text: string): Promise<SensitiveMatch[]> {
   if (!text || text.length === 0) {
     return [];
   }
 
+  // 1. Regex-based PII scan (sync, no DB dependency)
+  const regexMatches = scanWithRegex(text);
+
+  // 2. Word-list scan from DB (async, with Redis cache)
   const words = await loadSensitiveWords();
-  const matches: SensitiveMatch[] = [];
+  const wordMatches: SensitiveMatch[] = [];
   const lowerText = text.toLowerCase();
 
   for (const entry of words) {
@@ -80,7 +141,7 @@ export async function scanContent(text: string): Promise<SensitiveMatch[]> {
       const index = lowerText.indexOf(lowerWord, searchFrom);
       if (index === -1) break;
 
-      matches.push({
+      wordMatches.push({
         word: text.slice(index, index + entry.word.length),
         category: entry.category,
         startIndex: index,
@@ -91,10 +152,18 @@ export async function scanContent(text: string): Promise<SensitiveMatch[]> {
     }
   }
 
-  // Sort by position for consistent output
-  matches.sort((a, b) => a.startIndex - b.startIndex);
+  // 3. Merge & deduplicate by position
+  const seen = new Set<string>();
+  const allMatches: SensitiveMatch[] = [];
 
-  return matches;
+  for (const m of [...regexMatches, ...wordMatches]) {
+    const key = `${m.startIndex}:${m.endIndex}:${m.word}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    allMatches.push(m);
+  }
+
+  return allMatches.sort((a, b) => a.startIndex - b.startIndex);
 }
 
 /**

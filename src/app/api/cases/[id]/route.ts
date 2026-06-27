@@ -17,6 +17,9 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 const updateStatusSchema = z.object({
   status: z.enum(["OPENED", "IN_PROGRESS", "NEED_MORE_INFO", "CLOSED"]),
   details: z.string().max(500).optional(),
+  // 审核状态更新 (管理员用)
+  requestStatus: z.enum(["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"]).optional(),
+  reviewNote: z.string().max(1000).optional(),
 });
 
 const joinActionSchema = z.object({
@@ -128,7 +131,6 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       return handleJoinAction(userId, userRole, id);
     }
 
-    // Otherwise, handle status transition
     const parsed = updateStatusSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -137,7 +139,52 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       );
     }
 
-    const { status: newStatus, details } = parsed.data;
+    const { status: newStatus, details, requestStatus: newRequestStatus, reviewNote } = parsed.data;
+
+    // ---- 审核状态更新 (管理员专用) ----
+    if (newRequestStatus !== undefined && !newStatus) {
+      if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN" && userRole !== "MODERATOR") {
+        return NextResponse.json({ error: "仅管理员可修改审核状态" }, { status: 403 });
+      }
+
+      const caseRecord = await prisma.case.findUnique({ where: { id } });
+      if (!caseRecord) {
+        return NextResponse.json({ error: "委托不存在" }, { status: 404 });
+      }
+
+      const updated = await prisma.case.update({
+        where: { id },
+        data: {
+          requestStatus: newRequestStatus,
+          reviewNote: reviewNote ?? null,
+        },
+      });
+
+      // Log audit
+      await logAudit(
+        userId,
+        "REVIEW_CASE",
+        AuditTargetType.CASE,
+        id,
+        { oldRequestStatus: caseRecord.requestStatus, newRequestStatus, reviewNote },
+      );
+
+      // Create notification for submitter
+      const { createNotification } = await import("@/lib/notification");
+      await createNotification(
+        caseRecord.submitterId,
+        "SYSTEM" as any,
+        "委托表审核结果更新",
+        `您的委托表审核状态已更新为: ${newRequestStatus}${reviewNote ? ` - ${reviewNote}` : ""}`,
+        `/dcr/tickets/${id}`,
+      );
+
+      return NextResponse.json({
+        case: updated,
+        requestStatus: newRequestStatus,
+        reviewNote: reviewNote ?? null,
+      });
+    }
 
     const caseRecord = await prisma.case.findUnique({
       where: { id },

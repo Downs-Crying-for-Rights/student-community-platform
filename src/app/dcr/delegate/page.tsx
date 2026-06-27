@@ -167,7 +167,17 @@ export default function DelegatePage() {
       const res = await fetch("/api/cases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, formData, pledgeText }),
+        body: JSON.stringify({
+          category,
+          formData,
+          pledgeText,
+          grade: data.grade || undefined,
+          timeRange: data.timeRange || undefined,
+          province: data.province || undefined,
+          city: data.city || undefined,
+          expectedHelperProvince: data.expectedHelperProvince || undefined,
+          riskPreference: data.riskPreference || undefined,
+        }),
       });
 
       if (res.ok || res.status === 201) {
@@ -510,7 +520,71 @@ export default function DelegatePage() {
             </CardContent>
           </Card>
 
-          {/* Section 7: Confirmations */}
+          {/* Section 7: Structured Fields (Optional) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">详细信息（选填，有助于提高匹配质量）</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="grade" className="mb-1.5 block">年级</Label>
+                  <select
+                    id="grade"
+                    {...register("grade")}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="">不限</option>
+                    <option value="高一">高一</option>
+                    <option value="高二">高二</option>
+                    <option value="高三">高三</option>
+                    <option value="初一">初一</option>
+                    <option value="初二">初二</option>
+                    <option value="初三">初三</option>
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="timeRange" className="mb-1.5 block">补课时间</Label>
+                  <Input
+                    id="timeRange"
+                    placeholder="如 周六 8:30-17:30"
+                    {...register("timeRange")}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="province" className="mb-1.5 block">省份</Label>
+                  <Input id="province" placeholder="如 广东省" {...register("province")} />
+                </div>
+                <div>
+                  <Label htmlFor="city" className="mb-1.5 block">城市</Label>
+                  <Input id="city" placeholder="如 广州市" {...register("city")} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="expectedHelperProvince" className="mb-1.5 block">期望互助人省份</Label>
+                  <Input id="expectedHelperProvince" placeholder="避免同省可填写" {...register("expectedHelperProvince")} />
+                </div>
+                <div>
+                  <Label htmlFor="riskPreference" className="mb-1.5 block">风险偏好</Label>
+                  <select
+                    id="riskPreference"
+                    {...register("riskPreference")}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="">不限</option>
+                    <option value="仅站内沟通">仅站内沟通</option>
+                    <option value="可电话">可电话</option>
+                    <option value="仅模板咨询">仅模板咨询</option>
+                  </select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Section 8: Confirmations */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">确认信息</CardTitle>

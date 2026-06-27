@@ -105,7 +105,7 @@ export function SensitiveHighlight({
         seg.isSensitive ? (
           <span key={i} className="inline-flex items-center gap-0.5">
             <mark className="rounded bg-destructive/20 px-0.5 text-destructive">
-              {seg.text}
+              [已隐藏]
             </mark>
             {showHints && seg.match && (
               <span
