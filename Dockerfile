@@ -1,14 +1,13 @@
-FROM node:20-alpine AS base
-RUN corepack enable && corepack prepare pnpm@latest --activate
+FROM node:22-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json package-lock.json ./
 COPY prisma ./prisma/
-RUN pnpm install --frozen-lockfile
+RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -17,7 +16,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 RUN npx prisma generate
-RUN pnpm build
+RUN npm run build
 
 # Install prisma CLI into an isolated flat directory (no symlinks)
 RUN mkdir -p /prisma-cli && cd /prisma-cli && npm init -y && npm install prisma@6.19.2 --save-exact --registry=https://registry.npmmirror.com
