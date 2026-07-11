@@ -55,7 +55,9 @@ jobs:
             --exclude=.next \
             --exclude=.env \
             --exclude='.env.*' \
-            -czf forum-dcr2026.tar.gz .
+            -czf "$RUNNER_TEMP/forum-dcr2026.tar.gz" .
+
+          cp "$RUNNER_TEMP/forum-dcr2026.tar.gz" forum-dcr2026.tar.gz
 
       - name: Upload release archive
         uses: appleboy/scp-action@v1
