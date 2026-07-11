@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
+    serverComponentsExternalPackages: ["nodemailer", "bcryptjs"],
   },
   typescript: {
     // Named exports from page files are used for testing;

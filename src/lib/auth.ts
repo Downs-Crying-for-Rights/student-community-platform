@@ -9,7 +9,22 @@ import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
 import { loginPasswordSchema, loginSmsSchema } from "@/lib/validators";
 import { verifyCode } from "@/lib/sms/verification";
-import QQProvider from "@/lib/auth/qq-provider";
+
+// ==================== QQ OAuth (dynamic import to avoid build crash) ====================
+
+async function getQQProvider() {
+  try {
+    const mod = await import("@/lib/auth/qq-provider");
+    return mod.default({
+      clientId: process.env.QQ_APP_ID,
+      clientSecret: process.env.QQ_APP_SECRET,
+    });
+  } catch {
+    return null;
+  }
+}
+
+// ==================== Auth Options ====================
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,
@@ -24,7 +39,7 @@ export const authOptions: NextAuthOptions = {
         },
       },
       from: process.env.SMTP_FROM || "noreply@example.com",
-      maxAge: 15 * 60, // 魔法链接有效期 15 分钟
+      maxAge: 15 * 60,
       async sendVerificationRequest({ identifier: email, url, provider }) {
         const transport = nodemailer.createTransport(provider.server);
         await transport.sendMail({
@@ -53,41 +68,17 @@ export const authOptions: NextAuthOptions = {
         password: { label: "密码", type: "password" },
       },
       async authorize(credentials) {
-        // 1. Validate input with loginPasswordSchema
         const parsed = loginPasswordSchema.safeParse(credentials);
-        if (!parsed.success) {
-          throw new Error("邮箱或密码错误");
-        }
-
+        if (!parsed.success) throw new Error("邮箱或密码错误");
         const { email, password } = parsed.data;
-
-        // 2. Find user by email
         const user = await prisma.user.findUnique({
           where: { email },
           select: { id: true, email: true, nickname: true, role: true, phone: true, passwordHash: true },
         });
-
-        // 3. If no user or no passwordHash, throw unified error
-        if (!user || !user.passwordHash) {
-          throw new Error("邮箱或密码错误");
-        }
-
-        // 4. bcrypt.compare(password, user.passwordHash)
+        if (!user || !user.passwordHash) throw new Error("邮箱或密码错误");
         const isValid = await bcrypt.compare(password, user.passwordHash);
-
-        // 5. If mismatch, throw unified error
-        if (!isValid) {
-          throw new Error("邮箱或密码错误");
-        }
-
-        // 6. Return user object
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.nickname,
-          role: user.role,
-          phone: user.phone,
-        };
+        if (!isValid) throw new Error("邮箱或密码错误");
+        return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
       },
     }),
     CredentialsProvider({
@@ -98,49 +89,25 @@ export const authOptions: NextAuthOptions = {
         code: { label: "验证码", type: "text" },
       },
       async authorize(credentials) {
-        // 1. Validate input with loginSmsSchema
         const parsed = loginSmsSchema.safeParse(credentials);
-        if (!parsed.success) {
-          throw new Error("验证码错误或已过期");
-        }
-
+        if (!parsed.success) throw new Error("验证码错误或已过期");
         const { phone, code } = parsed.data;
-
-        // 2. Call verifyCode(phone, code, "login")
         const isValid = await verifyCode(phone, code, "login");
-
-        // 3. If verification fails, throw error
-        if (!isValid) {
-          throw new Error("验证码错误或已过期");
-        }
-
-        // 4. Find user by phone, or create new user with phone set
+        if (!isValid) throw new Error("验证码错误或已过期");
         let user = await prisma.user.findFirst({
           where: { phone },
           select: { id: true, email: true, nickname: true, role: true, phone: true },
         });
-
         if (!user) {
           user = await prisma.user.create({
             data: { phone },
             select: { id: true, email: true, nickname: true, role: true, phone: true },
           });
         }
-
-        // 5. Return user object
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.nickname,
-          role: user.role,
-          phone: user.phone,
-        };
+        return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
       },
     }),
-    QQProvider({
-      clientId: process.env.QQ_APP_ID ?? "",
-      clientSecret: process.env.QQ_APP_SECRET ?? "",
-    }),
+    // QQ OAuth will be injected at runtime by the route handler
   ],
   session: {
     strategy: "jwt",
@@ -153,7 +120,6 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // First sign-in: inject user info into the JWT token
         token.id = user.id;
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
@@ -166,11 +132,29 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
-        session.user.role = (token.role as string) ?? "USER";
-        session.user.phone = (token.phone as string | null) ?? null;
+        (session.user as any).id = token.id;
+        (session.user as any).role = token.role;
+        (session.user as any).phone = token.phone;
       }
       return session;
     },
   },
 };
+
+// ==================== Runtime provider injection ====================
+
+/**
+ * Returns the auth options with QQ OAuth provider injected if configured.
+ * This avoids build-time webpack static analysis crashes.
+ */
+export async function getAuthOptionsWithQQ(): Promise<NextAuthOptions> {
+  const snapshot = authOptions;
+  const qqProvider = await getQQProvider();
+  if (qqProvider) {
+    return {
+      ...snapshot,
+      providers: [...snapshot.providers, qqProvider],
+    };
+  }
+  return snapshot;
+}
