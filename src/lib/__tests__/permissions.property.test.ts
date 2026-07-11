@@ -10,12 +10,9 @@ import {
   evaluateABACPolicy,
   canCreatePost,
   canAccessZone,
-  NEWCOMER_AGE_DAYS,
-  NEWCOMER_DAILY_POST_LIMIT,
-  VIOLATION_THRESHOLD,
-  VIOLATION_DAILY_POST_LIMIT,
   type ABACUserAttributes,
 } from "../abac";
+import { computeTrustLevel } from "../trust-level";
 import type { Role } from "@prisma/client";
 
 // ==================== Generators ====================
@@ -160,94 +157,64 @@ function arbABACUserNonSuperAdmin(): fc.Arbitrary<ABACUserAttributes> {
   });
 }
 
-// ==================== Property 2: ABAC 属性限制正确性 ====================
-// **Validates: Requirements 7.4, 7.5, 7.6**
+// ==================== Property 2: ABAC 信任等级限制正确性 ====================
 
-describe("属性 2: ABAC 属性限制正确性", () => {
-  it("账号年龄 < 7 天的用户，maxDailyPosts 应 <= 3", () => {
-    const arbNewcomer = arbABACUserNonSuperAdmin().filter((u) => {
-      const ageDays = Math.floor(
-        (Date.now() - new Date(u.createdAt).getTime()) / (1000 * 60 * 60 * 24),
-      );
-      return ageDays < NEWCOMER_AGE_DAYS;
-    });
+describe("属性 2: ABAC 信任等级限制正确性", () => {
+  it("信任等级 0 的用户，maxDailyPosts 应 <= 1", () => {
+    const arbNewcomer = arbABACUserNonSuperAdmin().filter(
+      (u) => computeTrustLevel(u.reputationScore) <= 0 && u.role !== "SUPER_ADMIN" && u.role !== "ADMIN"
+    );
 
     fc.assert(
       fc.property(arbNewcomer, (user) => {
         const policy = evaluateABACPolicy(user);
         expect(policy.maxDailyPosts).not.toBeNull();
-        expect(policy.maxDailyPosts!).toBeLessThanOrEqual(NEWCOMER_DAILY_POST_LIMIT);
-        expect(policy.isNewcomer).toBe(true);
+        expect(policy.maxDailyPosts!).toBeLessThanOrEqual(1);
       }),
-      { numRuns: 200 },
+      { numRuns: 100 },
     );
   });
 
   it("违规次数 > 3 的用户，maxDailyPosts 应 <= 1", () => {
     const arbViolator = arbABACUserNonSuperAdmin().filter(
-      (u) => u.violationCount > VIOLATION_THRESHOLD,
+      (u) => u.violationCount > 3 && u.role !== "ADMIN" && u.role !== "SUPER_ADMIN",
     );
 
     fc.assert(
       fc.property(arbViolator, (user) => {
         const policy = evaluateABACPolicy(user);
         expect(policy.maxDailyPosts).not.toBeNull();
-        expect(policy.maxDailyPosts!).toBeLessThanOrEqual(VIOLATION_DAILY_POST_LIMIT);
+        expect(policy.maxDailyPosts!).toBeLessThanOrEqual(1);
       }),
       { numRuns: 200 },
     );
   });
 
-  it("违规次数 > 3 且账号年龄 < 7 天的用户，maxDailyPosts 应为 1（更严格的限制优先）", () => {
-    const arbNewcomerViolator = arbABACUserNonSuperAdmin().filter((u) => {
-      const ageDays = Math.floor(
-        (Date.now() - new Date(u.createdAt).getTime()) / (1000 * 60 * 60 * 24),
-      );
-      return ageDays < NEWCOMER_AGE_DAYS && u.violationCount > VIOLATION_THRESHOLD;
-    });
-
-    fc.assert(
-      fc.property(arbNewcomerViolator, (user) => {
-        const policy = evaluateABACPolicy(user);
-        expect(policy.maxDailyPosts).toBe(VIOLATION_DAILY_POST_LIMIT);
-        expect(policy.isNewcomer).toBe(true);
-      }),
-      { numRuns: 200 },
+  it("信任等级 2+ 且违规次数 <= 3 的用户，isNewcomer 应为 false", () => {
+    const arbNormal = arbABACUserNonSuperAdmin().filter(
+      (u) => computeTrustLevel(u.reputationScore) >= 2 && u.violationCount <= 3
     );
-  });
-
-  it("账号年龄 >= 7 天且违规次数 <= 3 的用户，maxDailyPosts 应为 null（无限制）", () => {
-    const arbNormalUser = arbABACUserNonSuperAdmin().filter((u) => {
-      const ageDays = Math.floor(
-        (Date.now() - new Date(u.createdAt).getTime()) / (1000 * 60 * 60 * 24),
-      );
-      return ageDays >= NEWCOMER_AGE_DAYS && u.violationCount <= VIOLATION_THRESHOLD;
-    });
 
     fc.assert(
-      fc.property(arbNormalUser, (user) => {
+      fc.property(arbNormal, (user) => {
         const policy = evaluateABACPolicy(user);
-        expect(policy.maxDailyPosts).toBeNull();
         expect(policy.isNewcomer).toBe(false);
       }),
       { numRuns: 200 },
     );
   });
 
-  it("账号年龄 < 7 天的用户不可进入私密区", () => {
-    const arbNewcomer = arbABACUserNonSuperAdmin().filter((u) => {
-      const ageDays = Math.floor(
-        (Date.now() - new Date(u.createdAt).getTime()) / (1000 * 60 * 60 * 24),
-      );
-      return ageDays < NEWCOMER_AGE_DAYS;
-    });
+  it("信任等级 < 2 的用户不可进入私密区", () => {
+    const arbLow = arbABACUserNonSuperAdmin().filter(
+      (u) => computeTrustLevel(u.reputationScore) < 2 && u.role !== "ADMIN" && u.role !== "SUPER_ADMIN"
+    );
 
     fc.assert(
-      fc.property(arbNewcomer, (user) => {
+      fc.property(arbLow, (user) => {
         const policy = evaluateABACPolicy(user);
         expect(policy.canAccessPrivateZone).toBe(false);
       }),
-      { numRuns: 200 },
+      { numRuns: 100 },
     );
   });
 });

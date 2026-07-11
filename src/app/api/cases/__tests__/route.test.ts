@@ -37,6 +37,27 @@ vi.mock("@/lib/audit", () => ({
   AuditTargetType: { CASE: "CASE" },
 }));
 
+vi.mock("@/lib/sensitive-engine", () => ({
+  scanContent: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/dcr-field-extractor", () => ({
+  extractFields: vi.fn().mockReturnValue({
+    extractedFields: { schoolName: "测试中学", typeCategory: "补课" },
+    missingFields: [],
+    log: [],
+  }),
+}));
+
+vi.mock("@/lib/dcr-review-rules", () => ({
+  reviewDelegation: vi.fn().mockReturnValue({
+    decision: "APPROVED",
+    reason: "审核通过",
+    missingFields: [],
+    warnings: [],
+  }),
+}));
+
 import { getServerSession } from "next-auth/next";
 const mockGetServerSession = vi.mocked(getServerSession);
 

@@ -190,7 +190,7 @@ describe("GET /api/search", () => {
       expect(mockPostFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            board: { zone: { in: ["PUBLIC"] } },
+            board: { zone: { in: ["PUBLIC", "PSYCHOLOGY"] } },
           }),
         }),
       );

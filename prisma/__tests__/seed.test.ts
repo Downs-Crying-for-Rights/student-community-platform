@@ -73,9 +73,9 @@ describe("Seed Data", () => {
   });
 
   describe("Knowledge Articles", () => {
-    it("should have 10 articles (8-12 range)", () => {
-      expect(knowledgeArticles.length).toBeGreaterThanOrEqual(8);
-      expect(knowledgeArticles.length).toBeLessThanOrEqual(12);
+    it("should have 14 articles (12-16 range)", () => {
+      expect(knowledgeArticles.length).toBeGreaterThanOrEqual(12);
+      expect(knowledgeArticles.length).toBeLessThanOrEqual(16);
     });
 
     it("should have both PUBLIC and DCR_ONLY articles", () => {
