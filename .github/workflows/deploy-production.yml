@@ -42,6 +42,11 @@ jobs:
     environment:
       name: production
       url: https://forum.dcr2026.com
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || 22 }}
+      SSHPASS: ${{ secrets.DEPLOY_PASSWORD }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -59,35 +64,37 @@ jobs:
 
           cp "$RUNNER_TEMP/forum-dcr2026.tar.gz" forum-dcr2026.tar.gz
 
+      - name: Configure verified SSH connection
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+
+          install -d -m 700 "$HOME/.ssh"
+          if [ "$DEPLOY_PORT" = "22" ]; then
+            host_pattern="$DEPLOY_HOST"
+          else
+            host_pattern="[$DEPLOY_HOST]:$DEPLOY_PORT"
+          fi
+
+          {
+            printf '%s %s\n' "$host_pattern" 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAl7P4PiSAvCouJGic1IajLWsQ51UaPr4IPBE2lYToWX'
+            printf '%s %s\n' "$host_pattern" 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPaPGoVgGBa/3qC4568g4d8SHVO11wG9OD6ERuVK+McEPoOUURcqGlsLvNsx/roPtCORWC/jlYt+HkfK0DxB+GU='
+            printf '%s %s\n' "$host_pattern" 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDpFJWYgdpTwW78S277MhIC7FWm6RIvLatUgC5p3KXGZ8QtWEdH5hdSE5MmsurPKPZstI9BfpA/V8n7zuQbU9yqlwec6xrgYSA9eiBEJsm2QMUXmmxqvEvCPdUdnDTriRCS7Lkl9+TA4W6zj8xLHCdtavdnJ+4kp4Vas20UDKfVCWm6NvJzTMwETpLHLWBzA4UYjw+m1RTvgQrfsPOawGh4wpNqEBQtDAAcosnWUwZUC2/xzmYUBJ0EB/fMsQrQdEweLAdLerE7CX3P/YGb9wgPWuECecENwDDl9TObM0rLAiOxch1iVspXOiT14w+VcOnLbBOwhcNhc2twgjlkRZE1QdJqSIBr1ZRJG0GzMVfSMUa7IAlpPqe7cvTyj8WWluwCacpgdeo+pgAbkhpzClOPWS5SlAdRcjbyS/3UkSp4je6WeMvwQbkunOqrmcZ3BEkFWJgupVwlv/eJitEh2P/JYUOR03T6l1ENiq2E93nIy2JFKJbfBbr4ZbjrMZFkqlk='
+          } > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
       - name: Upload release archive
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          password: ${{ secrets.DEPLOY_PASSWORD }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          source: forum-dcr2026.tar.gz
-          target: /tmp/forum-dcr2026-${{ github.sha }}
-          fingerprint: SHA256:yhz1qcYazBA8llbkzroQTU6O68AucB3GS65TB7DJ9d8
-          command_timeout: 10m
+        run: |
+          sshpass -e scp \
+            -P "$DEPLOY_PORT" \
+            -o StrictHostKeyChecking=yes \
+            forum-dcr2026.tar.gz \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/forum-dcr2026-$GITHUB_SHA.tar.gz"
 
       - name: Activate release
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          password: ${{ secrets.DEPLOY_PASSWORD }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          fingerprint: SHA256:yhz1qcYazBA8llbkzroQTU6O68AucB3GS65TB7DJ9d8
-          command_timeout: 25m
-          script: |
-            set -eu
-            APP_DIR=/opt/forum-dcr2026
-            RELEASE_SHA=${{ github.sha }}
-            RELEASE_DIR="$APP_DIR/releases/$RELEASE_SHA"
-            ARCHIVE_PATH="/tmp/forum-dcr2026-$RELEASE_SHA/forum-dcr2026.tar.gz"
-
-            mkdir -p "$RELEASE_DIR"
-            tar -xzf "$ARCHIVE_PATH" -C "$RELEASE_DIR"
-            APP_DIR="$APP_DIR" RELEASE_SHA="$RELEASE_SHA" \
-              bash "$RELEASE_DIR/scripts/deploy-production.sh"
+        run: |
+          sshpass -e ssh \
+            -p "$DEPLOY_PORT" \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -eu; APP_DIR=/opt/forum-dcr2026; RELEASE_SHA=$GITHUB_SHA; RELEASE_DIR=\$APP_DIR/releases/\$RELEASE_SHA; ARCHIVE_PATH=/tmp/forum-dcr2026-\$RELEASE_SHA.tar.gz; mkdir -p \$RELEASE_DIR; tar -xzf \$ARCHIVE_PATH -C \$RELEASE_DIR; APP_DIR=\$APP_DIR RELEASE_SHA=\$RELEASE_SHA bash \$RELEASE_DIR/scripts/deploy-production.sh"

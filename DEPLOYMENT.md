@@ -14,9 +14,9 @@ Configure these in **Settings → Secrets and variables → Actions**:
 - `DEPLOY_PASSWORD`: SSH password
 - `DEPLOY_PORT`: SSH port; use `22` for the current server
 
-The server RSA host-key fingerprint is pinned directly in the workflow. If the
-server SSH host key is intentionally rotated, update both `fingerprint` values
-in the workflow after verifying the new key out of band.
+The server ED25519, ECDSA, and RSA host public keys are pinned directly in the
+workflow. If the server SSH host keys are intentionally rotated, update the
+`known_hosts` entries after verifying the new keys out of band.
 
 The production `.env` remains on the server at
 `/opt/forum-dcr2026/shared/.env`; it is never uploaded from GitHub.

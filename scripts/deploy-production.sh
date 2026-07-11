@@ -65,5 +65,5 @@ find "$APP_DIR/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
   | awk 'NR > 3 { sub(/^[^ ]+ /, ""); print }' \
   | xargs -r rm -rf --
 
-rm -rf -- "/tmp/forum-dcr2026-$RELEASE_SHA"
+rm -rf -- "/tmp/forum-dcr2026-$RELEASE_SHA" "/tmp/forum-dcr2026-$RELEASE_SHA.tar.gz"
 echo "Deployment $RELEASE_SHA is healthy at $HEALTH_URL"
