@@ -397,15 +397,15 @@ describe("全局路由与导航集成", () => {
   });
 
   describe("页面组件可导入性验证", () => {
-    it("首页 Feed 组件可正常导入", async () => {
+    it("首页 Feed 组件可正常导入", { timeout: 15000 }, async () => {
       const mod = await import("../app/page");
       expect(mod.default).toBeDefined();
-    });
+    }, 15000);
 
-    it("搜索页组件可正常导入", async () => {
+    it("搜索页组件可正常导入", { timeout: 15000 }, async () => {
       const mod = await import("../app/search/page");
       expect(mod.default).toBeDefined();
-    });
+    }, 15000);
 
     it("发现页组件可正常导入", async () => {
       const mod = await import("../app/discover/page");

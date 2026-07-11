@@ -93,12 +93,12 @@ describe("GET /api/boards", () => {
     expect(res.status).toBe(200);
     expect(data.boards).toEqual(boards);
 
-    // Should only query PUBLIC zone for a user without psych/dcr access
+    // trustLevel 2 用户可访问 PUBLIC + PSYCHOLOGY
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           isActive: true,
-          zone: { in: ["PUBLIC"] },
+          zone: { in: ["PUBLIC", "PSYCHOLOGY"] },
         },
         orderBy: { sortWeight: "asc" },
       }),
@@ -157,11 +157,12 @@ describe("GET /api/boards", () => {
     const res = await GET(makeRequest("GET"), { params: {} });
 
     expect(res.status).toBe(200);
+    // trustLevel 2 user gets PUBLIC + PSYCHOLOGY + DCR
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           isActive: true,
-          zone: { in: ["PUBLIC", "DCR"] },
+          zone: { in: ["PUBLIC", "PSYCHOLOGY", "DCR"] },
         },
       }),
     );
@@ -211,7 +212,7 @@ describe("GET /api/boards", () => {
       expect.objectContaining({
         where: {
           isActive: true,
-          zone: { in: ["PUBLIC"] },
+          zone: { in: ["PUBLIC", "PSYCHOLOGY"] },
         },
         include: {
           _count: {
