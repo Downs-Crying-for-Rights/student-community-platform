@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
           phone,
           isAnonymous: false,
           dcrAccess: true,
+          dcrPledgeSigned: true,
         },
       });
 

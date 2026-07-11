@@ -662,7 +662,7 @@ function LoginContent() {
   }
 
   // ===== Error view =====
-  if (view === "error" && !activeTab) {
+  if (view === "error") {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">

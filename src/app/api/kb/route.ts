@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { withAuth, type AuthenticatedRequest, isAdminRole } from "@/lib/rbac";
+import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createArticleSchema, paginationSchema } from "@/lib/validators";
 import type { ArticleVisibility } from "@prisma/client";
 import { z } from "zod";
@@ -119,6 +120,14 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       },
     });
 
+    await logAudit(
+      req.user.id,
+      AuditAction.KB_ARTICLE_CREATE,
+      AuditTargetType.KNOWLEDGE_ARTICLE,
+      article.id,
+      { title, category, visibility },
+    );
+
     return NextResponse.json({ article }, { status: 201 });
   } catch (error) {
     console.error("POST /api/kb error:", error);
@@ -136,7 +145,7 @@ async function getVisibilityFilter(
   userId: string,
   userRole: string,
 ): Promise<ArticleVisibility[]> {
-  if (userRole === "ADMIN" || userRole === "SUPER_ADMIN") {
+  if (isAdminRole(userRole)) {
     return ["PUBLIC", "DCR_ONLY"];
   }
 

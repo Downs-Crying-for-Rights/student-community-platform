@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { createNotification } from "@/lib/notification";
+import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 
 /**
  * POST /api/psych/match/[id]
@@ -69,6 +70,14 @@ export const POST = withAuth(async (
         listenerId,
       },
     });
+
+    await logAudit(
+      listenerId,
+      AuditAction.PSYCH_MATCH_CLAIM,
+      AuditTargetType.CONFIDE_REQUEST,
+      id,
+      { requesterId: confideRequest.requesterId },
+    );
 
     // Create notification for requester
     await createNotification(

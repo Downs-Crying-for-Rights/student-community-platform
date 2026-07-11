@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { generateAnonymousId } from "@/lib/utils";
+import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { z } from "zod";
 
 const confideSchema = z.object({
@@ -74,6 +75,14 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         requesterId: userId,
       },
     });
+
+    await logAudit(
+      userId,
+      AuditAction.CONFIDE_CREATE,
+      AuditTargetType.CONFIDE_REQUEST,
+      confideRequest.id,
+      { anonymousId },
+    );
 
     // Return without exposing requesterId
     return NextResponse.json(

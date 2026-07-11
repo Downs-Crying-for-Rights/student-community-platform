@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 
 /**
  * POST /api/psych/apply
@@ -57,6 +58,14 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         applicantId: userId,
       },
     });
+
+    await logAudit(
+      userId,
+      AuditAction.PSYCH_ACCESS_APPLY,
+      AuditTargetType.ACCESS_APPLICATION,
+      application.id,
+      { type: "PSYCHOLOGY" },
+    );
 
     return NextResponse.json({ application }, { status: 201 });
   } catch (error) {

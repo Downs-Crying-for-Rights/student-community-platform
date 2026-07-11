@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
 
 /**
@@ -52,6 +53,14 @@ export const POST = withAuth(async (
         closedAt: new Date(),
       },
     });
+
+    await logAudit(
+      userId,
+      AuditAction.CONFIDE_CLOSE,
+      AuditTargetType.CONFIDE_REQUEST,
+      id,
+      { closedBy: userId },
+    );
 
     // Notify the other party
     const otherPartyId =

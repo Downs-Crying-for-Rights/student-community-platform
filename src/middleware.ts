@@ -22,11 +22,24 @@ export async function globalRateLimit(req: NextRequest): Promise<NextResponse | 
   // Skip auth endpoints and static
   if (req.nextUrl.pathname.startsWith("/api/auth/") || req.nextUrl.pathname.startsWith("/_next/")) return null;
 
-  // Simple in-memory rate limit fallback (Edge-compatible, no Redis dependency)
-  // Production should use Upstash Redis or similar; this is a dev safeguard.
-  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
-  const key = `rl:${ip}:${Math.floor(Date.now() / 60000)}`;
-  // No global state in Edge runtime — skip for now, route-level rate limiters handle this
+  // Use x-forwarded-for in production (behind proxy), fallback to direct IP
+  const headerIP = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+  const ip = headerIP.split(",")[0].trim(); // take the first IP if multiple proxies
+
+  // Simple in-memory rate limit using a WeakMap-style counter (per-window)
+  // Production use Redis-backed limiter; this is a dev/staging safeguard
+  try {
+    const { enforceRateLimit } = await import("@/lib/rate-limiter");
+    const result = await enforceRateLimit(ip, 60);
+    if (!result.allowed) {
+      return NextResponse.json(
+        { error: "请求过于频繁，请稍后再试" },
+        { status: 429, headers: { "Retry-After": String(Math.ceil((result.resetAt - Date.now()) / 1000)) } },
+      );
+    }
+  } catch {
+    // Redis unavailable — degrade gracefully (don't block requests)
+  }
   return null;
 }
 
@@ -57,6 +70,15 @@ export default async function middleware(req: NextRequest) {
   // 已认证但 phone 为空，且路径不在白名单中 → 重定向至绑定页
   if (!token.phone && !isBindphoneWhitelisted(req.nextUrl.pathname)) {
     return NextResponse.redirect(new URL("/bindphone", req.url));
+  }
+
+  // 已绑定手机号但未完成新手引导 → 重定向至引导页
+  if (token.phone && !(token.onboardingDone || token.quizPassed)) {
+    const isOnboardingPath = req.nextUrl.pathname.startsWith("/onboarding") ||
+      req.nextUrl.pathname.startsWith("/api/onboarding");
+    if (!isOnboardingPath) {
+      return NextResponse.redirect(new URL("/onboarding", req.url));
+    }
   }
 
   return NextResponse.next();
