@@ -1,99 +1,69 @@
 /**
  * Next.js Instrumentation
  *
- * Runs once at server startup. Registers global console interceptors
- * that write all console.log / console.error / console.warn / console.debug
- * output to the SystemLog database table, so they appear in /admin/logs.
- *
- * The original console methods are preserved and still output to stdout/stderr.
+ * Hooks into the server startup to enable system-level logging.
+ * Uses setTimeout-deferred import of the shared Prisma client to avoid
+ * circular dependency issues with ESM module loading during registration.
  */
-
-import { PrismaClient } from "@prisma/client";
-
-// Dedicated Prisma instance for logging (avoids circular dependency with lib/prisma)
-const logPrisma = new PrismaClient();
-
-// Flush queue to avoid overwhelming DB on rapid bursts
-let logQueue: Array<{ level: string; message: string; detail?: string }> = [];
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-const FLUSH_INTERVAL_MS = 2000; // flush every 2 seconds
-const MAX_QUEUE_SIZE = 100; // force flush if queue exceeds this
-
-async function flushQueue() {
-  if (logQueue.length === 0) return;
-  const batch = logQueue.splice(0, logQueue.length);
-  try {
-    await logPrisma.systemLog.createMany({
-      data: batch.map((entry) => ({
-        level: entry.level,
-        source: "console",
-        message: entry.message.slice(0, 2000),
-        detail: entry.detail?.slice(0, 5000) ?? null,
-      })),
-    });
-  } catch {
-    // Could not persist — do not crash the process
-  }
-}
-
-function enqueueLog(level: string, message: string, detail?: string) {
-  logQueue.push({ level, message, detail });
-  if (logQueue.length >= MAX_QUEUE_SIZE) {
-    flushQueue().catch(() => {});
-  }
-  if (!flushTimer) {
-    flushTimer = setTimeout(() => {
-      flushTimer = null;
-      flushQueue().catch(() => {});
-    }, FLUSH_INTERVAL_MS);
-  }
-}
-
-// Patch console methods
-const _originalConsole = {
-  log: console.log.bind(console),
-  error: console.error.bind(console),
-  warn: console.warn.bind(console),
-  debug: console.debug.bind(console),
-};
-
-function formatArgs(args: unknown[]): string {
-  return args
-    .map((a) => {
-      if (typeof a === "string") return a;
-      if (a instanceof Error) return `${a.name}: ${a.message}`;
-      try {
-        return JSON.stringify(a);
-      } catch {
-        return String(a);
-      }
-    })
-    .join(" ");
-}
-
-console.log = (...args: unknown[]) => {
-  _originalConsole.log(...args);
-  enqueueLog("INFO", formatArgs(args));
-};
-
-console.error = (...args: unknown[]) => {
-  _originalConsole.error(...args);
-  enqueueLog("ERROR", formatArgs(args));
-};
-
-console.warn = (...args: unknown[]) => {
-  _originalConsole.warn(...args);
-  enqueueLog("WARN", formatArgs(args));
-};
-
-console.debug = (...args: unknown[]) => {
-  _originalConsole.debug(...args);
-  enqueueLog("DEBUG", formatArgs(args));
-};
+let patchesApplied = false;
 
 export async function register() {
-  // Only run on server (instrumentation.ts has both edge and node envs)
-  if (typeof window !== "undefined") return;
+  // Only run once and only on server
+  if (patchesApplied || typeof window !== "undefined") return;
+  patchesApplied = true;
 
-  _originalConsole.log("[instrumentation] Console-to-SystemLog interceptor registered");
+  // Defer imports to avoid circular deps during module init
+  setTimeout(async () => {
+    try {
+      const { default: prisma } = await import("@/lib/prisma");
+
+      // Receive raw console output
+      const _log = console.log.bind(console);
+      const _error = console.error.bind(console);
+      const _warn = console.warn.bind(console);
+      const _debug = console.debug.bind(console);
+
+      const format = (args: unknown[]): string =>
+        args.map((a) =>
+          a instanceof Error ? `${a.name}: ${a.message}`
+          : typeof a === "string" ? a
+          : JSON.stringify(a)
+        ).join(" ").slice(0, 2000);
+
+      // Batch writer with 3s flush interval, max 200 queue
+      type QueueEntry = { level: string; message: string; detail?: string };
+      let queue: QueueEntry[] = [];
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const flush = async () => {
+        if (queue.length === 0) return;
+        const batch = queue.splice(0);
+        try {
+          await prisma.systemLog.createMany({
+            data: batch.map((e) => ({
+              level: e.level,
+              source: "console",
+              message: e.message,
+              detail: e.detail?.slice(0, 5000) ?? null,
+            })),
+          });
+        } catch { /* failsafe */ }
+      };
+
+      const enqueue = (level: string, args: unknown[]) => {
+        queue.push({ level, message: format(args) });
+        if (queue.length >= 200) flush();
+        if (!timer) timer = setTimeout(() => { timer = null; flush(); }, 3000);
+      };
+
+      console.log   = (...a: unknown[]) => { _log(...a);   enqueue("INFO", a); };
+      console.error = (...a: unknown[]) => { _error(...a); enqueue("ERROR", a); };
+      console.warn  = (...a: unknown[]) => { _warn(...a);  enqueue("WARN", a); };
+      console.debug = (...a: unknown[]) => { _debug(...a); enqueue("DEBUG", a); };
+
+      console.log("[instrumentation] SystemLog interceptor active");
+    } catch {
+      // Logger not available — that's fine, just skip
+    }
+  }, 0);
 }
