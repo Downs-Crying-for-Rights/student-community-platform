@@ -1,0 +1,65 @@
+name: Bump version
+run-name: "v${{ steps.get-version.outputs.version }} → ${{ github.event.head_commit.message }}"
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-version
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    name: Bump version
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if VERSION was already bumped
+        id: check
+        run: |
+          if git diff HEAD~1 --name-only | grep -qxF VERSION; then
+            echo "skipped=true" >> $GITHUB_OUTPUT
+            echo "VERSION file was already bumped in this push, skipping."
+          else
+            echo "skipped=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Read and bump version
+        if: steps.check.outputs.skipped != 'true'
+        id: bump
+        run: |
+          CURRENT=$(cat VERSION)
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+
+          # Increment patch; on every 100th patch, roll to minor
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_MINOR=$MINOR
+          if [ "$NEXT_PATCH" -ge 100 ]; then
+            NEXT_PATCH=0
+            NEXT_MINOR=$((MINOR + 1))
+          fi
+
+          NEXT="${MAJOR}.${NEXT_MINOR}.${NEXT_PATCH}"
+          echo "version=$NEXT" >> $GITHUB_OUTPUT
+          echo "$NEXT" > VERSION
+
+      - name: Commit and push version bump
+        if: steps.bump.outputs.version != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "build: bump version to v${{ steps.bump.outputs.version }}"
+          git push

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Providers } from "@/components/providers/Providers";
+import { VersionFooter } from "@/components/layout/VersionFooter";
 import "./globals.css";
 import "@/styles/a11y.css";
 
@@ -21,6 +22,7 @@ export default function RootLayout({
             跳转到主要内容
           </a>
           <div id="main-content">{children}</div>
+          <VersionFooter />
         </Providers>
       </body>
     </html>
