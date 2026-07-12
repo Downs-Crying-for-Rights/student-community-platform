@@ -12,6 +12,7 @@ import {
   Flag,
   CheckCircle,
   HandHelping,
+  Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -201,14 +202,17 @@ export function getAvailableActions(
   helperId: string | null,
 ): {
   canClaim: boolean;
+  canStart: boolean;
   canChat: boolean;
   canEvidence: boolean;
   canRequestClose: boolean;
   canConfirmClose: boolean;
 } {
   const isParticipant = userId === requesterId || userId === helperId;
+  const isHelper = userId === helperId;
   return {
     canClaim: status === "OPEN" && userId !== requesterId,
+    canStart: status === "CLAIMED" && isHelper,
     canChat: ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING"].includes(status) && isParticipant,
     canEvidence: ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING"].includes(status) && isParticipant,
     canRequestClose: status === "IN_PROGRESS" && isParticipant,
@@ -279,6 +283,23 @@ export default function TaskDetailPage() {
       } else {
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? "领取失败");
+      }
+    } catch {
+      setError("操作失败，请稍后重试");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleStart = async () => {
+    setActionLoading("start");
+    try {
+      const res = await fetch(`/api/dcr/tasks/${id}/start`, { method: "POST" });
+      if (res.ok) {
+        await fetchTask();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "操作失败");
       }
     } catch {
       setError("操作失败，请稍后重试");
@@ -510,6 +531,21 @@ export default function TaskDetailPage() {
               </Button>
             )}
 
+            {actions.canStart && (
+              <Button
+                className="rounded-2xl"
+                disabled={actionLoading === "start"}
+                onClick={handleStart}
+              >
+                {actionLoading === "start" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                开始处理
+              </Button>
+            )}
+
             {actions.canChat && (
               <Button variant="outline" className="rounded-2xl" asChild>
                 <Link href={`/dcr/tasks/${id}/chat`}>
@@ -569,9 +605,24 @@ export default function TaskDetailPage() {
             size="sm"
             className="text-muted-foreground hover:text-red-600"
             aria-label="举报此任务"
-            onClick={() => {
-              // Placeholder: report functionality
-              alert("举报功能即将上线");
+            onClick={async () => {
+              const reason = prompt("请输入举报原因");
+              if (!reason) return;
+              try {
+                const res = await fetch("/api/reports", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ targetId: id, targetType: "TASK", reason }),
+                });
+                if (res.ok) {
+                  alert("举报已提交，管理员将尽快处理");
+                } else {
+                  const data = await res.json().catch(() => ({}));
+                  alert(data.error || "举报提交失败");
+                }
+              } catch {
+                alert("网络错误");
+              }
             }}
           >
             <Flag className="h-4 w-4" aria-hidden="true" />

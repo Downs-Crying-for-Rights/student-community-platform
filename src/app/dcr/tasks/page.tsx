@@ -99,16 +99,25 @@ export default function TaskFeedPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [claiming, setClaiming] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchTasks = useCallback(
     async (pageNum: number, tab: TaskTab, append: boolean) => {
       if (pageNum === 1) setLoading(true);
       else setLoadingMore(true);
+      setError(null);
 
       try {
         const url = buildTasksApiUrl(tab, pageNum, PAGE_SIZE);
         const res = await fetch(url);
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (res.status === 403) {
+            setError("尚未通过 DCR 准入考核，无法查看互助任务");
+          } else {
+            setError(`服务器错误 (${res.status})，请稍后重试`);
+          }
+          return;
+        }
 
         const data = await res.json();
         const items: TaskListItem[] = data.tasks ?? [];
@@ -116,7 +125,7 @@ export default function TaskFeedPage() {
         setTasks((prev) => (append ? [...prev, ...items] : items));
         setHasMore(data.page * data.pageSize < data.total);
       } catch {
-        // silently ignore
+        setError("网络错误，请检查连接后重试");
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -199,6 +208,11 @@ export default function TaskFeedPage() {
         </div>
 
         {/* Content */}
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-600 dark:bg-red-950/20 dark:text-red-400">
+            {error}
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />

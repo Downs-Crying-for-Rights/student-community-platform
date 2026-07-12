@@ -14,13 +14,18 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   NEED_MORE_INFO: ["IN_PROGRESS"],
 };
 
-const updateStatusSchema = z.object({
-  status: z.enum(["OPENED", "IN_PROGRESS", "NEED_MORE_INFO", "CLOSED"]),
-  details: z.string().max(500).optional(),
-  // 审核状态更新 (管理员用)
-  requestStatus: z.enum(["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"]).optional(),
-  reviewNote: z.string().max(1000).optional(),
-});
+const updateStatusSchema = z.discriminatedUnion("_action", [
+  z.object({
+    _action: z.literal("updateStatus"),
+    status: z.enum(["OPENED", "IN_PROGRESS", "NEED_MORE_INFO", "CLOSED"]),
+    details: z.string().max(500).optional(),
+  }),
+  z.object({
+    _action: z.literal("review"),
+    requestStatus: z.enum(["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"]),
+    reviewNote: z.string().max(1000).optional(),
+  }),
+]);
 
 const joinActionSchema = z.object({
   action: z.literal("JOIN"),
@@ -139,10 +144,11 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       );
     }
 
-    const { status: newStatus, details, requestStatus: newRequestStatus, reviewNote } = parsed.data;
+    const patchData = parsed.data;
 
     // ---- 审核状态更新 (管理员专用) ----
-    if (newRequestStatus !== undefined && !newStatus) {
+    if (patchData._action === "review") {
+      const { requestStatus: newRequestStatus, reviewNote } = patchData;
       if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN" && userRole !== "MODERATOR") {
         return NextResponse.json({ error: "仅管理员可修改审核状态" }, { status: 403 });
       }
@@ -182,9 +188,11 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       return NextResponse.json({
         case: updated,
         requestStatus: newRequestStatus,
-        reviewNote: reviewNote ?? null,
       });
     }
+
+    // ---- 原有状态更新逻辑 ----
+    const { status: newStatus, details } = patchData;
 
     const caseRecord = await prisma.case.findUnique({
       where: { id },
@@ -214,12 +222,8 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     const isHandler = caseRecord.handlerId === userId;
     const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
-    // Allow DCR_HELPER, ADMIN, SUPER_ADMIN, or any user with dcrAccess to accept cases
-    const userRecord = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { dcrAccess: true },
-    });
-    const isDCRHelper = userRole === "DCR_HELPER" || isAdmin || (userRecord?.dcrAccess === true);
+    // Helper: DCR_HELPER role, ADMIN, or SUPER_ADMIN can handle cases
+    const isDCRHelper = userRole === "DCR_HELPER" || isAdmin;
 
     // OPENED → IN_PROGRESS: DCRHelper accepts case
     if (oldStatus === "OPENED" && newStatus === "IN_PROGRESS") {

@@ -73,8 +73,8 @@ function getSteps(progress: DCRProgress): (StepConfig & { status: "done" | "curr
       icon: MessageSquareText,
       title: "④ 信息参考与交流",
       description: "在社区内进行经验分享、政策学习和互助交流，获取信息层面的参考与风险提示。",
-      buttonText: "进入交流",
-      buttonHref: "/dcr/guide",
+      buttonText: "进入互助任务",
+      buttonHref: "/dcr/tasks",
       lockedText: "考核通过后可进入",
     },
   ];

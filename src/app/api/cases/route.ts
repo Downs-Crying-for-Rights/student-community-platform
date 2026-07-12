@@ -269,14 +269,10 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       if (status && status.length > 0) {
         where.status = status.length === 1 ? status[0] : { in: status };
       }
-    } else if (userRole === "DCR_HELPER" || hasDcrAccess) {
-      // DCRHelper or any user with dcrAccess sees:
-      // - cases they handle (via CaseHandler relation)
-      // - cases they submitted
-      // - OPENED cases (only when not filtering, or filtering by OPENED)
+    } else if (userRole === "DCR_HELPER") {
+      // DCR_HELPER sees: cases they handle + OPENED cases in queue
       const orClauses: Record<string, unknown>[] = [
         { handlers: { some: { userId } } },
-        { submitterId: userId },
       ];
       const statusValues = status && status.length > 0 ? status : null;
       if (!statusValues || statusValues.includes("OPENED")) {
@@ -286,6 +282,17 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         { OR: orClauses },
         ...(statusValues ? [{ status: statusValues.length === 1 ? statusValues[0] : { in: statusValues } }] : []),
       ];
+    } else if (hasDcrAccess) {
+      // Regular user with dcrAccess sees only: cases they handle + cases they submitted
+      where.AND = [
+        { OR: [
+          { handlers: { some: { userId } } },
+          { submitterId: userId },
+        ]},
+      ];
+      if (status && status.length > 0) {
+        where.status = status.length === 1 ? status[0] : { in: status };
+      }
     } else {
       // Users without dcrAccess can still query their own cases
       where.submitterId = userId;

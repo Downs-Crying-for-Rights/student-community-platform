@@ -11,6 +11,7 @@ import { z } from "zod";
 
 const listQuerySchema = paginationSchema.extend({
   tab: z.enum(["recommended", "latest", "urgent"]).default("recommended"),
+  scope: z.enum(["all", "mine"]).default("all"),
 });
 
 // Visible statuses for the task feed (OPEN and above)
@@ -149,13 +150,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { page, pageSize, tab } = parsed.data;
+    const { page, pageSize, tab, scope } = parsed.data;
     const skip = (page - 1) * pageSize;
 
-    // Build where clause: only visible statuses
-    const where = {
-      status: { in: [...VISIBLE_STATUSES] },
-    };
+    // Build where clause
+    const where: Record<string, unknown> = scope === "mine"
+      ? { requesterId: userId }
+      : { status: { in: [...VISIBLE_STATUSES] } };
 
     // Sort based on tab
     let orderBy: Record<string, string>[] | Record<string, string>;
