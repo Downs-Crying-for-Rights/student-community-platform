@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Loader2,
   Clock,
@@ -70,10 +71,16 @@ const TAB_OPTIONS: { value: RequestStatus | "ALL"; label: string }[] = [
 /* ========== Page ========== */
 
 export default function RequestsPage() {
+  const searchParams = useSearchParams();
+  const statusParam = searchParams.get("status") as RequestStatus | null;
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<RequestStatus | "ALL">("ALL");
+  const [activeTab, setActiveTab] = useState<RequestStatus | "ALL">(
+    statusParam && ["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"].includes(statusParam)
+      ? statusParam
+      : "ALL"
+  );
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -198,9 +205,21 @@ export default function RequestsPage() {
                         {new Date(c.createdAt).toLocaleDateString("zh-CN")}
                       </p>
                     </div>
-                    <Button asChild variant="ghost" size="sm" className="shrink-0">
-                      <Link href={`/dcr/tickets/${c.id}`}>详情 →</Link>
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <Button asChild variant="outline" size="sm" className="shrink-0">
+                        <Link href={`/dcr/tickets/${c.id}`}>详情 →</Link>
+                      </Button>
+                      {c.requestStatus === "NEED_MORE_INFO" && (
+                        <Button asChild variant="secondary" size="sm" className="shrink-0">
+                          <Link href={`/dcr/delegate?edit=${c.id}`}>补交材料</Link>
+                        </Button>
+                      )}
+                      {c.requestStatus === "APPROVED" && (
+                        <Button asChild variant="default" size="sm" className="shrink-0">
+                          <Link href="/dcr/guide">下一步</Link>
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               );

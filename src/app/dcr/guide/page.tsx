@@ -92,6 +92,9 @@ export default function GuidePage() {
           <Button asChild variant="outline" className="w-full">
             <Link href="/kb">浏览知识库与模板</Link>
           </Button>
+          <Button asChild variant="ghost" className="w-full">
+            <Link href="/dcr/requests">查看我的委托表审核状态</Link>
+          </Button>
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">

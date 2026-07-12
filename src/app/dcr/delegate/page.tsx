@@ -180,10 +180,29 @@ export default function DelegatePage() {
         }),
       });
 
+      const resData = await res.json().catch(() => ({}));
+      const review = resData.review;
+
       if (res.ok || res.status === 201) {
-        router.push("/dcr");
+        if (review) {
+          // 根据审核结果展示不同信息并跳转
+          if (review.decision === "APPROVED") {
+            router.push("/dcr/requests?status=APPROVED");
+          } else if (review.missingFields?.length > 0) {
+            // 有缺项 — 提示用户补充
+            setError(`提交成功，但需要补充：${review.missingFields.join("、")}。请到"我的委托表"查看详情。`);
+            setSubmitting(false);
+            // 3秒后自动跳转
+            setTimeout(() => router.push("/dcr/requests"), 3000);
+            return;
+          } else {
+            // 其他状态 — 引导到委托表列表查看
+            router.push(`/dcr/requests`);
+          }
+        } else {
+          router.push("/dcr/requests");
+        }
       } else {
-        const resData = await res.json().catch(() => ({}));
         setError(resData.error ?? "提交失败，请稍后重试");
       }
     } catch {
