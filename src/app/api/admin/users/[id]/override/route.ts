@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { z } from "zod";
@@ -73,7 +74,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       AuditAction.SUPER_ADMIN_OVERRIDE,
       AuditTargetType.USER,
       id,
-      { beforeValues, afterValues },
+      { beforeValues, afterValues } as unknown as Prisma.InputJsonValue,
     );
 
     return NextResponse.json({ user: updatedUser });
