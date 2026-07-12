@@ -12,10 +12,8 @@ import { quizAnswerSchema } from "@/lib/validators";
  * GET /api/dcr/quiz
  * Fetch 5 random quiz questions for the authenticated user.
  * - quizPassed=true → 409 "已通过考核"
- * - No IN_PROGRESS Case → 403 "请先完成委托表审核"
+ * - No APPROVED 委托表 → 403 "请先完成委托表审核"
  * - Otherwise → 200 with 5 questions (correctKey stripped)
- *
- * Validates: Requirements 6.2, 6.3, 7.1, 7.6, 8.1, 8.2, 8.5
  */
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   try {
@@ -30,13 +28,14 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       return NextResponse.json({ error: "已通过考核" }, { status: 409 });
     }
 
-    const inProgressCase = await prisma.case.findFirst({
-      where: { submitterId: userId, status: "IN_PROGRESS" },
+    // 检查是否有 APPROVED 委托表（审核通过才有考核资格）
+    const approvedCase = await prisma.case.findFirst({
+      where: { submitterId: userId, requestStatus: "APPROVED" },
     });
 
-    if (!inProgressCase) {
+    if (!approvedCase) {
       return NextResponse.json(
-        { error: "请先完成委托表审核" },
+        { error: "请先完成委托表审核，审核通过后方可参加入频考核" },
         { status: 403 },
       );
     }
@@ -101,7 +100,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     if (result.passed) {
       await prisma.user.update({
         where: { id: userId },
-        data: { quizPassed: true },
+        data: { quizPassed: true, dcrAccess: true },
       });
     }
 

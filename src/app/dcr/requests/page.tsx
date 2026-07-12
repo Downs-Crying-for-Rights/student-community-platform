@@ -229,7 +229,7 @@ function RequestsContent() {
                       )}
                       {c.requestStatus === "APPROVED" && (
                         <Button asChild variant="default" size="sm" className="shrink-0">
-                          <Link href="/dcr/guide">下一步</Link>
+                          <Link href="/dcr/quiz">参加入频考核</Link>
                         </Button>
                       )}
                     </div>

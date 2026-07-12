@@ -1,21 +1,151 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import {
   FileEdit,
-  BookOpen,
-  FolderOpen,
-  ShieldAlert,
+  ClipboardCheck,
+  GraduationCap,
+  MessageSquareText,
   ArrowRight,
   AlertTriangle,
+  ShieldAlert,
+  CheckCircle2,
+  Clock,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
+
+/* ========== Types ========== */
+
+interface DCRProgress {
+  hasSubmitted: boolean;
+  hasApproved: boolean;
+  quizPassed: boolean;
+}
+
+/* ========== Step Config ========== */
+
+interface StepConfig {
+  icon: typeof FileEdit;
+  title: string;
+  description: string;
+  buttonText: string;
+  buttonHref: string;
+  lockedText?: string;
+}
+
+function getSteps(progress: DCRProgress): (StepConfig & { status: "done" | "current" | "locked" })[] {
+  const currentStep = progress.quizPassed
+    ? 4
+    : progress.hasApproved
+      ? 3
+      : progress.hasSubmitted
+        ? 2
+        : 1;
+
+  const allSteps: StepConfig[] = [
+    {
+      icon: FileEdit,
+      title: "① 提交委托表",
+      description: "通过委托表生成器填写学校信息、行为描述与诉求，并签署自愿自主声明。",
+      buttonText: "填写委托表",
+      buttonHref: "/dcr/delegate",
+    },
+    {
+      icon: ClipboardCheck,
+      title: "② 管理员审核",
+      description: "管理员检查委托表信息是否完整、真实、合规，审核通过后进入下一阶段。",
+      buttonText: "查看审核状态",
+      buttonHref: "/dcr/requests",
+      lockedText: "请先提交委托表",
+    },
+    {
+      icon: GraduationCap,
+      title: "③ 参加入频考核",
+      description: "完成入频考核，了解政策边界与合规要求，通过后解锁交流权限。",
+      buttonText: "参加考核",
+      buttonHref: "/dcr/quiz",
+      lockedText: "审核通过后可参加",
+    },
+    {
+      icon: MessageSquareText,
+      title: "④ 信息参考与交流",
+      description: "在社区内进行经验分享、政策学习和互助交流，获取信息层面的参考与风险提示。",
+      buttonText: "进入交流",
+      buttonHref: "/dcr/guide",
+      lockedText: "考核通过后可进入",
+    },
+  ];
+
+  return allSteps.map((step, i) => ({
+    ...step,
+    status: i + 1 < currentStep ? "done" : i + 1 === currentStep ? "current" : "locked",
+  }));
+}
+
+/* ========== Status Badge ========== */
+
+function StepStatusBadge({ status }: { status: "done" | "current" | "locked" }) {
+  if (status === "done") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950/40 dark:text-green-300">
+        <CheckCircle2 className="h-3 w-3" />
+        已完成
+      </span>
+    );
+  }
+  if (status === "current") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+        <Clock className="h-3 w-3" />
+        进行中
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-800/40 dark:text-slate-400">
+      <Lock className="h-3 w-3" />
+      未解锁
+    </span>
+  );
+}
 
 /* ========== Page ========== */
 
 export default function DCREntryPage() {
+  const { data: session } = useSession();
+  const [progress, setProgress] = useState<DCRProgress>({
+    hasSubmitted: false,
+    hasApproved: false,
+    quizPassed: false,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchProgress() {
+      try {
+        const res = await fetch("/api/dcr/progress");
+        if (res.ok) {
+          const data = await res.json();
+          setProgress(data.progress);
+        }
+      } catch {
+        // 降级：全部显示为未完成
+      } finally {
+        setLoading(false);
+      }
+    }
+    if (session) {
+      fetchProgress();
+    } else {
+      setLoading(false);
+    }
+  }, [session]);
+
+  const steps = getSteps(progress);
+
   return (
     <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
       <div className="mx-auto max-w-2xl px-4 py-8">
@@ -36,70 +166,74 @@ export default function DCREntryPage() {
 
         <h1 className="mb-1 text-2xl font-bold text-foreground">DCR 信息互助</h1>
         <p className="mb-8 text-sm text-muted-foreground">
-          合规信息互助服务模块，提供政策参考、委托表审核与互助匹配
+          合规信息互助服务模块，四步完成委托审核与入频交流
         </p>
 
-        {/* 三块卡片 */}
-        <div className="grid gap-4">
-          {/* 卡片1: 提交委托表 */}
-          <Card className="group border-l-4 border-l-primary hover:shadow-md transition-shadow">
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                <FileEdit className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h2 className="text-base font-semibold text-foreground">提交委托表</h2>
-                <p className="text-sm text-muted-foreground">
-                  如实描述学校情况和需求，系统自动抽取关键信息
-                </p>
-              </div>
-              <Button asChild variant="ghost" size="sm" className="shrink-0 group-hover:translate-x-0.5 transition-transform">
-                <Link href="/dcr/delegate">
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+        {/* 四步流程 */}
+        <div className="space-y-3">
+          {steps.map((step, i) => {
+            const Icon = step.icon;
+            const isLocked = step.status === "locked";
+            const isCurrent = step.status === "current";
+            const isDone = step.status === "done";
 
-          {/* 卡片2: 知识库与模板 */}
-          <Card className="group border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-500/10">
-                <BookOpen className="h-6 w-6 text-blue-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h2 className="text-base font-semibold text-foreground">知识库与模板</h2>
-                <p className="text-sm text-muted-foreground">
-                  政策法规、合规指引和委托表填写模板
-                </p>
-              </div>
-              <Button asChild variant="ghost" size="sm" className="shrink-0 group-hover:translate-x-0.5 transition-transform">
-                <Link href="/kb">
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+            return (
+              <div
+                key={i}
+                className={`rounded-2xl border-2 p-5 transition-all ${
+                  isCurrent
+                    ? "border-blue-300 bg-blue-50/50 shadow-md dark:border-blue-700/50 dark:bg-blue-950/20"
+                    : isDone
+                      ? "border-green-200 bg-green-50/30 dark:border-green-800/30 dark:bg-green-950/10"
+                      : "border-slate-200 bg-white dark:border-slate-700/50 dark:bg-slate-900/50"
+                } ${isLocked ? "opacity-70" : ""}`}
+              >
+                <div className="flex items-start gap-4">
+                  {/* Icon */}
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                      isDone
+                        ? "bg-green-100 text-green-600 dark:bg-green-950/40 dark:text-green-400"
+                        : isCurrent
+                          ? "bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400"
+                          : "bg-slate-100 text-slate-400 dark:bg-slate-800/60 dark:text-slate-500"
+                    }`}
+                  >
+                    {isDone ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                  </div>
 
-          {/* 卡片3: 我的案件 */}
-          <Card className="group border-l-4 border-l-green-500 hover:shadow-md transition-shadow">
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-green-500/10">
-                <FolderOpen className="h-6 w-6 text-green-500" />
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className={`text-sm font-semibold ${isLocked ? "text-muted-foreground" : "text-foreground"}`}>
+                        {step.title}
+                      </h3>
+                      <StepStatusBadge status={step.status} />
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+                      {isLocked && step.lockedText ? step.lockedText : step.description}
+                    </p>
+                    {!isLocked && (
+                      <Button asChild size="sm" variant={isCurrent ? "default" : "outline"}>
+                        <Link href={step.buttonHref}>
+                          {step.buttonText}
+                          <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                        </Link>
+                      </Button>
+                    )}
+                    {isDone && (
+                      <Button asChild size="sm" variant="ghost" className="text-green-600 dark:text-green-400">
+                        <Link href={step.buttonHref}>
+                          回顾
+                          <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <h2 className="text-base font-semibold text-foreground">我的委托表</h2>
-                <p className="text-sm text-muted-foreground">
-                  查看委托表审核状态、补交材料和案件进度
-                </p>
-              </div>
-              <Button asChild variant="ghost" size="sm" className="shrink-0 group-hover:translate-x-0.5 transition-transform">
-                <Link href="/dcr/requests">
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+            );
+          })}
         </div>
 
         {/* 底部引导 */}
@@ -108,7 +242,7 @@ export default function DCREntryPage() {
             <Link href="/dcr/guide">新手引导：了解如何使用 DCR 模块</Link>
           </Button>
           <Button asChild variant="outline" size="sm" className="w-full">
-            <Link href="/dcr/tickets">查看我的工单案件</Link>
+            <Link href="/kb">浏览知识库与政策模板</Link>
           </Button>
         </div>
 
