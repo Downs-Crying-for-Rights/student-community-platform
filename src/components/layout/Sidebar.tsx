@@ -18,6 +18,7 @@ import {
   Heart,
   Lock,
   Settings,
+  Terminal,
   Sun,
   Moon,
 } from "lucide-react";
@@ -84,6 +85,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/users", label: "用户管理", icon: Users, minRole: "ADMIN" },
   { href: "/admin/invites", label: "邀请码", icon: Ticket, minRole: "ADMIN" },
   { href: "/admin/audit", label: "审计日志", icon: FileText, minRole: "ADMIN" },
+  { href: "/admin/logs", label: "系统日志", icon: Terminal, minRole: "SUPER_ADMIN" },
   {
     href: "/admin/boards",
     label: "板块管理",

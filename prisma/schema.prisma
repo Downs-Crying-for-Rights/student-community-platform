@@ -766,3 +766,27 @@ model DMMessage {
 
   @@index([threadId, createdAt])
 }
+
+// ==================== 系统日志 ====================
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+model SystemLog {
+  id        String   @id @default(cuid())
+  level     LogLevel @default(INFO)
+  source    String   @default("app")
+  message   String
+  detail    String?
+  ip        String?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([level, createdAt])
+  @@index([source, createdAt])
+  @@index([createdAt])
+}
