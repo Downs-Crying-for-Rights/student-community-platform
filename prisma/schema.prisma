@@ -85,6 +85,11 @@ model User {
   // 互助任务
   tasksRequested MutualAidTask[] @relation("TaskRequester")
 
+  // 互助循环
+  initiatedCycles  MutualAidCycle[] @relation("CycleInitiator")
+  linksAsFrom      MutualAidLink[]  @relation("LinkFrom")
+  linksAsTo        MutualAidLink[]  @relation("LinkTo")
+
   // 站内私信
   dmThreadsAsP1 DMThread[] @relation("DMThreadP1")
   dmThreadsAsP2 DMThread[] @relation("DMThreadP2")
@@ -789,4 +794,67 @@ model SystemLog {
   @@index([level, createdAt])
   @@index([source, createdAt])
   @@index([createdAt])
+}
+
+// ====================  DCR 互助循环 ====================
+
+enum CycleStatus {
+  INITIATING
+  ACTIVE
+  COMPLETED
+  BROKEN
+}
+
+enum LinkStatus {
+  PENDING_REQUEST
+  REJECTED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  DISPUTED
+}
+
+model MutualAidCycle {
+  id        String      @id @default(cuid())
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  status    CycleStatus @default(INITIATING)
+
+  initiatorId String
+  initiator   User   @relation("CycleInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+
+  links MutualAidLink[]
+
+  @@index([initiatorId, status])
+  @@index([status, createdAt])
+}
+
+model MutualAidLink {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cycleId String
+  cycle   MutualAidCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  direction String // "AB" | "BC" | "CA"
+
+  fromUserId String
+  toUserId   String
+
+  fromUser User @relation("LinkFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User @relation("LinkTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  status      LinkStatus @default(PENDING_REQUEST)
+  description String?    // from 方对此段互助的描述
+
+  acceptedAt  DateTime?
+  completedAt DateTime?
+  breakReason String?
+
+  @@unique([cycleId, direction])
+  @@index([cycleId, fromUserId])
+  @@index([cycleId, toUserId])
+  @@index([fromUserId, status])
+  @@index([toUserId, status])
 }
