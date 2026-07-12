@@ -6,6 +6,8 @@ import { useSession } from "next-auth/react";
 import Image from "next/image";
 import { Heart, Bookmark, MessageCircle, Share2, User, Trash2, Loader2, Clock } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { BottomNav } from "@/components/layout/BottomNav";
 import { ImageCarousel } from "@/components/post/ImageCarousel";
 import { CommentDrawer } from "@/components/comment/CommentDrawer";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
@@ -189,9 +191,11 @@ export default function PostDetailPage() {
     : "";
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-24 lg:pb-6">
       <TopBar />
+      <Sidebar />
 
+      <main className="mx-auto max-w-screen-xl px-4 pt-4 lg:ml-60">
       {loading ? (
         <PostDetailSkeleton />
       ) : error ? (
@@ -399,6 +403,8 @@ export default function PostDetailPage() {
           />
         </>
       ) : null}
+      </main>
+      <BottomNav />
     </div>
   );
 }

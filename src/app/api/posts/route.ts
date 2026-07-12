@@ -17,6 +17,9 @@ const listQuerySchema = paginationSchema.extend({
   zone: z.enum(["PUBLIC", "PSYCHOLOGY", "DCR"]).optional(),
   status: z.enum(["PENDING", "PUBLISHED", "REJECTED"]).optional(),
   caseIds: z.string().optional(), // comma-separated case IDs for DCR post filtering
+  authorId: z.string().optional(),
+  bookmarkedBy: z.string().optional(),
+  likedBy: z.string().optional(),
 });
 
 /**
@@ -47,7 +50,7 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
       );
     }
 
-    const { page, pageSize, boardId, tagId, sort, zone, status: filterStatus, caseIds: caseIdsParam } = parsed.data;
+    const { page, pageSize, boardId, tagId, sort, zone, status: filterStatus, caseIds: caseIdsParam, authorId, bookmarkedBy, likedBy } = parsed.data;
     const skip = (page - 1) * pageSize;
     const userId = req.user?.id;
     const isModerator = req.user ? hasMinimumRole(req.user.role, "MODERATOR") : false;
@@ -100,6 +103,17 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
 
     if (tagId) {
       where.tags = { some: { tagId } };
+    }
+
+    // --- User profile filters ---
+    if (authorId) {
+      where.authorId = authorId;
+    }
+    if (bookmarkedBy) {
+      where.bookmarks = { some: { userId: bookmarkedBy } };
+    }
+    if (likedBy) {
+      where.likes = { some: { userId: likedBy } };
     }
 
     // Determine sort order

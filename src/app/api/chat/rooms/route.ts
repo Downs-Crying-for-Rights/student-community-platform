@@ -86,7 +86,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { name, description, type } = parsed.data;
+    const { name, description, type, joinMode } = parsed.data;
     const userId = req.user.id;
 
     const room = await prisma.chatRoom.create({

@@ -239,6 +239,7 @@ export const registerSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   phone: phoneSchema,
+  nickname: nicknameSchema,
   code: verificationCodeSchema,
 });
 
@@ -247,6 +248,7 @@ export const inviteRegisterSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   phone: phoneSchema,
+  nickname: nicknameSchema,
   code: verificationCodeSchema,
 });
 

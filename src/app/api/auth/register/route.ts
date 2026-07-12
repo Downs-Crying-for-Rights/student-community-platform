@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
         email,
         passwordHash,
         phone,
+        nickname,
       },
     });
 

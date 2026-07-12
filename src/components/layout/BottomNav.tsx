@@ -68,10 +68,14 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
       )}
       aria-label="底部导航"
     >
-      <div className="mx-auto flex h-16 max-w-screen-xl items-center justify-around px-2">
-        {visibleItems.map((item) => {
+      <div className="relative mx-auto flex h-16 max-w-screen-xl items-center justify-around px-2">
+        {visibleItems.map((item, idx) => {
           const active = isActive(item.href);
           const Icon = item.icon;
+          const total = visibleItems.length;
+          // Position the raised button dead-center regardless of item count
+          const isRaised = !!item.raised;
+          const centerIdx = Math.floor(total / 2);
 
           if (item.raised) {
             return (
@@ -81,10 +85,12 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
                 aria-label={item.label}
                 aria-current={active ? "page" : undefined}
                 className={cn(
+                  "absolute left-1/2 -translate-x-1/2",
                   "flex flex-col items-center justify-center",
                   "min-h-[44px] min-w-[44px]",
                   "-mt-5"
                 )}
+                style={{ bottom: 0 }}
               >
                 <span
                   className={cn(

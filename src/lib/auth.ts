@@ -99,10 +99,8 @@ export const authOptions: NextAuthOptions = {
           select: { id: true, email: true, nickname: true, role: true, phone: true },
         });
         if (!user) {
-          user = await prisma.user.create({
-            data: { phone },
-            select: { id: true, email: true, nickname: true, role: true, phone: true },
-          });
+          // Require explicit registration to ensure a nickname is provided
+          throw new Error("手机号未注册，请通过注册页完成注册");
         }
         return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
       },

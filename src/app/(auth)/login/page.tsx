@@ -131,6 +131,7 @@ function LoginContent() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitePassword, setInvitePassword] = useState("");
   const [invitePhone, setInvitePhone] = useState("");
+  const [inviteNickname, setInviteNickname] = useState("");
   const [inviteSmsCode, setInviteSmsCode] = useState("");
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({});
   const [inviteCountdown, setInviteCountdown] = useState(0);
@@ -140,6 +141,7 @@ function LoginContent() {
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regPhone, setRegPhone] = useState("");
+  const [regNickname, setRegNickname] = useState("");
   const [regCode, setRegCode] = useState("");
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
   const [regCountdown, setRegCountdown] = useState(0);
@@ -431,6 +433,7 @@ function LoginContent() {
       email: inviteEmail.trim(),
       password: invitePassword,
       phone: invitePhone.trim(),
+      nickname: inviteNickname.trim(),
       code: inviteSmsCode.trim(),
     });
 
@@ -455,6 +458,7 @@ function LoginContent() {
           email: inviteEmail.trim(),
           password: invitePassword,
           phone: invitePhone.trim(),
+          nickname: inviteNickname.trim(),
           code: inviteSmsCode.trim(),
         }),
       });
@@ -572,6 +576,7 @@ function LoginContent() {
           email: regEmail.trim(),
           password: regPassword,
           phone: regPhone.trim(),
+          nickname: regNickname.trim(),
           code: regCode.trim(),
         }),
       });
@@ -722,6 +727,29 @@ function LoginContent() {
             )}
 
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reg-nickname">用户名</Label>
+                <Input
+                  id="reg-nickname"
+                  type="text"
+                  placeholder="设置你的用户名"
+                  value={regNickname}
+                  onChange={(e) => {
+                    setRegNickname(e.target.value);
+                    if (regErrors.nickname) setRegErrors((prev) => ({ ...prev, nickname: "" }));
+                  }}
+                  autoComplete="username"
+                  disabled={loading}
+                  aria-invalid={!!regErrors.nickname}
+                  aria-describedby={regErrors.nickname ? "reg-nickname-error" : undefined}
+                />
+                {regErrors.nickname && (
+                  <p id="reg-nickname-error" className="text-xs text-red-500" role="alert">
+                    {regErrors.nickname}
+                  </p>
+                )}
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="reg-email">邮箱地址</Label>
                 <Input
@@ -894,6 +922,29 @@ function LoginContent() {
                   {inviteErrors.inviteCode && (
                     <p id="invite-code-error" className="text-xs text-red-500" role="alert">
                       {inviteErrors.inviteCode}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="invite-nickname">用户名</Label>
+                  <Input
+                    id="invite-nickname"
+                    type="text"
+                    placeholder="设置你的用户名"
+                    value={inviteNickname}
+                    onChange={(e) => {
+                      setInviteNickname(e.target.value);
+                      if (inviteErrors.nickname) setInviteErrors((prev) => ({ ...prev, nickname: "" }));
+                    }}
+                    autoComplete="username"
+                    disabled={loading}
+                    aria-invalid={!!inviteErrors.nickname}
+                    aria-describedby={inviteErrors.nickname ? "invite-nickname-error" : undefined}
+                  />
+                  {inviteErrors.nickname && (
+                    <p id="invite-nickname-error" className="text-xs text-red-500" role="alert">
+                      {inviteErrors.nickname}
                     </p>
                   )}
                 </div>

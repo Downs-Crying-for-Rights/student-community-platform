@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { inviteCode: code, email, password, phone, code: smsCode } = parsed.data;
+    const { inviteCode: code, email, password, phone, nickname, code: smsCode } = parsed.data;
 
     // Find the invite code
     const inviteCode = await prisma.inviteCode.findUnique({
@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
           email,
           passwordHash,
           phone,
+          nickname,
           isAnonymous: false,
           dcrAccess: true,
           dcrPledgeSigned: true,
