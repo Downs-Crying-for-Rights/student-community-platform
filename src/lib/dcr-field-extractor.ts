@@ -92,7 +92,9 @@ export function hasAttitudePhrases(text: string): boolean {
 export function hasMultipleSchools(text: string): boolean {
   const schoolPattern = /(?:学校|中学|小学|大学|学院)/g;
   const matches = text.match(schoolPattern);
-  return matches !== null && matches.length >= 3;
+  // 阈值 5: 正常表单自身含"学校名称""学校地址""学校性质"等字段标签
+  // 单校描述不会超过4次命中，多校内容会轻松超过5次
+  return matches !== null && matches.length >= 5;
 }
 
 /**
