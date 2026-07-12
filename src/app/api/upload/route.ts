@@ -30,6 +30,12 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return limited.response;
   }
 
+  // 检查 OSS 配置
+  if (!process.env.OSS_BUCKET || !process.env.OSS_ACCESS_KEY_ID || !process.env.OSS_ACCESS_KEY_SECRET) {
+    console.error("POST /api/upload: OSS not configured (missing OSS_BUCKET/OSS_ACCESS_KEY_ID/OSS_ACCESS_KEY_SECRET)");
+    return NextResponse.json({ error: "文件存储服务未配置，请联系管理员" }, { status: 503 });
+  }
+
   try {
     const formData = await req.formData();
     const file = formData.get("file");

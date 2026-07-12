@@ -89,13 +89,28 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/bindphone", req.url));
   }
 
-  // 已绑定手机号但未完成新手引导 → 重定向至引导页
+  // 已绑定手机号但未完成新手引导 → DB 回退检查
   if (token.phone && !(token.onboardingDone || token.quizPassed)) {
     const isOnboardingPath = req.nextUrl.pathname.startsWith("/onboarding") ||
       req.nextUrl.pathname.startsWith("/api/onboarding");
-    if (!isOnboardingPath) {
-      return NextResponse.redirect(new URL("/onboarding", req.url));
-    }
+    if (isOnboardingPath) return NextResponse.next();
+
+    // JWT 可能落后 DB — 检查 DB 中是否已完成引导
+    try {
+      const uid = (token.sub || (token as any).id || (token as any).userId) as string;
+      if (uid) {
+        const { prisma: db } = await import("@/lib/prisma");
+        const user = await db.user.findUnique({
+          where: { id: uid },
+          select: { onboardingDone: true, quizPassed: true },
+        });
+        if (user?.onboardingDone || user?.quizPassed) {
+          return NextResponse.next();
+        }
+      }
+    } catch { /* DB unavailable — redirect to onboarding */ }
+
+    return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
   return NextResponse.next();

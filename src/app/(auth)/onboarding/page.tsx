@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -273,6 +274,7 @@ function QuizStep({
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [showResults, setShowResults] = useState(false);
@@ -320,6 +322,9 @@ export default function OnboardingPage() {
         setError(data.error || "提交失败，请重试");
         return;
       }
+      // 刷新 JWT 以同步 onboardingDone/quizPassed，避免 middleware 重复拦截
+      await session?.update();
+
       router.push("/");
       router.refresh();
     } catch {

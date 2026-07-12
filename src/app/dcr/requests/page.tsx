@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -71,6 +72,18 @@ const TAB_OPTIONS: { value: RequestStatus | "ALL"; label: string }[] = [
 /* ========== Page ========== */
 
 export default function RequestsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    }>
+      <RequestsContent />
+    </Suspense>
+  );
+}
+
+function RequestsContent() {
   const searchParams = useSearchParams();
   const statusParam = searchParams.get("status") as RequestStatus | null;
   const [cases, setCases] = useState<CaseItem[]>([]);
