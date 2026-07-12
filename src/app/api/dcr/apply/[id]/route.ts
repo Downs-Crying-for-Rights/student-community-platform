@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
+import { ApplicationStatus } from "@prisma/client";
 import { z } from "zod";
 
 const reviewSchema = z.object({
@@ -123,7 +124,7 @@ export const PATCH = withAuth(async (
       const updatedApplication = await prisma.accessApplication.update({
         where: { id },
         data: {
-          status: "APPROVED",
+          status: ApplicationStatus.APPROVED,
           reviewNote: reviewNote ?? null,
           reviewedAt: new Date(),
         },
@@ -168,7 +169,7 @@ export const PATCH = withAuth(async (
     const updatedApplication = await prisma.accessApplication.update({
       where: { id },
       data: {
-        status: "REJECTED",
+        status: ApplicationStatus.REJECTED,
         reviewNote: reviewNote ?? null,
         reviewedAt: new Date(),
       },

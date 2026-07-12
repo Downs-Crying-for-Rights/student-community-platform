@@ -4,7 +4,7 @@ import redis from "@/lib/redis";
 import { withAuth, withOptionalAuth, type AuthenticatedRequest, type OptionalAuthRequest } from "@/lib/rbac";
 import { canAccessZone, type ABACUserAttributes } from "@/lib/abac";
 import { createBoardSchema } from "@/lib/validators";
-import type { BoardZone } from "@prisma/client";
+import { PostStatus, type BoardZone } from "@prisma/client";
 
 const BOARDS_CACHE_TTL = 300; // 5 minutes
 
@@ -64,7 +64,7 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
           _count: {
             select: {
               posts: {
-                where: { status: "PUBLISHED" },
+                where: { status: PostStatus.PUBLISHED },
               },
             },
           },
@@ -100,7 +100,7 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
           _count: {
             select: {
               posts: {
-                where: { status: "PUBLISHED" },
+                where: { status: PostStatus.PUBLISHED },
               },
             },
           },

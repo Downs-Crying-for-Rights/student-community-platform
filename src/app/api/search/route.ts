@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withOptionalAuth, type OptionalAuthRequest } from "@/lib/rbac";
 import { searchQuerySchema, paginationSchema } from "@/lib/validators";
 import { canAccessZone, type ABACUserAttributes } from "@/lib/abac";
+import { PostStatus } from "@prisma/client";
 import { z } from "zod";
 
 // Query params schema
@@ -113,7 +114,7 @@ async function searchPosts(
 
   // Build where clause — only show PUBLISHED posts in search
   const where: Record<string, unknown> = {
-    status: "PUBLISHED",
+    status: PostStatus.PUBLISHED,
     author: { isShadowBanned: false },
     board: { zone: { in: accessibleZones } },
     OR: [

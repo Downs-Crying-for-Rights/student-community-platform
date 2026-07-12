@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 import { canTransition } from "@/lib/task-state-machine";
+import { TaskStatus } from "@prisma/client";
 
 /**
  * POST /api/dcr/tasks/[id]/start
@@ -37,14 +38,14 @@ export const POST = withAuth(async (
     await prisma.$transaction([
       prisma.mutualAidTask.update({
         where: { id },
-        data: { status: "IN_PROGRESS" },
+        data: { status: TaskStatus.IN_PROGRESS },
       }),
       prisma.taskTimelineEvent.create({
         data: {
           taskId: id,
           action: "start",
-          oldStatus: "CLAIMED",
-          newStatus: "IN_PROGRESS",
+          oldStatus: TaskStatus.CLAIMED,
+          newStatus: TaskStatus.IN_PROGRESS,
           operatorId: userId,
         },
       }),
@@ -52,7 +53,7 @@ export const POST = withAuth(async (
 
     await logAudit(userId, "TASK_START", "TASK", id, {});
 
-    return NextResponse.json({ status: "IN_PROGRESS" });
+    return NextResponse.json({ status: TaskStatus.IN_PROGRESS });
   } catch (error) {
     console.error("POST /api/dcr/tasks/[id]/start error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

@@ -1,9 +1,10 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
 import { generateAnonymousId } from "@/lib/utils";
+import { CaseStatus } from "@prisma/client";
 import { z } from "zod";
 
 // ==================== Status Flow Rules ====================
@@ -235,7 +236,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       const activeCaseCount = await prisma.caseHandler.count({
         where: {
           userId,
-          case_: { status: { in: ["IN_PROGRESS", "NEED_MORE_INFO"] } },
+          case_: { status: { in: [CaseStatus.IN_PROGRESS, CaseStatus.NEED_MORE_INFO] } },
         },
       });
 
@@ -440,7 +441,7 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
   const userActiveCaseCount = await prisma.caseHandler.count({
     where: {
       userId,
-      case_: { status: { in: ["IN_PROGRESS", "NEED_MORE_INFO"] } },
+      case_: { status: { in: [CaseStatus.IN_PROGRESS, CaseStatus.NEED_MORE_INFO] } },
     },
   });
 

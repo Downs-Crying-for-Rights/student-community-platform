@@ -5,6 +5,7 @@ import { createTaskSchema, paginationSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { enforceRateLimit } from "@/lib/rate-limiter";
 import { logAudit } from "@/lib/audit";
+import { TaskStatus } from "@prisma/client";
 import { z } from "zod";
 
 // ==================== Schemas ====================
@@ -16,11 +17,11 @@ const listQuerySchema = paginationSchema.extend({
 
 // Visible statuses for the task feed (OPEN and above)
 const VISIBLE_STATUSES = [
-  "OPEN",
-  "CLAIMED",
-  "IN_PROGRESS",
-  "EVIDENCE_PENDING",
-  "COMPLETED",
+  TaskStatus.OPEN,
+  TaskStatus.CLAIMED,
+  TaskStatus.IN_PROGRESS,
+  TaskStatus.EVIDENCE_PENDING,
+  TaskStatus.COMPLETED,
 ] as const;
 
 /**
@@ -93,7 +94,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         expectedHelpType,
         urgencyLevel,
         structuredFields: structuredFields as unknown as import("@prisma/client").Prisma.InputJsonValue,
-        status: "DRAFT",
+        status: TaskStatus.DRAFT,
         requesterId: userId,
       },
     });
@@ -101,7 +102,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     // Log audit
     await logAudit(userId, "CREATE_TASK", "TASK", task.id, { title, category, urgencyLevel });
 
-    return NextResponse.json({ id: task.id, status: "DRAFT" }, { status: 201 });
+    return NextResponse.json({ id: task.id, status: TaskStatus.DRAFT }, { status: 201 });
   } catch (error) {
     console.error("POST /api/dcr/tasks error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

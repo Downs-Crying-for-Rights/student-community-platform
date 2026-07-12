@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { generateAnonymousId } from "@/lib/utils";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
+import { ConfideStatus } from "@prisma/client";
 import { z } from "zod";
 
 const confideSchema = z.object({
@@ -52,7 +53,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     const existingRequest = await prisma.confideRequest.findFirst({
       where: {
         requesterId: userId,
-        status: { in: ["WAITING", "MATCHED", "ACTIVE"] },
+        status: { in: [ConfideStatus.WAITING, ConfideStatus.MATCHED, ConfideStatus.ACTIVE] },
       },
     });
 

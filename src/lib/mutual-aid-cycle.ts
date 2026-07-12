@@ -6,7 +6,7 @@
  */
 
 import prisma from "@/lib/prisma";
-import type { CycleStatus, LinkStatus } from "@prisma/client";
+import { CycleStatus, LinkStatus } from "@prisma/client";
 
 /* ========== Types ========== */
 
@@ -235,11 +235,11 @@ export async function respondToLink(
     await prisma.$transaction([
       prisma.mutualAidLink.update({
         where: { id: linkId },
-        data: { status: "REJECTED", breakReason: "接收方拒绝" },
+        data: { status: LinkStatus.REJECTED, breakReason: "接收方拒绝" },
       }),
       prisma.mutualAidCycle.update({
         where: { id: link.cycleId },
-        data: { status: "BROKEN" },
+        data: { status: CycleStatus.BROKEN },
       }),
     ]);
     return { cycleStatus: "BROKEN" as const, linkStatus: "REJECTED" as const };

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import redis from "@/lib/redis";
 import { withOptionalAuth, type OptionalAuthRequest } from "@/lib/rbac";
+import { PostStatus } from "@prisma/client";
 
 const RECOMMENDATIONS_CACHE_KEY = "recommendations:active";
 const RECOMMENDATIONS_CACHE_TTL = 300; // 5 minutes
@@ -36,7 +37,7 @@ export const GET = withOptionalAuth(async (_req: OptionalAuthRequest) => {
     let postsMap: Record<string, unknown> = {};
     if (postIds.length > 0) {
       const posts = await prisma.post.findMany({
-        where: { id: { in: postIds }, status: "PUBLISHED" },
+        where: { id: { in: postIds }, status: PostStatus.PUBLISHED },
         select: {
           id: true,
           title: true,

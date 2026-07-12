@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, withOptionalAuth, type AuthenticatedRequest, type OptionalAuthRequest } from "@/lib/rbac";
 import { createTagSchema } from "@/lib/validators";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
+import { PostStatus } from "@prisma/client";
 
 /**
  * GET /api/tags
@@ -20,7 +21,7 @@ export const GET = withOptionalAuth(async (_req: OptionalAuthRequest) => {
           _count: {
             select: {
               posts: {
-                where: { post: { status: "PUBLISHED" } },
+                where: { post: { status: PostStatus.PUBLISHED } },
               },
             },
           },

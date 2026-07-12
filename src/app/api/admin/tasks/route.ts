@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { TaskStatus } from "@prisma/client";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 
 const MODERATOR_ROLES = ["MODERATOR", "ADMIN", "SUPER_ADMIN"] as const;
@@ -24,7 +25,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const pageSize = Math.min(50, Math.max(1, parseInt(url.searchParams.get("pageSize") || "20", 10)));
 
     const where = {
-      status: { in: ["SUBMITTED", "UNDER_REVIEW"] as string[] },
+      status: { in: [TaskStatus.SUBMITTED, TaskStatus.UNDER_REVIEW] },
     };
 
     const [tasks, total] = await Promise.all([
