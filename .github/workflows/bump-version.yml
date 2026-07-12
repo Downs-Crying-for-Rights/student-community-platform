@@ -1,5 +1,4 @@
 name: Bump version
-run-name: "v${{ steps.get-version.outputs.version }} → ${{ github.event.head_commit.message }}"
 
 on:
   push:
