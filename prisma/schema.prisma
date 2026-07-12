@@ -93,6 +93,10 @@ model User {
   // 站内私信
   dmThreadsAsP1 DMThread[] @relation("DMThreadP1")
   dmThreadsAsP2 DMThread[] @relation("DMThreadP2")
+
+  // 群聊
+  chatRooms      ChatRoom[]       @relation("ChatRoomCreator")
+  chatMemberships ChatRoomMember[]
 }
 
 // NextAuth 模型
@@ -794,6 +798,51 @@ model SystemLog {
   @@index([level, createdAt])
   @@index([source, createdAt])
   @@index([createdAt])
+}
+
+// ==================== 群聊 (IM) ====================
+
+model ChatRoom {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @default("")
+  type        String   @default("PUBLIC") // PUBLIC | PRIVATE
+  createdById String
+  createdBy   User     @relation("ChatRoomCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members  ChatRoomMember[]
+  messages ChatMessage[]
+
+  @@index([type, updatedAt])
+  @@index([updatedAt])
+}
+
+model ChatRoomMember {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("MEMBER") // OWNER | ADMIN | MEMBER
+  joinedAt  DateTime @default(now())
+
+  @@unique([roomId, userId])
+  @@index([userId])
+  @@index([roomId])
+}
+
+model ChatMessage {
+  id        String    @id @default(cuid())
+  roomId    String
+  room      ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  senderId  String
+  content   String
+  createdAt DateTime  @default(now())
+  editedAt  DateTime?
+
+  @@index([roomId, createdAt])
 }
 
 // ====================  DCR 互助循环 ====================

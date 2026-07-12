@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { Home, Compass, Plus, MessageCircle, User, Shield } from "lucide-react";
+import { Home, Compass, Plus, MessageCircle, User, Shield, MessagesSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface BottomNavProps {
@@ -39,6 +39,7 @@ const navItems: NavItem[] = [
   { href: "/discover", label: "发现", icon: Compass },
   { href: "/create", label: "发布", icon: Plus, raised: true },
   { href: "/messages", label: "消息", icon: MessageCircle },
+  { href: "/chat", label: "群聊", icon: MessagesSquare },
   { href: "/moderation", label: "管理", icon: Shield, minRole: "MODERATOR" },
   { href: "/u/me", label: "我的", icon: User },
 ];
