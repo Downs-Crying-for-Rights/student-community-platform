@@ -1,5 +1,6 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { TaskStatus } from "@prisma/client";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { moderateDisputeSchema } from "@/lib/validators";
 import { logAudit } from "@/lib/audit";
@@ -65,12 +66,12 @@ export const POST = withAuth(async (
       );
     }
 
-    let newStatus: string;
+    let newStatus: TaskStatus;
 
     switch (action) {
       case "takedown": {
         // Close the task with reason
-        newStatus = "CLOSED";
+        newStatus = TaskStatus.CLOSED;
         await prisma.$transaction(async (tx) => {
           await tx.mutualAidTask.update({
             where: { id },
@@ -101,7 +102,7 @@ export const POST = withAuth(async (
 
       case "replace_helper": {
         // Re-open the task for a new helper, delete helpSession cascade
-        newStatus = "OPEN";
+        newStatus = TaskStatus.OPEN;
         await prisma.$transaction(async (tx) => {
           // Delete helpSession (cascades to HelpChat, EvidenceRoom)
           if (task.helpSession) {
@@ -149,7 +150,7 @@ export const POST = withAuth(async (
           );
         }
 
-        newStatus = "CLOSED";
+        newStatus = TaskStatus.CLOSED;
         await prisma.$transaction(async (tx) => {
           // Ban the user
           await tx.user.update({
@@ -192,7 +193,7 @@ export const POST = withAuth(async (
 
       case "dismiss": {
         // Dismiss the dispute, revert to EVIDENCE_PENDING
-        newStatus = "EVIDENCE_PENDING";
+        newStatus = TaskStatus.EVIDENCE_PENDING;
         await prisma.$transaction(async (tx) => {
           await tx.mutualAidTask.update({
             where: { id },
@@ -223,7 +224,7 @@ export const POST = withAuth(async (
 
       case "freeze": {
         // Freeze/close the task with reason
-        newStatus = "CLOSED";
+        newStatus = TaskStatus.CLOSED;
         await prisma.$transaction(async (tx) => {
           await tx.mutualAidTask.update({
             where: { id },
