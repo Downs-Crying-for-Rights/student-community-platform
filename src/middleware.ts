@@ -67,8 +67,23 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 已认证但 phone 为空，且路径不在白名单中 → 重定向至绑定页
+  // 已认证但 phone 为空，且路径不在白名单中 → 检查 DB 是否已有手机号
   if (!token.phone && !isBindphoneWhitelisted(req.nextUrl.pathname)) {
+    // DB 回退：JWT 中 phone 可能过期（用户刚绑定手机号），查一次 DB
+    try {
+      const { prisma: db } = await import("@/lib/prisma");
+      const user = await db.user.findUnique({
+        where: { id: token.sub as string },
+        select: { phone: true },
+      });
+      if (user?.phone) {
+        // 手机号已在 DB 中绑定，但 JWT 未同步 — 放行此请求
+        // 前端应在 bindphone 页面完成后调用 signIn 刷新 JWT
+        return NextResponse.next();
+      }
+    } catch {
+      // DB unavailable — fall through to bindphone redirect
+    }
     return NextResponse.redirect(new URL("/bindphone", req.url));
   }
 

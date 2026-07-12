@@ -118,8 +118,9 @@ export const authOptions: NextAuthOptions = {
     error: "/login",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
+        // First sign-in: inject user info into the JWT token
         token.id = user.id;
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
@@ -129,6 +130,18 @@ export const authOptions: NextAuthOptions = {
         token.phone = dbUser?.phone ?? null;
         token.onboardingDone = dbUser?.onboardingDone ?? false;
         token.quizPassed = dbUser?.quizPassed ?? false;
+      } else if (trigger === "update" && token.sub) {
+        // Session update (e.g. after bindphone): re-fetch phone from DB
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.sub },
+          select: { role: true, phone: true, onboardingDone: true, quizPassed: true },
+        });
+        if (dbUser) {
+          token.role = dbUser.role;
+          token.phone = dbUser.phone;
+          token.onboardingDone = dbUser.onboardingDone;
+          token.quizPassed = dbUser.quizPassed;
+        }
       }
       return token;
     },

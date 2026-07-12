@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { signIn, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +35,7 @@ export default function BindPhonePage() {
 function BindPhoneContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session, update } = useSession();
 
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -161,6 +163,9 @@ function BindPhoneContent() {
         }
         return;
       }
+
+      // 刷新会话以同步 JWT 中的 phone 字段，避免 middleware 重复拦截
+      await update();
 
       // Redirect to original target page or home
       const callbackUrl = searchParams.get("callbackUrl") || "/";

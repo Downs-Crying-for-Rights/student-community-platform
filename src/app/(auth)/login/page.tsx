@@ -466,8 +466,24 @@ function LoginContent() {
         return;
       }
 
-      router.push("/");
-      router.refresh();
+      // 自动登录：注册成功后用密码登录以获取 JWT
+      const signInRes = await signIn("credentials-password", {
+        email: regEmail.trim(),
+        password: regPassword,
+        redirect: false,
+        callbackUrl: "/",
+      });
+
+      if (signInRes?.error) {
+        setErrorMessage("注册成功但自动登录失败，请手动登录");
+        setView("form");
+        return;
+      }
+
+      if (signInRes?.url) {
+        router.push(signInRes.url);
+        router.refresh();
+      }
     } catch {
       setErrorMessage("网络错误，请检查网络连接后重试。");
     } finally {
