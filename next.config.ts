@@ -4,13 +4,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
+  serverExternalPackages: ["nodemailer", "bcryptjs"],
   // Allow up to 10MB uploads for image upload API
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",
     },
-    serverComponentsExternalPackages: ["nodemailer", "bcryptjs"],
-    instrumentationHook: true,
   },
   typescript: {
     // Named exports from page files are used for testing;

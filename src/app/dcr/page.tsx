@@ -260,8 +260,8 @@ export default function DCREntryPage() {
             <Link href="/kb">浏览知识库与政策模板</Link>
           </Button>
         </div>
+        </>
         )}
-        {/* End: dcrAccess-only content */}
 
         {/* 页面底部 */}
         <div className="mt-8 rounded-lg bg-muted/30 px-4 py-3">
