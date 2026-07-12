@@ -64,7 +64,7 @@ function getSteps(progress: DCRProgress): (StepConfig & { status: "done" | "curr
       icon: MessageSquareText,
       title: "③ 信息参考与交流",
       description: "在社区内进行经验分享、政策学习和互助交流，获取信息层面的参考与风险提示。",
-      buttonText: "进入互助任务",
+      buttonText: "进入互助区",
       buttonHref: "/dcr/tasks",
       lockedText: "审核通过后可进入",
     },
@@ -108,7 +108,6 @@ function StepStatusBadge({ status }: { status: "done" | "current" | "locked" }) 
 export default function DCREntryPage() {
   const { data: session } = useSession();
   const hasDcrAccess = (session?.user as any)?.dcrAccess === true;
-  const router = useRouter();
   const [progress, setProgress] = useState<DCRProgress>({
     hasSubmitted: false,
     hasApproved: false,
@@ -253,6 +252,16 @@ export default function DCREntryPage() {
 
         {/* 底部引导 */}
         <div className="mt-8 flex flex-col gap-3">
+          {progress.quizPassed && (
+            <>
+              <Button asChild size="sm" className="w-full">
+                <Link href="/dcr/tasks">进入互助任务大厅</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="w-full">
+                <Link href="/dcr/tickets">查看我的委托工单</Link>
+              </Button>
+            </>
+          )}
           <Button asChild variant="outline" size="sm" className="w-full">
             <Link href="/dcr/guide">新手引导：了解如何使用 DCR 模块</Link>
           </Button>

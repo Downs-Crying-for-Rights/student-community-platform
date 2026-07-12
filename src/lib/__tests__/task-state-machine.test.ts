@@ -21,6 +21,7 @@ describe('task-state-machine', () => {
       expect(canTransition('UNDER_REVIEW', 'OPEN')).toBe(true);
       expect(canTransition('OPEN', 'CLAIMED')).toBe(true);
       expect(canTransition('CLAIMED', 'IN_PROGRESS')).toBe(true);
+      expect(canTransition('CLAIMED', 'EVIDENCE_PENDING')).toBe(true);
       expect(canTransition('IN_PROGRESS', 'EVIDENCE_PENDING')).toBe(true);
       expect(canTransition('EVIDENCE_PENDING', 'COMPLETED')).toBe(true);
     });

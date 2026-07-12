@@ -87,6 +87,9 @@ export const CATEGORY_LABELS: Record<string, string> = {
   FEES: "收费",
   WEEKENDS: "双休",
   OTHER: "其他",
+  EARLY_START: "提前开学",
+  NO_WEEKENDS: "不双休",
+  EXTERNAL_TRAINING: "校外培训",
 };
 
 export const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -215,7 +218,7 @@ export function getAvailableActions(
     canStart: status === "CLAIMED" && isHelper,
     canChat: ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING"].includes(status) && isParticipant,
     canEvidence: ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING"].includes(status) && isParticipant,
-    canRequestClose: status === "IN_PROGRESS" && isParticipant,
+    canRequestClose: ["CLAIMED", "IN_PROGRESS"].includes(status) && isParticipant,
     canConfirmClose: status === "EVIDENCE_PENDING" && isParticipant,
   };
 }
@@ -232,6 +235,8 @@ export default function TaskDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [reportDetails, setReportDetails] = useState("");
+  const [showReportForm, setShowReportForm] = useState(false);
 
   const fetchTask = async () => {
     setLoading(true);
@@ -303,6 +308,58 @@ export default function TaskDetailPage() {
       }
     } catch {
       setError("操作失败，请稍后重试");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDispute = async () => {
+    const explanation = window.prompt("请简要说明争议原因（至少 10 个字）");
+    if (!explanation) return;
+    setActionLoading("dispute");
+    try {
+      const res = await fetch(`/api/dcr/tasks/${id}/dispute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ explanation }),
+      });
+      if (res.ok) {
+        await fetchTask();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "发起争议失败");
+      }
+    } catch {
+      setError("操作失败，请稍后重试");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReport = async () => {
+    setActionLoading("report");
+    try {
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: "DCR_TASK",
+          targetUserId: task?.requesterId === userId
+            ? task.helpSession?.helperId ?? undefined
+            : task?.requesterId,
+          details: `DCR 互助任务举报：${id}${reportDetails ? `\n${reportDetails}` : ""}`,
+        }),
+      });
+      if (res.ok) {
+        setShowReportForm(false);
+        setReportDetails("");
+        setError("举报已提交，管理员会在后台处理");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "举报提交失败");
+      }
+    } catch {
+      setError("举报提交失败，请稍后重试");
     } finally {
       setActionLoading(null);
     }
@@ -599,31 +656,34 @@ export default function TaskDetailPage() {
         )}
 
         {/* ===== 6. Report button ===== */}
-        <div className="flex justify-end">
+        <div className="flex flex-col items-end gap-3">
+          {showReportForm && (
+            <div className="w-full rounded-lg border bg-card p-3">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground" htmlFor="task-report-details">
+                举报说明（选填）
+              </label>
+              <textarea
+                id="task-report-details"
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                placeholder="请说明违规点，系统会附带任务 ID 提交给管理员"
+              />
+              <div className="mt-2 flex justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowReportForm(false)}>取消</Button>
+                <Button type="button" size="sm" disabled={actionLoading === "report"} onClick={handleReport}>
+                  {actionLoading === "report" && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                  提交举报
+                </Button>
+              </div>
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-red-600"
             aria-label="举报此任务"
-            onClick={async () => {
-              const reason = prompt("请输入举报原因");
-              if (!reason) return;
-              try {
-                const res = await fetch("/api/reports", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ targetId: id, targetType: "TASK", reason }),
-                });
-                if (res.ok) {
-                  alert("举报已提交，管理员将尽快处理");
-                } else {
-                  const data = await res.json().catch(() => ({}));
-                  alert(data.error || "举报提交失败");
-                }
-              } catch {
-                alert("网络错误");
-              }
-            }}
+            onClick={() => setShowReportForm((v) => !v)}
           >
             <Flag className="h-4 w-4" aria-hidden="true" />
             举报

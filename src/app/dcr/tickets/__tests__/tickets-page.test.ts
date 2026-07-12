@@ -69,6 +69,9 @@ describe("CATEGORY_LABELS", () => {
     expect(CATEGORY_LABELS.FEES).toBe("收费");
     expect(CATEGORY_LABELS.WEEKENDS).toBe("双休");
     expect(CATEGORY_LABELS.OTHER).toBe("其他");
+    expect(CATEGORY_LABELS.EARLY_START).toBe("提前开学");
+    expect(CATEGORY_LABELS.NO_WEEKENDS).toBe("不双休");
+    expect(CATEGORY_LABELS.EXTERNAL_TRAINING).toBe("校外培训");
   });
 });
 

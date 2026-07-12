@@ -42,6 +42,9 @@ export const CATEGORY_LABELS: Record<string, string> = {
   FEES: "收费",
   WEEKENDS: "双休",
   OTHER: "其他",
+  EARLY_START: "提前开学",
+  NO_WEEKENDS: "不双休",
+  EXTERNAL_TRAINING: "校外培训",
 };
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -160,9 +163,12 @@ export default function TaskFeedPage() {
         setTasks([]);
         setPage(1);
         fetchTasks(1, activeTab, false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "领取失败，请确认您已通过 DCR 准入并且任务仍可领取");
       }
     } catch {
-      // silently ignore
+      setError("网络错误，请检查连接后重试")
     } finally {
       setClaiming(null);
     }
@@ -182,7 +188,7 @@ export default function TaskFeedPage() {
           <Button asChild className="rounded-2xl" size="sm">
             <Link href="/dcr/tasks/new">
               <Plus className="h-4 w-4" aria-hidden="true" />
-              发起求助
+              发布互助任务
             </Link>
           </Button>
         </div>
@@ -222,7 +228,7 @@ export default function TaskFeedPage() {
           <EmptyState
             title="暂无任务"
             description="当前没有互助任务，快来发起第一个求助吧"
-            actionLabel="发起求助"
+            actionLabel="发布互助任务"
             actionHref="/dcr/tasks/new"
           />
         ) : (

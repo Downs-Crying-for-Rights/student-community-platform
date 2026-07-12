@@ -66,6 +66,9 @@ describe("getDetailCategoryLabel", () => {
     expect(getDetailCategoryLabel("FEES")).toBe("收费");
     expect(getDetailCategoryLabel("WEEKENDS")).toBe("双休");
     expect(getDetailCategoryLabel("OTHER")).toBe("其他");
+    expect(getDetailCategoryLabel("EARLY_START")).toBe("提前开学");
+    expect(getDetailCategoryLabel("NO_WEEKENDS")).toBe("不双休");
+    expect(getDetailCategoryLabel("EXTERNAL_TRAINING")).toBe("校外培训");
   });
 
   it("returns raw category for unknown category", () => {

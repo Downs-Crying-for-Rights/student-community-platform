@@ -14,18 +14,15 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   NEED_MORE_INFO: ["IN_PROGRESS"],
 };
 
-const updateStatusSchema = z.discriminatedUnion("_action", [
-  z.object({
-    _action: z.literal("updateStatus"),
-    status: z.enum(["OPENED", "IN_PROGRESS", "NEED_MORE_INFO", "CLOSED"]),
-    details: z.string().max(500).optional(),
-  }),
-  z.object({
-    _action: z.literal("review"),
-    requestStatus: z.enum(["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"]),
-    reviewNote: z.string().max(1000).optional(),
-  }),
-]);
+const updateStatusSchema = z.object({
+  status: z.enum(["OPENED", "IN_PROGRESS", "NEED_MORE_INFO", "CLOSED"]).optional(),
+  details: z.string().max(500).optional(),
+  // 审核状态更新 (管理员用)
+  requestStatus: z.enum(["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"]).optional(),
+  reviewNote: z.string().max(1000).optional(),
+}).refine((data) => data.status !== undefined || data.requestStatus !== undefined, {
+  message: "必须提供 status 或 requestStatus",
+});
 
 const joinActionSchema = z.object({
   action: z.literal("JOIN"),
@@ -146,9 +143,10 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
     const patchData = parsed.data;
 
+    const { status: newStatus, details, requestStatus: newRequestStatus, reviewNote } = patchData;
+
     // ---- 审核状态更新 (管理员专用) ----
-    if (patchData._action === "review") {
-      const { requestStatus: newRequestStatus, reviewNote } = patchData;
+    if (newRequestStatus !== undefined && newStatus === undefined) {
       if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN" && userRole !== "MODERATOR") {
         return NextResponse.json({ error: "仅管理员可修改审核状态" }, { status: 403 });
       }
@@ -191,9 +189,11 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       });
     }
 
-    // ---- 原有状态更新逻辑 ----
-    const { status: newStatus, details } = patchData;
+    if (newStatus === undefined) {
+      return NextResponse.json({ error: "必须提供目标状态" }, { status: 400 });
+    }
 
+    // ---- 原有状态更新逻辑 ----
     const caseRecord = await prisma.case.findUnique({
       where: { id },
       include: {
@@ -206,11 +206,12 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       return NextResponse.json({ error: "委托不存在" }, { status: 404 });
     }
 
+    const targetStatus = newStatus;
     const oldStatus = caseRecord.status;
 
     // Validate status transition
     const allowedTransitions = VALID_TRANSITIONS[oldStatus];
-    if (!allowedTransitions || !allowedTransitions.includes(newStatus)) {
+    if (!allowedTransitions || !allowedTransitions.includes(targetStatus)) {
       return NextResponse.json(
         { error: `不允许从 ${oldStatus} 转换到 ${newStatus}` },
         { status: 400 },

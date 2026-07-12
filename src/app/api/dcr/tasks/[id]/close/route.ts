@@ -144,7 +144,7 @@ export const POST = withAuth(async (
     }
 
     // Validate current status allows closure operations
-    const allowedStatuses: TaskStatus[] = ["IN_PROGRESS", "EVIDENCE_PENDING"];
+    const allowedStatuses: TaskStatus[] = ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING"];
     if (!allowedStatuses.includes(task.status as TaskStatus)) {
       return NextResponse.json(
         { error: `当前状态 ${task.status} 不允许结案操作` },
@@ -161,10 +161,10 @@ export const POST = withAuth(async (
         updateData.helperConfirmed = true;
       }
 
-      // If task is IN_PROGRESS, transition to EVIDENCE_PENDING
+      // If task has been claimed/started, transition to EVIDENCE_PENDING
       let newStatus = task.status;
-      if (task.status === "IN_PROGRESS") {
-        if (!canTransition("IN_PROGRESS", "EVIDENCE_PENDING")) {
+      if (task.status === "CLAIMED" || task.status === "IN_PROGRESS") {
+        if (!canTransition(task.status as TaskStatus, "EVIDENCE_PENDING")) {
           return NextResponse.json(
             { error: "状态转移不合法" },
             { status: 400 },

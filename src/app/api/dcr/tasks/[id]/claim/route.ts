@@ -53,7 +53,7 @@ export const POST = withAuth(async (
         // Optimistic lock: only update if status is still OPEN
         const updated = await tx.mutualAidTask.updateMany({
           where: { id, status: "OPEN" },
-          data: { status: "CLAIMED" },
+          data: { status: "IN_PROGRESS" },
         });
 
         if (updated.count === 0) {
@@ -99,7 +99,7 @@ export const POST = withAuth(async (
             taskId: id,
             action: "claim",
             oldStatus: "OPEN",
-            newStatus: "CLAIMED",
+            newStatus: "IN_PROGRESS",
             operatorId: userId,
           },
         });

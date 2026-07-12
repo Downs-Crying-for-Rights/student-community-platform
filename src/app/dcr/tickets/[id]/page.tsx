@@ -41,6 +41,9 @@ export const CATEGORY_LABELS: Record<string, string> = {
   FEES: "收费",
   WEEKENDS: "双休",
   OTHER: "其他",
+  EARLY_START: "提前开学",
+  NO_WEEKENDS: "不双休",
+  EXTERNAL_TRAINING: "校外培训",
 };
 
 export const STATUS_CONFIG: Record<
