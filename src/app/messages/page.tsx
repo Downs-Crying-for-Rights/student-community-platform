@@ -206,6 +206,7 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchNotifications = useCallback(async () => {
     setLoading(true);
@@ -217,7 +218,7 @@ export default function MessagesPage() {
         setUnreadCount(data.unreadCount ?? 0);
       }
     } catch {
-      // silently ignore
+      setError("通知加载失败，请稍后重试");
     } finally {
       setLoading(false);
     }

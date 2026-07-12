@@ -16,8 +16,8 @@ async function getQQProvider() {
   try {
     const mod = await import("@/lib/auth/qq-provider");
     return mod.default({
-      clientId: process.env.QQ_APP_ID,
-      clientSecret: process.env.QQ_APP_SECRET,
+      clientId: process.env.QQ_APP_ID || "",
+      clientSecret: process.env.QQ_APP_SECRET || "",
     });
   } catch {
     return null;

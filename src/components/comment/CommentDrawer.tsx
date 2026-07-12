@@ -124,6 +124,7 @@ export function CommentDrawer({ postId, open, onOpenChange }: CommentDrawerProps
   const [comments, setComments] = useState<CommentData[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [replyTo, setReplyTo] = useState<CommentData | null>(null);

@@ -12,7 +12,7 @@ import { PostStatus } from "@prisma/client";
  */
 export const GET = withOptionalAuth(async (_req: OptionalAuthRequest) => {
   try {
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(_req.url);
     const hot = searchParams.get("hot");
 
     if (hot === "true") {

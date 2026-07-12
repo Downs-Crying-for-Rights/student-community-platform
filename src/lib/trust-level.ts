@@ -36,6 +36,7 @@ export const TRUST_LEVEL_INFO: Record<TrustLevel, TrustLevelInfo> = {
   2: { level: 2, label: "普通用户", description: "信誉分 61-100，可发帖评论，可申请心理区" },
   3: { level: 3, label: "可信用户", description: "信誉分 101-150，心理区可发帖，可申请 DCR" },
   4: { level: 4, label: "优秀用户", description: "信誉分 151-200，所有功能开放" },
+  5: { level: 5, label: "管理员", description: "管理员/超级管理员，无限制" },
 };
 
 /**

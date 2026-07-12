@@ -152,6 +152,9 @@ export default function DiscoverPage() {
   const [loadingBoards, setLoadingBoards] = useState(true);
   const [loadingRecs, setLoadingRecs] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [errorTags, setErrorTags] = useState<string | null>(null);
+  const [errorBoards, setErrorBoards] = useState<string | null>(null);
+  const [errorRecs, setErrorRecs] = useState<string | null>(null);
 
   const fetchTags = useCallback(async () => {
     setLoadingTags(true);

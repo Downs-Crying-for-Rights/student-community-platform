@@ -10,8 +10,8 @@ export async function POST(request: NextRequest) {
       const { enforceRateLimit } = await import("@/lib/rate-limiter");
       const ip = (request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown")
         .split(",")[0].trim();
-      const limit = await enforceRateLimit(`register:${ip}`, 5, 60 * 1000);
-      if (!limit?.allowed) {
+      const limitResult = await enforceRateLimit(`register:${ip}`, 5, 60 * 1000);
+      if (!limitResult?.result.allowed) {
         return NextResponse.json(
           { error: "注册请求过于频繁，请稍后再试" },
           { status: 429, headers: { "Retry-After": "60" } },
