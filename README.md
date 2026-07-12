@@ -31,10 +31,9 @@ cd student-community-platform
 # 2. 配置环境变量
 cp .env.example .env
 # 编辑 .env 文件，填写 NEXTAUTH_SECRET 和 SMTP 配置
-docker compose up -d --build    
+
 # 3. 一键启动
- docker compose down 
-docker compose up -d
+docker compose up -d --build
 
 # 4. 运行数据库迁移和种子数据
 docker compose exec web npx prisma migrate deploy

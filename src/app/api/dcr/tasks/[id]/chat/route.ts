@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { sendChatMessageSchema } from "@/lib/validators";
@@ -20,7 +20,7 @@ async function verifyAccess(
   | { ok: true; session: { id: string; requesterId: string; helperId: string; helpChat: { id: string } | null; evidenceRoom: { id: string } | null } }
   | { ok: false; response: NextResponse }
 > {
-  const task = await (prisma as any).mutualAidTask.findUnique({
+  const task = await prisma.mutualAidTask.findUnique({
     where: { id: taskId },
     include: {
       helpSession: {
@@ -90,7 +90,7 @@ export const GET = withAuth(async (
     const skip = (page - 1) * pageSize;
 
     const [messages, total] = await Promise.all([
-      (prisma as any).helpChatMessage.findMany({
+      prisma.helpChatMessage.findMany({
         where: { chatId: chat.id },
         orderBy: { createdAt: "asc" },
         skip,
@@ -106,7 +106,7 @@ export const GET = withAuth(async (
           senderId: true,
         },
       }),
-      (prisma as any).helpChatMessage.count({ where: { chatId: chat.id } }),
+      prisma.helpChatMessage.count({ where: { chatId: chat.id } }),
     ]);
 
     return NextResponse.json({

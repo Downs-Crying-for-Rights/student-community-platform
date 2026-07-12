@@ -1,15 +1,28 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import redis from "@/lib/redis";
+import { withOptionalAuth, type OptionalAuthRequest } from "@/lib/rbac";
+
+const RECOMMENDATIONS_CACHE_KEY = "recommendations:active";
+const RECOMMENDATIONS_CACHE_TTL = 300; // 5 minutes
 
 /**
  * GET /api/recommendations
- * Returns active weekly recommendations ordered by sortOrder.
+ * Returns active weekly recommendations ordered by sortOrder. Public endpoint (no login required).
  * Includes related post data if postId is set.
- * Any authenticated user can access.
  */
-export const GET = withAuth(async (_req: AuthenticatedRequest) => {
+export const GET = withOptionalAuth(async (_req: OptionalAuthRequest) => {
   try {
+    // Try Redis cache first
+    try {
+      const cached = await redis.get(RECOMMENDATIONS_CACHE_KEY);
+      if (cached) {
+        return NextResponse.json({ recommendations: JSON.parse(cached) });
+      }
+    } catch {
+      // Redis unavailable — fall through to DB
+    }
+
     const recommendations = await prisma.weeklyRecommendation.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: "asc" },
@@ -44,6 +57,13 @@ export const GET = withAuth(async (_req: AuthenticatedRequest) => {
       ...rec,
       post: rec.postId ? postsMap[rec.postId] ?? null : null,
     }));
+
+    // Cache to Redis
+    try {
+      await redis.set(RECOMMENDATIONS_CACHE_KEY, JSON.stringify(result), "EX", RECOMMENDATIONS_CACHE_TTL);
+    } catch {
+      // Redis unavailable — continue without caching
+    }
 
     return NextResponse.json({ recommendations: result });
   } catch (error) {

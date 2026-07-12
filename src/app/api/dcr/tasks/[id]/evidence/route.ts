@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { createEvidenceItemSchema } from "@/lib/validators";
@@ -20,7 +20,7 @@ async function verifyAccess(
   | { ok: true; session: { id: string; requesterId: string; helperId: string; evidenceRoom: { id: string } | null } }
   | { ok: false; response: NextResponse }
 > {
-  const task = await (prisma as any).mutualAidTask.findUnique({
+  const task = await prisma.mutualAidTask.findUnique({
     where: { id: taskId },
     include: {
       helpSession: {
@@ -82,7 +82,7 @@ export const GET = withAuth(async (
       return NextResponse.json({ error: "证据空间不存在" }, { status: 404 });
     }
 
-    const allItems = await (prisma as any).evidenceItem.findMany({
+    const allItems = await prisma.evidenceItem.findMany({
       where: { roomId: evidenceRoom.id },
       orderBy: { createdAt: "asc" },
       select: {
@@ -191,7 +191,7 @@ export const POST = withAuth(async (
     }
 
     // Create evidence item
-    const item = await (prisma as any).evidenceItem.create({
+    const item = await prisma.evidenceItem.create({
       data: {
         type,
         description,

@@ -83,7 +83,7 @@ export async function uploadToOSS(
       Body: buffer,
       ContentType: contentType,
       CacheControl: "public, max-age=31536000, immutable",
-      ACL: "public-read",
+      ACL: "private",
     }),
   );
 

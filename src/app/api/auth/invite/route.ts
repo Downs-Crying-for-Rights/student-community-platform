@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 import { inviteRegisterSchema } from "@/lib/validators";
 import { verifyCode } from "@/lib/sms/verification";
+import { createUserWithSession, validateNickname } from "@/lib/auth/register-helpers";
 
 export async function POST(request: NextRequest) {
   try {
+    // 速率限制：5 次/分钟/IP（防注册轰炸）
+    try {
+      const { enforceRateLimit } = await import("@/lib/rate-limiter");
+      const ip = (request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown")
+        .split(",")[0].trim();
+      const limit = await enforceRateLimit(`register:invite:${ip}`, 5, 60 * 1000);
+      if (!limit?.allowed) {
+        return NextResponse.json(
+          { error: "注册请求过于频繁，请稍后再试" },
+          { status: 429, headers: { "Retry-After": "60" } },
+        );
+      }
+    } catch { /* rate limiter 不可用，降级放行 */ }
+
     const body = await request.json();
 
     // Validate request body
@@ -18,6 +32,12 @@ export async function POST(request: NextRequest) {
     }
 
     const { inviteCode: code, email, password, phone, nickname, code: smsCode } = parsed.data;
+
+    // 校验 nickname 非空
+    const nicknameError = validateNickname(nickname);
+    if (nicknameError) {
+      return NextResponse.json({ error: nicknameError.error }, { status: nicknameError.status });
+    }
 
     // Find the invite code
     const inviteCode = await prisma.inviteCode.findUnique({
@@ -55,30 +75,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 检查邮箱是否已注册
-    const existingEmail = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-    if (existingEmail) {
-      return NextResponse.json(
-        { error: "该邮箱已被注册" },
-        { status: 409 }
-      );
-    }
-
-    // 检查手机号是否已绑定
-    const existingPhone = await prisma.user.findFirst({
-      where: { phone },
-      select: { id: true },
-    });
-    if (existingPhone) {
-      return NextResponse.json(
-        { error: "该手机号已被其他账户绑定" },
-        { status: 409 }
-      );
-    }
-
     // 验证短信验证码
     const isValid = await verifyCode(phone, smsCode, "login");
     if (!isValid) {
@@ -88,63 +84,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hash password before transaction
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    // Create user with full identity and mark invite code as used in a transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Create user with full identity
-      const user = await tx.user.create({
-        data: {
-          email,
-          passwordHash,
-          phone,
-          nickname,
-          isAnonymous: false,
-          dcrAccess: true,
-          dcrPledgeSigned: true,
-        },
-      });
-
-      // Mark invite code as used
-      await tx.inviteCode.update({
-        where: { id: inviteCode.id },
-        data: {
-          isUsed: true,
-          usedAt: new Date(),
-          usedById: user.id,
-        },
-      });
-
-      // Create a session for the new user
-      const sessionToken = crypto.randomUUID();
-      const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-
-      await tx.session.create({
-        data: {
-          sessionToken,
-          userId: user.id,
-          expires,
-        },
-      });
-
-      return { user, sessionToken, expires };
+    // 创建用户并生成 session（含邮箱/手机号唯一性检查），在同一事务中标记邀请码已使用
+    const result = await createUserWithSession({
+      email,
+      password,
+      phone,
+      nickname,
+      extraData: {
+        isAnonymous: false,
+        dcrAccess: true,
+        dcrPledgeSigned: true,
+      },
+      afterCreate: async (tx, userId) => {
+        await tx.inviteCode.update({
+          where: { id: inviteCode.id },
+          data: {
+            isUsed: true,
+            usedAt: new Date(),
+            usedById: userId,
+          },
+        });
+      },
     });
+
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
 
     const response = NextResponse.json(
       {
         success: true,
         message: "注册成功",
-        userId: result.user.id,
+        userId: result.data.userId,
       },
       { status: 201 }
     );
 
     // Set the session cookie so NextAuth recognizes the session
-    response.cookies.set("next-auth.session-token", result.sessionToken, {
-      expires: result.expires,
+    response.cookies.set("next-auth.session-token", result.data.sessionToken, {
+      expires: result.data.expires,
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "strict",
       path: "/",
       secure: process.env.NODE_ENV === "production",
     });

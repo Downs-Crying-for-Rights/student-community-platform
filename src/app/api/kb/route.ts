@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, type AuthenticatedRequest, isAdminRole } from "@/lib/rbac";
+import { withAuth, withOptionalAuth, type AuthenticatedRequest, type OptionalAuthRequest, isAdminRole } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createArticleSchema, paginationSchema } from "@/lib/validators";
 import type { ArticleVisibility } from "@prisma/client";
@@ -14,14 +14,14 @@ const listQuerySchema = paginationSchema.extend({
 
 /**
  * GET /api/kb
- * List knowledge base articles with pagination and optional category filter.
- * - All authenticated users can see PUBLIC articles
+ * List knowledge base articles with pagination and optional category filter. Public endpoint (no login required).
+ * - Unauthenticated users see only PUBLIC articles
  * - DCR_ONLY articles visible only to users with dcrAccess=true or Admin role
  * - Only published articles are shown
  *
  * Validates: Requirements 14.1, 14.5
  */
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
+export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
   try {
     const { searchParams } = new URL(req.url);
     const parsed = listQuerySchema.safeParse({
@@ -40,6 +40,39 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
     const { page, pageSize, category, all } = parsed.data;
     const skip = (page - 1) * pageSize;
+
+    // Unauthenticated users see only PUBLIC articles
+    if (!req.user) {
+      const visibilityFilter: ArticleVisibility[] = ["PUBLIC"];
+      const where: Record<string, unknown> = {
+        visibility: { in: visibilityFilter },
+        isPublished: true,
+      };
+      if (category) {
+        where.category = category;
+      }
+
+      const [articles, total] = await Promise.all([
+        prisma.knowledgeArticle.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: pageSize,
+          select: {
+            id: true,
+            title: true,
+            category: true,
+            visibility: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+        prisma.knowledgeArticle.count({ where }),
+      ]);
+
+      return NextResponse.json({ articles, total, page, pageSize });
+    }
+
     const userId = req.user.id;
     const userRole = req.user.role;
 

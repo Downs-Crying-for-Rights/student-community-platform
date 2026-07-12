@@ -294,7 +294,11 @@ export default function MessagesPage() {
         </div>
 
         {/* Content */}
-        {loading ? (
+        {error ? (
+          <div role="alert" aria-live="polite" className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        ) : loading ? (
           <ListSkeleton count={5} />
         ) : (
           <Tabs defaultValue="all">

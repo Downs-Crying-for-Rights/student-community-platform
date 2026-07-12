@@ -137,9 +137,10 @@ export function CommentDrawer({ postId, open, onOpenChange }: CommentDrawerProps
         const data = await res.json();
         setComments(data.comments ?? []);
         setTotal(data.total ?? 0);
+        setError(null);
       }
     } catch {
-      // silently fail
+      setError("评论加载失败，请稍后重试");
     } finally {
       setLoading(false);
     }

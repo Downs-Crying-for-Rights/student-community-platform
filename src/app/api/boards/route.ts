@@ -1,47 +1,56 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import redis from "@/lib/redis";
+import { withAuth, withOptionalAuth, type AuthenticatedRequest, type OptionalAuthRequest } from "@/lib/rbac";
 import { canAccessZone, type ABACUserAttributes } from "@/lib/abac";
 import { createBoardSchema } from "@/lib/validators";
 import type { BoardZone } from "@prisma/client";
 
+const BOARDS_CACHE_TTL = 300; // 5 minutes
+
 /**
  * GET /api/boards
- * Returns active boards filtered by the authenticated user's zone access.
+ * Returns active boards filtered by the user's zone access. Public endpoint (no login required).
+ * Unauthenticated users see only PUBLIC zone boards.
  * With ?hot=true: returns boards ordered by PUBLISHED post count descending, with _count included.
  * PUBLIC boards are always visible; PSYCHOLOGY and DCR boards require access.
  */
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
+export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        createdAt: true,
-        violationCount: true,
-        onboardingDone: true,
-        quizPassed: true,
-        psychAccess: true,
-        dcrAccess: true,
-        dcrPledgeSigned: true,
-        reputationScore: true,
-        role: true,
-      },
-    });
+    // Determine accessible zones
+    let accessibleZones: BoardZone[] = ["PUBLIC"];
+    let isAdmin = false;
 
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
-    }
+    if (req.user) {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          createdAt: true,
+          violationCount: true,
+          onboardingDone: true,
+          quizPassed: true,
+          psychAccess: true,
+          dcrAccess: true,
+          dcrPledgeSigned: true,
+          reputationScore: true,
+          role: true,
+        },
+      });
 
-    const userAttrs: ABACUserAttributes = user;
+      if (!user) {
+        return NextResponse.json({ error: "用户不存在" }, { status: 404 });
+      }
 
-    // Determine which zones the user can access
-    const accessibleZones: BoardZone[] = ["PUBLIC"];
+      const userAttrs: ABACUserAttributes = user;
 
-    if (canAccessZone(userAttrs, "PSYCHOLOGY").allowed) {
-      accessibleZones.push("PSYCHOLOGY");
-    }
-    if (canAccessZone(userAttrs, "DCR").allowed) {
-      accessibleZones.push("DCR");
+      if (canAccessZone(userAttrs, "PSYCHOLOGY").allowed) {
+        accessibleZones.push("PSYCHOLOGY");
+      }
+      if (canAccessZone(userAttrs, "DCR").allowed) {
+        accessibleZones.push("DCR");
+      }
+
+      isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
     }
 
     const { searchParams } = new URL(req.url);
@@ -49,7 +58,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const admin = searchParams.get("admin");
 
     // Admin mode: return all boards (including inactive) with post counts
-    if (admin === "true" && (user.role === "ADMIN" || user.role === "SUPER_ADMIN")) {
+    if (admin === "true" && isAdmin) {
       const boards = await prisma.board.findMany({
         include: {
           _count: {
@@ -63,6 +72,22 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         orderBy: { sortWeight: "asc" },
       });
       return NextResponse.json({ boards });
+    }
+
+    // Build cache key from accessible zones + mode
+    const zoneKey = accessibleZones.sort().join(",");
+    const cacheKey = hot === "true"
+      ? `boards:hot:${zoneKey}`
+      : `boards:default:${zoneKey}`;
+
+    // Try Redis cache first
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return NextResponse.json({ boards: JSON.parse(cached) });
+      }
+    } catch {
+      // Redis unavailable — fall through to DB
     }
 
     if (hot === "true") {
@@ -84,6 +109,14 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           posts: { _count: "desc" },
         },
       });
+
+      // Cache to Redis
+      try {
+        await redis.set(cacheKey, JSON.stringify(boards), "EX", BOARDS_CACHE_TTL);
+      } catch {
+        // Redis unavailable — continue without caching
+      }
+
       return NextResponse.json({ boards });
     }
 
@@ -94,6 +127,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       },
       orderBy: { sortWeight: "asc" },
     });
+
+    // Cache to Redis
+    try {
+      await redis.set(cacheKey, JSON.stringify(boards), "EX", BOARDS_CACHE_TTL);
+    } catch {
+      // Redis unavailable — continue without caching
+    }
 
     return NextResponse.json({ boards });
   } catch (error) {

@@ -117,6 +117,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [fetchedFlags, setFetchedFlags] = useState<SidebarAccessFlags>({});
+  const [flagsLoading, setFlagsLoading] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -215,7 +216,13 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
         </div>
 
         {/* Zone items */}
-        {visibleZoneItems.length > 0 && (
+        {flagsLoading ? (
+          <div className="mt-2 space-y-1.5 px-2" aria-label="专区加载中">
+            <div className="h-3 w-10 animate-pulse rounded bg-muted" />
+            <div className="h-9 w-full animate-pulse rounded-lg bg-muted" />
+            <div className="h-9 w-3/4 animate-pulse rounded-lg bg-muted" />
+          </div>
+        ) : visibleZoneItems.length > 0 ? (
           <>
             <div className="my-3 border-t border-border/40" />
             <span className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
@@ -225,7 +232,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
               {visibleZoneItems.map(renderNavItem)}
             </div>
           </>
-        )}
+        ) : null}
 
         {/* Moderation items */}
         {visibleModItems.length > 0 && (

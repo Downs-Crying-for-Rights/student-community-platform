@@ -65,14 +65,14 @@ export function computeTrustLevel(reputationScore?: number | null): TrustLevel {
 
 /**
  * 检查用户是否可以发帖到心理区。
- * - trustLevel ≥ 2 或 psychAccess 为 true
+ * - trustLevel ≥ 3 或 psychAccess 为 true
  */
 export function canPostInPsychology(
   trustLevel: TrustLevel,
   psychAccess?: boolean,
 ): boolean {
   if (psychAccess) return true;
-  return trustLevel >= 2;
+  return trustLevel >= 3;
 }
 
 /**

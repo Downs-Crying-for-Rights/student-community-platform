@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { registerSchema } from "@/lib/validators";
-import { prisma } from "@/lib/prisma";
 import { verifyCode } from "@/lib/sms/verification";
+import { createUserWithSession, validateNickname } from "@/lib/auth/register-helpers";
 
 export async function POST(request: NextRequest) {
   try {
+    // 速率限制：5 次/分钟/IP（防注册轰炸）
+    try {
+      const { enforceRateLimit } = await import("@/lib/rate-limiter");
+      const ip = (request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown")
+        .split(",")[0].trim();
+      const limit = await enforceRateLimit(`register:${ip}`, 5, 60 * 1000);
+      if (!limit?.allowed) {
+        return NextResponse.json(
+          { error: "注册请求过于频繁，请稍后再试" },
+          { status: 429, headers: { "Retry-After": "60" } },
+        );
+      }
+    } catch { /* rate limiter 不可用，降级放行 */ }
+
     const body = await request.json();
     const parsed = registerSchema.safeParse(body);
     if (!parsed.success) {
@@ -17,28 +30,10 @@ export async function POST(request: NextRequest) {
 
     const { email, password, phone, code, nickname } = parsed.data;
 
-    // 检查邮箱是否已注册
-    const existingEmail = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-    if (existingEmail) {
-      return NextResponse.json(
-        { error: "该邮箱已被注册" },
-        { status: 409 }
-      );
-    }
-
-    // 检查手机号是否已绑定
-    const existingPhone = await prisma.user.findFirst({
-      where: { phone },
-      select: { id: true },
-    });
-    if (existingPhone) {
-      return NextResponse.json(
-        { error: "该手机号已被其他账户绑定" },
-        { status: 409 }
-      );
+    // 校验 nickname 非空
+    const nicknameError = validateNickname(nickname);
+    if (nicknameError) {
+      return NextResponse.json({ error: nicknameError.error }, { status: nicknameError.status });
     }
 
     // 验证短信验证码
@@ -50,38 +45,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 创建用户
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        phone,
-        nickname,
-      },
+    // 创建用户并生成 session（含邮箱/手机号唯一性检查）
+    const result = await createUserWithSession({
+      email,
+      password,
+      phone,
+      nickname,
     });
 
-    // 创建 session 以便自动登录
-    const sessionToken = crypto.randomUUID();
-    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-    await prisma.session.create({
-      data: {
-        sessionToken,
-        userId: user.id,
-        expires,
-      },
-    });
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
 
     const response = NextResponse.json(
       { success: true, message: "注册成功" },
       { status: 201 }
     );
 
-    response.cookies.set("next-auth.session-token", sessionToken, {
-      expires,
+    response.cookies.set("next-auth.session-token", result.data.sessionToken, {
+      expires: result.data.expires,
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "strict",
       path: "/",
       secure: process.env.NODE_ENV === "production",
     });

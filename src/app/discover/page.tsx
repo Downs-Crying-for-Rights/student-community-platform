@@ -155,6 +155,7 @@ export default function DiscoverPage() {
 
   const fetchTags = useCallback(async () => {
     setLoadingTags(true);
+    setErrorTags(null);
     try {
       const res = await fetch("/api/tags?hot=true");
       if (res.ok) {
@@ -162,7 +163,7 @@ export default function DiscoverPage() {
         setTags(data.tags ?? []);
       }
     } catch {
-      // Network error — silently ignore
+      setErrorTags("热门话题加载失败，请检查网络连接后刷新重试");
     } finally {
       setLoadingTags(false);
     }
@@ -185,6 +186,7 @@ export default function DiscoverPage() {
 
   const fetchRecommendations = useCallback(async () => {
     setLoadingRecs(true);
+    setErrorRecs(null);
     try {
       const res = await fetch("/api/recommendations");
       if (res.ok) {
@@ -192,7 +194,7 @@ export default function DiscoverPage() {
         setRecommendations(data.recommendations ?? []);
       }
     } catch {
-      // Network error — silently ignore
+      setErrorRecs("推荐内容加载失败，请检查网络连接后刷新重试");
     } finally {
       setLoadingRecs(false);
     }
@@ -286,6 +288,10 @@ export default function DiscoverPage() {
           </h2>
           {loadingRecs ? (
             <ListSkeleton count={3} />
+          ) : errorRecs ? (
+            <div role="alert" aria-live="polite" className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center">
+              <p className="text-sm text-destructive">{errorRecs}</p>
+            </div>
           ) : recommendations.length === 0 ? (
             <EmptyState
               title="暂无推荐内容"

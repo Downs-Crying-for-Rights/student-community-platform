@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { withAuth, withOptionalAuth, type AuthenticatedRequest, type OptionalAuthRequest } from "@/lib/rbac";
 import { createTagSchema } from "@/lib/validators";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 
 /**
  * GET /api/tags
- * Returns all tags ordered by name.
+ * Returns all tags ordered by name. Public endpoint (no login required).
  * With ?hot=true: returns top 20 tags ordered by PUBLISHED post count descending.
  */
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
+export const GET = withOptionalAuth(async (_req: OptionalAuthRequest) => {
   try {
     const { searchParams } = new URL(req.url);
     const hot = searchParams.get("hot");

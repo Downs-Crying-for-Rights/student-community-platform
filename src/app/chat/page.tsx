@@ -98,11 +98,12 @@ export default function ChatListPage() {
         ) : (
           <div className="space-y-2">
             {rooms.map((room) => (
-              <Card
+              <Link
                 key={room.id}
-                className="cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => router.push(`/chat/${room.id}`)}
+                href={`/chat/${room.id}`}
+                className="block"
               >
+                <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
                 <CardContent className="flex items-center gap-3 p-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
                     {room.type === "PRIVATE" ? (
@@ -135,6 +136,7 @@ export default function ChatListPage() {
                   </div>
                 </CardContent>
               </Card>
+              </Link>
             ))}
           </div>
         )}
@@ -147,8 +149,9 @@ export default function ChatListPage() {
             </DialogHeader>
             <form onSubmit={handleCreate} className="space-y-3">
               <div>
-                <label className="text-sm font-medium">群聊名称</label>
+                <label htmlFor="chat-room-name" className="text-sm font-medium">群聊名称</label>
                 <Input
+                  id="chat-room-name"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="输入群聊名称"
@@ -158,8 +161,9 @@ export default function ChatListPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">简介（可选）</label>
+                <label htmlFor="chat-room-desc" className="text-sm font-medium">简介（可选）</label>
                 <Input
+                  id="chat-room-desc"
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
                   placeholder="群聊介绍"

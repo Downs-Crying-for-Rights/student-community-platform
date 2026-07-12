@@ -122,10 +122,11 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
-          select: { role: true, phone: true, onboardingDone: true, quizPassed: true, dcrAccess: true },
+          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true },
         });
         token.role = dbUser?.role ?? "USER";
         token.phone = dbUser?.phone ?? null;
+        token.nickname = dbUser?.nickname ?? null;
         token.onboardingDone = dbUser?.onboardingDone ?? false;
         token.quizPassed = dbUser?.quizPassed ?? false;
         token.dcrAccess = dbUser?.dcrAccess ?? false;
@@ -133,11 +134,12 @@ export const authOptions: NextAuthOptions = {
         // Session update (e.g. after bindphone): re-fetch phone from DB
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
-          select: { role: true, phone: true, onboardingDone: true, quizPassed: true, dcrAccess: true },
+          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true },
         });
         if (dbUser) {
           token.role = dbUser.role;
           token.phone = dbUser.phone;
+          token.nickname = dbUser.nickname;
           token.onboardingDone = dbUser.onboardingDone;
           token.quizPassed = dbUser.quizPassed;
           token.dcrAccess = dbUser.dcrAccess;
@@ -153,6 +155,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).onboardingDone = token.onboardingDone;
         (session.user as any).quizPassed = token.quizPassed;
         (session.user as any).dcrAccess = token.dcrAccess;
+        (session.user as any).nickname = token.nickname;
       }
       return session;
     },

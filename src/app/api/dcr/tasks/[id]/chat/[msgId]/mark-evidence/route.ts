@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 
@@ -25,7 +25,7 @@ export const POST = withAuth(async (
     const userRole = req.user.role;
 
     // Find task with helpSession (including helpChat and evidenceRoom)
-    const task = await (prisma as any).mutualAidTask.findUnique({
+    const task = await prisma.mutualAidTask.findUnique({
       where: { id: taskId },
       include: {
         helpSession: {
@@ -68,7 +68,7 @@ export const POST = withAuth(async (
     }
 
     // Find the message by msgId in the helpChat
-    const message = await (prisma as any).helpChatMessage.findFirst({
+    const message = await prisma.helpChatMessage.findFirst({
       where: { id: msgId, chatId: chat.id },
     });
 
@@ -77,7 +77,7 @@ export const POST = withAuth(async (
     }
 
     // Transaction: mark message as evidence + create EvidenceRoom NOTE entry
-    const updated = await prisma.$transaction(async (tx: any) => {
+    const updated = await prisma.$transaction(async (tx) => {
       const updatedMsg = await tx.helpChatMessage.update({
         where: { id: msgId },
         data: { isEvidence: true },

@@ -34,7 +34,7 @@ export function getPsychSections(): PsychSection[] {
       id: "tree-hole",
       title: "匿名树洞",
       description: "在安全的匿名空间中自由表达，所有发言均使用随机匿名标识",
-      href: "/psych/posts",
+      href: "/dcr/posts?zone=PSYCHOLOGY",
       iconName: "TreePine",
     },
     {

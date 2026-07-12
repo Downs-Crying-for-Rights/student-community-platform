@@ -18,21 +18,27 @@ export interface SensitiveMatch {
 
 // ==================== Constants ====================
 
-const CACHE_KEY = "sensitive-words:all";
+const CACHE_KEY = "sensitive-words:entries";
 const CACHE_TTL = 3600; // 1 hour in seconds
 
 // ==================== Core Functions ====================
 
 /**
- * Load sensitive words from database, with Redis caching (1 hour TTL).
+ * Load sensitive words from database, with Redis Hash caching (1 hour TTL).
  * Returns all active sensitive words grouped by category.
+ *
+ * 缓存策略：使用 Redis Hash（HSET/HGETALL）按条目存储敏感词，
+ * 相比 JSON 序列化整个数组，Hash 支持单条目粒度操作，更高效。
  */
 export async function loadSensitiveWords(): Promise<SensitiveWordEntry[]> {
   // Try cache first
   try {
-    const cached = await redis.get(CACHE_KEY);
-    if (cached) {
-      return JSON.parse(cached) as SensitiveWordEntry[];
+    const hash = await redis.hgetall(CACHE_KEY);
+    if (hash && Object.keys(hash).length > 0) {
+      return Object.entries(hash).map(([word, category]) => ({
+        word,
+        category: category as SensitiveWordCategory,
+      }));
     }
   } catch {
     // Redis unavailable — fall through to DB
@@ -49,9 +55,19 @@ export async function loadSensitiveWords(): Promise<SensitiveWordEntry[]> {
     category: w.category,
   }));
 
-  // Cache to Redis
+  // Cache to Redis Hash: each field is a word, value is its category
   try {
-    await redis.set(CACHE_KEY, JSON.stringify(entries), "EX", CACHE_TTL);
+    if (entries.length > 0) {
+      const hashEntries: Record<string, string> = {};
+      for (const entry of entries) {
+        hashEntries[entry.word] = entry.category;
+      }
+      const pipeline = redis.pipeline();
+      pipeline.del(CACHE_KEY);
+      pipeline.hset(CACHE_KEY, hashEntries);
+      pipeline.expire(CACHE_KEY, CACHE_TTL);
+      await pipeline.exec();
+    }
   } catch {
     // Redis unavailable — continue without caching
   }
@@ -128,7 +144,7 @@ export async function scanContent(text: string): Promise<SensitiveMatch[]> {
   // 1. Regex-based PII scan (sync, no DB dependency)
   const regexMatches = scanWithRegex(text);
 
-  // 2. Word-list scan from DB (async, with Redis cache)
+  // 2. Word-list scan from DB (async, with Redis Hash cache)
   const words = await loadSensitiveWords();
   const wordMatches: SensitiveMatch[] = [];
   const lowerText = text.toLowerCase();

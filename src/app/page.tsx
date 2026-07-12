@@ -64,6 +64,7 @@ export default function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const fetchPosts = useCallback(
@@ -86,6 +87,7 @@ export default function HomePage() {
         const data: PostsResponse = await res.json();
         const mapped = data.posts.map(mapAPIPostToCardProps);
 
+        setError(null);
         setPosts((prev) => (append ? [...prev, ...mapped] : mapped));
         setHasMore(data.page * data.pageSize < data.total);
       } catch {
@@ -206,7 +208,17 @@ export default function HomePage() {
         </div>
 
         {/* Content */}
-        {loading ? (
+        {error ? (
+          <div role="alert" aria-live="polite" className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+            <p className="text-sm text-destructive">{error}</p>
+            <button
+              onClick={() => { setError(null); fetchPosts(1, sort, false); }}
+              className="mt-3 rounded-full bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors"
+            >
+              重试
+            </button>
+          </div>
+        ) : loading ? (
           <CardSkeleton count={6} />
         ) : posts.length === 0 ? (
           <EmptyState

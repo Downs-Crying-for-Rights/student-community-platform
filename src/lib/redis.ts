@@ -6,6 +6,7 @@ const globalForRedis = globalThis as unknown as {
 
 function createRedisClient(): Redis {
   const url = process.env.REDIS_URL || "redis://localhost:6379";
+  const password = process.env.REDIS_PASSWORD;
 
   const client = new Redis(url, {
     maxRetriesPerRequest: 3,
@@ -14,6 +15,7 @@ function createRedisClient(): Redis {
       return Math.min(times * 200, 2000);
     },
     lazyConnect: true,
+    ...(password ? { password } : {}),
   });
 
   client.on("error", (err) => {

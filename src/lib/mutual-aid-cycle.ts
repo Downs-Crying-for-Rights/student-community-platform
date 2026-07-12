@@ -127,11 +127,42 @@ export async function createCycle(input: CycleCreateInput) {
   const error = validateParticipants(initiatorId, participantBId, participantCId);
   if (error) throw new Error(error);
 
-  // 检查所有参与者是否有活跃循环
-  for (const uid of [initiatorId, participantBId, participantCId]) {
-    if (await hasActiveCycle(uid)) {
-      throw new Error(`用户 ${uid} 已有活跃的互助循环，请先完成或退出`);
+  // 批量检查所有参与者是否有活跃循环（一次查询替代三次串行查询）
+  const activeStatuses: CycleStatus[] = ["INITIATING", "ACTIVE"];
+  const userIds = [initiatorId, participantBId, participantCId];
+  const conflicting = await prisma.mutualAidCycle.findFirst({
+    where: {
+      status: { in: activeStatuses },
+      OR: [
+        { initiatorId: { in: userIds } },
+        { links: { some: { fromUserId: { in: userIds }, status: { notIn: ["REJECTED"] } } } },
+        { links: { some: { toUserId: { in: userIds }, status: { notIn: ["REJECTED"] } } } },
+      ],
+    },
+    select: {
+      initiatorId: true,
+      links: {
+        where: {
+          OR: [
+            { fromUserId: { in: userIds } },
+            { toUserId: { in: userIds } },
+          ],
+        },
+        select: { fromUserId: true, toUserId: true },
+        take: 1,
+      },
+    },
+  });
+
+  if (conflicting) {
+    const involvedSet = new Set<string>();
+    if (userIds.includes(conflicting.initiatorId)) involvedSet.add(conflicting.initiatorId);
+    for (const link of conflicting.links) {
+      if (userIds.includes(link.fromUserId)) involvedSet.add(link.fromUserId);
+      if (userIds.includes(link.toUserId)) involvedSet.add(link.toUserId);
     }
+    const uid = [...involvedSet][0] ?? userIds[0];
+    throw new Error(`用户 ${uid} 已有活跃的互助循环，请先完成或退出`);
   }
 
   // 验证参与者真实存在且已通过考核

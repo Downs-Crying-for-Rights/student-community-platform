@@ -172,6 +172,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     const userId = req.user.id;
 
     // Fetch user attributes for ABAC check
+    // OPTIMIZE: JWT session already carries role, onboardingDone, quizPassed, dcrAccess.
+    // Expand AuthenticatedRequest.user to include these from JWT, then only DB-query
+    // the remaining volatile fields: createdAt, violationCount, psychAccess, dcrPledgeSigned, reputationScore.
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -256,19 +259,30 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     // Auto-generate summary if not provided
     const finalSummary = summary ?? truncateText(content, 60);
 
-    // Resolve tag IDs: use tagIds directly, or find/create from tagNames
+    // Resolve tag IDs: use tagIds directly, or find/create from tagNames (batched)
     let resolvedTagIds = tagIds ?? [];
     if ((!resolvedTagIds || resolvedTagIds.length === 0) && tagNames && tagNames.length > 0) {
-      resolvedTagIds = [];
-      for (const name of tagNames) {
-        const trimmed = name.trim();
-        if (!trimmed) continue;
-        let tag = await prisma.tag.findUnique({ where: { name: trimmed } });
-        if (!tag) {
-          tag = await prisma.tag.create({ data: { name: trimmed } });
-        }
-        resolvedTagIds.push(tag.id);
+      const trimmedNames = tagNames.map(n => n.trim()).filter(Boolean);
+      // 批量查询已有标签
+      const existingTags = await prisma.tag.findMany({
+        where: { name: { in: trimmedNames } },
+        select: { id: true, name: true },
+      });
+      const existingMap = new Map(existingTags.map(t => [t.name, t.id]));
+      // 找出缺失的标签
+      const missingNames = trimmedNames.filter(n => !existingMap.has(n));
+      // 批量创建缺失标签
+      if (missingNames.length > 0) {
+        await prisma.tag.createMany({
+          data: missingNames.map(name => ({ name })),
+        });
+        const newTags = await prisma.tag.findMany({
+          where: { name: { in: missingNames } },
+          select: { id: true, name: true },
+        });
+        newTags.forEach(t => existingMap.set(t.name, t.id));
       }
+      resolvedTagIds = trimmedNames.map(n => existingMap.get(n)!);
     }
 
     // Create post with tag relations

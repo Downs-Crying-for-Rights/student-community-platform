@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { withOptionalAuth, type OptionalAuthRequest } from "@/lib/rbac";
 import { searchQuerySchema, paginationSchema } from "@/lib/validators";
 import { canAccessZone, type ABACUserAttributes } from "@/lib/abac";
 import { z } from "zod";
@@ -14,14 +14,15 @@ const searchParamsSchema = paginationSchema.extend({
 
 /**
  * GET /api/search
- * Full-text search supporting posts, users, and tags.
- * - Posts: search by title and content (case-insensitive), filter DELETED, filter private zone posts by access
+ * Full-text search supporting posts, users, and tags. Public endpoint (no login required).
+ * - Posts: search by title and content (case-insensitive), filter DELETED, filter private zone posts by access.
+ *   Unauthenticated users only see PUBLIC zone posts.
  * - Users: search by nickname, return public info only
  * - Tags: search by name, include post count
  * - Paginated (default 20 per page)
  * - Shadow banned users' posts are filtered out
  */
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
+export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
   try {
     const { searchParams } = new URL(req.url);
     const parsed = searchParamsSchema.safeParse({
@@ -41,7 +42,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
     const { q, type, boardId, page, pageSize } = parsed.data;
     const skip = (page - 1) * pageSize;
-    const userId = req.user.id;
+    const userId = req.user?.id ?? null;
 
     if (type === "posts") {
       return await searchPosts(q, boardId, skip, pageSize, page, userId);
@@ -67,6 +68,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
  * Search posts by title and content.
  * Filters out DELETED posts, shadow banned users' posts,
  * and private zone (PSYCHOLOGY/DCR) posts unless user has access.
+ * If userId is null (unauthenticated), only PUBLIC zone posts are returned.
  */
 async function searchPosts(
   q: string,
@@ -74,37 +76,39 @@ async function searchPosts(
   skip: number,
   pageSize: number,
   page: number,
-  userId: string,
+  userId: string | null,
 ) {
-  // Fetch user attributes for zone access checks
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      createdAt: true,
-      violationCount: true,
-      onboardingDone: true,
-      quizPassed: true,
-      psychAccess: true,
-      dcrAccess: true,
-      dcrPledgeSigned: true,
-      reputationScore: true,
-      role: true,
-    },
-  });
-
-  if (!user) {
-    return NextResponse.json({ error: "用户不存在" }, { status: 404 });
-  }
-
-  const userAttrs: ABACUserAttributes = user;
-
   // Determine which zones the user can access
   const accessibleZones: string[] = ["PUBLIC"];
-  if (canAccessZone(userAttrs, "PSYCHOLOGY").allowed) {
-    accessibleZones.push("PSYCHOLOGY");
-  }
-  if (canAccessZone(userAttrs, "DCR").allowed) {
-    accessibleZones.push("DCR");
+
+  if (userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        createdAt: true,
+        violationCount: true,
+        onboardingDone: true,
+        quizPassed: true,
+        psychAccess: true,
+        dcrAccess: true,
+        dcrPledgeSigned: true,
+        reputationScore: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
+    }
+
+    const userAttrs: ABACUserAttributes = user;
+
+    if (canAccessZone(userAttrs, "PSYCHOLOGY").allowed) {
+      accessibleZones.push("PSYCHOLOGY");
+    }
+    if (canAccessZone(userAttrs, "DCR").allowed) {
+      accessibleZones.push("DCR");
+    }
   }
 
   // Build where clause — only show PUBLISHED posts in search

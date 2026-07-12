@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
-import {
-  pickRandomQuestions,
-  gradeQuiz,
-  QUIZ_QUESTIONS,
-} from "@/lib/dcr-quiz-data";
+import { gradeQuiz } from "@/lib/dcr-quiz-data";
 import { quizAnswerSchema } from "@/lib/validators";
+
+// 注意：硬编码题库 pickRandomQuestions / QUIZ_QUESTIONS 仅作为 DB 题库不可用时的 fallback，
+// 通过动态 import 按需加载，避免生产环境不必要的静态依赖。
 
 /**
  * GET /api/dcr/quiz
@@ -44,7 +43,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         options: q.options.map((label, idx) => ({ key: String.fromCharCode(65 + idx), label })),
       }));
     } else {
-      // Fallback to hardcoded questions
+      // Fallback to hardcoded questions — 仅作为 DB 题库不可用时的 fallback
       const { pickRandomQuestions } = await import("@/lib/dcr-quiz-data");
       questions = pickRandomQuestions(5).map(({ id, text, options }) => ({ id, text, options }));
     }
@@ -93,16 +92,18 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     let correctCount: number;
 
     if (dbQs.length >= 5) {
-      // DB-based grading: convert letter key to index (A=0, B=1, ...) and compare
+      // DB-based grading: convert to Map for O(1) lookup
+      const dbQMap = new Map(dbQs.map((q) => [q.id, q]));
       matchedCount = dbQs.length;
       correctCount = 0;
       for (const a of userAnswers) {
-        const q = dbQs.find((d) => d.id === a.questionId);
+        const q = dbQMap.get(a.questionId);
         const selectedIndex = a.selectedKey.charCodeAt(0) - "A".charCodeAt(0);
         if (q && selectedIndex === q.answer) correctCount++;
       }
     } else {
-      // Fallback to hardcoded grading
+      // Fallback to hardcoded grading — 仅作为 DB 题库不可用时的 fallback
+      const { QUIZ_QUESTIONS } = await import("@/lib/dcr-quiz-data");
       const questionMap = new Map(QUIZ_QUESTIONS.map((q) => [q.id, q]));
       const matchedQuestions = userAnswers
         .map((a) => questionMap.get(a.questionId))
@@ -114,7 +115,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
       const result = gradeQuiz(matchedQuestions, userAnswers);
       matchedCount = result.total;
-      correctCount = result.correctCount;
+      correctCount = result.score;
     }
 
     const total = matchedCount;

@@ -21,7 +21,7 @@ export default function RootLayout({
           <a href="#main-content" className="skip-to-content">
             跳转到主要内容
           </a>
-          <div id="main-content">{children}</div>
+          <main id="main-content">{children}</main>
           <VersionFooter />
         </Providers>
       </body>

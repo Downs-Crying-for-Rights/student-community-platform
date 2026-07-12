@@ -287,7 +287,7 @@ export default function PostDetailPage() {
           {/* Fixed bottom action bar */}
           <div
             className={cn(
-              "fixed bottom-0 left-0 right-0 z-40",
+              "fixed bottom-16 left-0 right-0 z-40 lg:bottom-0",
               "border-t border-border/40 bg-background/95 backdrop-blur-md",
               "supports-[backdrop-filter]:bg-background/80"
             )}

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
@@ -232,7 +232,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       }
 
       // Check concurrent limit via CaseHandler: max 5 active cases per user
-      const activeCaseCount = await (prisma as unknown as { caseHandler: { count: (args: unknown) => Promise<number> } }).caseHandler.count({
+      const activeCaseCount = await prisma.caseHandler.count({
         where: {
           userId,
           case_: { status: { in: ["IN_PROGRESS", "NEED_MORE_INFO"] } },
@@ -318,7 +318,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
       // If accepting case (OPENED → IN_PROGRESS), create CaseHandler record + session channel
       if (oldStatus === "OPENED" && newStatus === "IN_PROGRESS") {
-        await (tx as Record<string, unknown> as { caseHandler: { create: (args: unknown) => Promise<unknown> } }).caseHandler.create({
+        await tx.caseHandler.create({
           data: { caseId: id, userId },
         });
 
@@ -392,7 +392,7 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
     where: { id: userId },
     select: { dcrAccess: true },
   });
-  const isDCRHelper = userRole === "DCR_HELPER" || isAdmin || (userRecord?.dcrAccess === true);
+  const isDCRHelper = userRole === "DCR_HELPER" || isAdmin;
 
   if (!isDCRHelper) {
     return NextResponse.json({ error: "仅 DCRHelper 或 Admin 可加入工单" }, { status: 403 });
@@ -437,7 +437,7 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
   }
 
   // Check user's concurrent active cases < 5 (via CaseHandler + Case status)
-  const userActiveCaseCount = await (prisma as unknown as { caseHandler: { count: (args: unknown) => Promise<number> } }).caseHandler.count({
+  const userActiveCaseCount = await prisma.caseHandler.count({
     where: {
       userId,
       case_: { status: { in: ["IN_PROGRESS", "NEED_MORE_INFO"] } },
@@ -457,7 +457,7 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
   // Build transaction
   const updatedCase = await prisma.$transaction(async (tx) => {
     // Create CaseHandler record
-    await (tx as Record<string, unknown> as { caseHandler: { create: (args: unknown) => Promise<unknown> } }).caseHandler.create({
+    await tx.caseHandler.create({
       data: { caseId, userId },
     });
 

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { closeTaskSchema } from "@/lib/validators";
@@ -50,7 +50,7 @@ export const POST = withAuth(async (
     const { action, reason } = parsed.data;
 
     // Load task with session and evidence
-    const task = await (prisma as any).mutualAidTask.findUnique({
+    const task = await prisma.mutualAidTask.findUnique({
       where: { id },
       include: {
         helpSession: {
@@ -98,7 +98,7 @@ export const POST = withAuth(async (
       const completionReport = generateCompletionReport(task, "force", reason);
 
       const updated = await prisma.$transaction(async (tx) => {
-        const updatedTask = await (tx as any).mutualAidTask.update({
+        const updatedTask = await tx.mutualAidTask.update({
           where: { id },
           data: {
             status: "COMPLETED",
@@ -109,7 +109,7 @@ export const POST = withAuth(async (
           },
         });
 
-        await (tx as any).taskTimelineEvent.create({
+        await tx.taskTimelineEvent.create({
           data: {
             taskId: id,
             action: "force_close",
@@ -186,12 +186,12 @@ export const POST = withAuth(async (
 
       // Only one party confirmed so far
       const updated = await prisma.$transaction(async (tx) => {
-        const updatedTask = await (tx as any).mutualAidTask.update({
+        const updatedTask = await tx.mutualAidTask.update({
           where: { id },
           data: updateData,
         });
 
-        await (tx as any).taskTimelineEvent.create({
+        await tx.taskTimelineEvent.create({
           data: {
             taskId: id,
             action: "close_request",
@@ -231,12 +231,12 @@ export const POST = withAuth(async (
       if (!bothConfirmed) {
         // Still waiting for the other party
         const updated = await prisma.$transaction(async (tx) => {
-          const updatedTask = await (tx as any).mutualAidTask.update({
+          const updatedTask = await tx.mutualAidTask.update({
             where: { id },
             data: updateData,
           });
 
-          await (tx as any).taskTimelineEvent.create({
+          await tx.taskTimelineEvent.create({
             data: {
               taskId: id,
               action: "close_confirm",
@@ -305,7 +305,7 @@ async function completeTask(
   const completionReport = generateCompletionReport(task, "mutual", undefined);
 
   const updated = await prisma.$transaction(async (tx) => {
-    const updatedTask = await (tx as any).mutualAidTask.update({
+    const updatedTask = await tx.mutualAidTask.update({
       where: { id: taskId },
       data: {
         status: "COMPLETED",
@@ -315,7 +315,7 @@ async function completeTask(
       },
     });
 
-    await (tx as any).taskTimelineEvent.create({
+    await tx.taskTimelineEvent.create({
       data: {
         taskId,
         action: "complete",

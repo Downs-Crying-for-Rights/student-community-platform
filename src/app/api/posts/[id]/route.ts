@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, hasMinimumRole, type AuthenticatedRequest } from "@/lib/rbac";
+import { withAuth, withOptionalAuth, hasMinimumRole, type AuthenticatedRequest, type OptionalAuthRequest } from "@/lib/rbac";
 import { updatePostSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
 
 /**
  * GET /api/posts/[id]
- * Get post detail by ID. Includes author, board, tags.
+ * Get post detail by ID. Public endpoint (no login required).
+ * Includes author, board, tags.
+ * Unauthenticated users can only view PUBLISHED posts in the PUBLIC zone.
  * Checks that the post is not deleted/hidden (unless requester is author or moderator+).
  */
-export const GET = withAuth(async (
-  req: AuthenticatedRequest,
+export const GET = withOptionalAuth(async (
+  req: OptionalAuthRequest,
   context: { params: Record<string, string> },
 ) => {
   try {
@@ -28,6 +30,18 @@ export const GET = withAuth(async (
 
     if (!post) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
+    }
+
+    // Unauthenticated users: only allow PUBLISHED posts in PUBLIC zone
+    if (!req.user) {
+      if (post.status !== "PUBLISHED" || post.board.zone !== "PUBLIC") {
+        return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
+      }
+      if (post.author.isShadowBanned) {
+        return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
+      }
+      const { isShadowBanned: _, ...authorData } = post.author;
+      return NextResponse.json({ post: { ...post, author: authorData } });
     }
 
     const userId = req.user.id;

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { paginationSchema } from "@/lib/validators";
@@ -39,7 +39,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const where = { status: "DISPUTED" as const };
 
     const [disputes, total] = await Promise.all([
-      (prisma as any).mutualAidTask.findMany({
+      prisma.mutualAidTask.findMany({
         where,
         include: {
           requester: {
@@ -66,7 +66,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      (prisma as any).mutualAidTask.count({ where }),
+      prisma.mutualAidTask.count({ where }),
     ]);
 
     return NextResponse.json({

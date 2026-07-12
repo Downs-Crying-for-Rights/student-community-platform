@@ -11,12 +11,6 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
-  typescript: {
-    // Named exports from page files are used for testing;
-    // Next.js 15 strict page-export validation rejects them.
-    // Type safety is enforced by IDE + vitest, so skip during build.
-    ignoreBuildErrors: true,
-  },
   images: {
     remotePatterns: [
       {
@@ -37,7 +31,7 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:;",
+              "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:;",
           },
         ],
       },

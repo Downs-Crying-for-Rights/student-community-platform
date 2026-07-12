@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { moderateDisputeSchema } from "@/lib/validators";
@@ -49,7 +49,7 @@ export const POST = withAuth(async (
     const { action, reason, targetUserId } = parsed.data;
 
     // Load the task
-    const task = await (prisma as any).mutualAidTask.findUnique({
+    const task = await prisma.mutualAidTask.findUnique({
       where: { id },
       include: { helpSession: true },
     });
@@ -72,11 +72,11 @@ export const POST = withAuth(async (
         // Close the task with reason
         newStatus = "CLOSED";
         await prisma.$transaction(async (tx) => {
-          await (tx as any).mutualAidTask.update({
+          await tx.mutualAidTask.update({
             where: { id },
             data: { status: newStatus, closureReason: reason },
           });
-          await (tx as any).taskTimelineEvent.create({
+          await tx.taskTimelineEvent.create({
             data: {
               taskId: id,
               action: "moderate_takedown",
@@ -86,7 +86,7 @@ export const POST = withAuth(async (
               operatorId: userId,
             },
           });
-          await (tx as any).moderationAction.create({
+          await tx.moderationAction.create({
             data: {
               actionType: "TAKEDOWN",
               targetType: "TASK",
@@ -105,11 +105,11 @@ export const POST = withAuth(async (
         await prisma.$transaction(async (tx) => {
           // Delete helpSession (cascades to HelpChat, EvidenceRoom)
           if (task.helpSession) {
-            await (tx as any).helpSession.delete({
+            await tx.helpSession.delete({
               where: { id: task.helpSession.id },
             });
           }
-          await (tx as any).mutualAidTask.update({
+          await tx.mutualAidTask.update({
             where: { id },
             data: {
               status: newStatus,
@@ -117,7 +117,7 @@ export const POST = withAuth(async (
               helperConfirmed: false,
             },
           });
-          await (tx as any).taskTimelineEvent.create({
+          await tx.taskTimelineEvent.create({
             data: {
               taskId: id,
               action: "moderate_replace_helper",
@@ -127,7 +127,7 @@ export const POST = withAuth(async (
               operatorId: userId,
             },
           });
-          await (tx as any).moderationAction.create({
+          await tx.moderationAction.create({
             data: {
               actionType: "REPLACE_HELPER",
               targetType: "TASK",
@@ -162,11 +162,11 @@ export const POST = withAuth(async (
             data: { reputationScore: { decrement: 20 } },
           });
           // Close the task
-          await (tx as any).mutualAidTask.update({
+          await tx.mutualAidTask.update({
             where: { id },
             data: { status: newStatus, closureReason: reason },
           });
-          await (tx as any).taskTimelineEvent.create({
+          await tx.taskTimelineEvent.create({
             data: {
               taskId: id,
               action: "moderate_ban_user",
@@ -176,7 +176,7 @@ export const POST = withAuth(async (
               operatorId: userId,
             },
           });
-          await (tx as any).moderationAction.create({
+          await tx.moderationAction.create({
             data: {
               actionType: "BAN_USER",
               targetType: "TASK",
@@ -194,11 +194,11 @@ export const POST = withAuth(async (
         // Dismiss the dispute, revert to EVIDENCE_PENDING
         newStatus = "EVIDENCE_PENDING";
         await prisma.$transaction(async (tx) => {
-          await (tx as any).mutualAidTask.update({
+          await tx.mutualAidTask.update({
             where: { id },
             data: { status: newStatus },
           });
-          await (tx as any).taskTimelineEvent.create({
+          await tx.taskTimelineEvent.create({
             data: {
               taskId: id,
               action: "moderate_dismiss",
@@ -208,7 +208,7 @@ export const POST = withAuth(async (
               operatorId: userId,
             },
           });
-          await (tx as any).moderationAction.create({
+          await tx.moderationAction.create({
             data: {
               actionType: "DISMISS_DISPUTE",
               targetType: "TASK",
@@ -225,11 +225,11 @@ export const POST = withAuth(async (
         // Freeze/close the task with reason
         newStatus = "CLOSED";
         await prisma.$transaction(async (tx) => {
-          await (tx as any).mutualAidTask.update({
+          await tx.mutualAidTask.update({
             where: { id },
             data: { status: newStatus, closureReason: reason },
           });
-          await (tx as any).taskTimelineEvent.create({
+          await tx.taskTimelineEvent.create({
             data: {
               taskId: id,
               action: "moderate_freeze",
@@ -239,7 +239,7 @@ export const POST = withAuth(async (
               operatorId: userId,
             },
           });
-          await (tx as any).moderationAction.create({
+          await tx.moderationAction.create({
             data: {
               actionType: "FREEZE",
               targetType: "TASK",

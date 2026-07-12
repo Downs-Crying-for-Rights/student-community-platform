@@ -41,7 +41,7 @@ export async function register() {
         try {
           await prisma.systemLog.createMany({
             data: batch.map((e) => ({
-              level: e.level,
+              level: e.level as "INFO" | "WARN" | "ERROR",
               source: "console",
               message: e.message,
               detail: e.detail?.slice(0, 5000) ?? null,

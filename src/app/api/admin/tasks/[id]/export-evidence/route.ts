@@ -30,7 +30,7 @@ export const GET = withAuth(async (
     const { id } = context.params;
 
     // Fetch task with helpSession and evidenceRoom
-    const task = await (prisma as any).mutualAidTask.findUnique({
+    const task = await prisma.mutualAidTask.findUnique({
       where: { id },
       include: {
         helpSession: {

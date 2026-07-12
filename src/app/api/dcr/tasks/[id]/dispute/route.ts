@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { disputeTaskSchema } from "@/lib/validators";
@@ -38,7 +38,7 @@ export const POST = withAuth(async (
     const { explanation } = parsed.data;
 
     // Load task with helpSession
-    const task = await (prisma as any).mutualAidTask.findUnique({
+    const task = await prisma.mutualAidTask.findUnique({
       where: { id },
       include: { helpSession: true },
     });
@@ -71,12 +71,12 @@ export const POST = withAuth(async (
     const oldStatus = task.status;
 
     await prisma.$transaction(async (tx) => {
-      await (tx as any).mutualAidTask.update({
+      await tx.mutualAidTask.update({
         where: { id },
         data: { status: "DISPUTED" },
       });
 
-      await (tx as any).taskTimelineEvent.create({
+      await tx.taskTimelineEvent.create({
         data: {
           taskId: id,
           action: "dispute",

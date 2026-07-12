@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
@@ -27,7 +27,7 @@ export const GET = withAuth(async (
     const userRole = req.user.role;
 
     // Find task with helpSession and evidenceRoom
-    const task = await (prisma as any).mutualAidTask.findUnique({
+    const task = await prisma.mutualAidTask.findUnique({
       where: { id: taskId },
       include: {
         helpSession: {
@@ -63,7 +63,7 @@ export const GET = withAuth(async (
     }
 
     // Find the evidence item
-    const item = await (prisma as any).evidenceItem.findFirst({
+    const item = await prisma.evidenceItem.findFirst({
       where: {
         id: itemId,
         roomId: evidenceRoom.id,

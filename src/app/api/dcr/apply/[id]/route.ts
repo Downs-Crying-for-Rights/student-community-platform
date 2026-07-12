@@ -28,8 +28,7 @@ const MIN_REPUTATION_SCORE = 60;
  * - Requires ADMIN role
  * - If APPROVED: checks cold start limit, account age, violations, reputation
  * - If all checks pass: sets dcrAccess=true, dcrPledgeSigned=true
- * - Promotes USER/TRUSTED_USER to DCR_HELPER (grants handle_dcr_cases permission)
- * - Higher roles (MODERATOR+) keep their role but gain dcrAccess for case handling
+ * - Sets dcrAccess=true and dcrPledgeSigned=true (does not change role)
  * - If REJECTED: updates status with reviewNote
  * - Creates notification for applicant
  * - Logs to AuditLog
@@ -130,21 +129,12 @@ export const PATCH = withAuth(async (
         },
       });
 
-      // Grant DCR access + promote to DCR_HELPER if role is USER or TRUSTED_USER
-      const applicantUser = await prisma.user.findUnique({
-        where: { id: application.applicantId },
-        select: { role: true },
-      });
-
-      const shouldPromote =
-        applicantUser?.role === "USER" || applicantUser?.role === "TRUSTED_USER";
-
+      // Grant DCR access
       await prisma.user.update({
         where: { id: application.applicantId },
         data: {
           dcrAccess: true,
           dcrPledgeSigned: true,
-          ...(shouldPromote ? { role: "DCR_HELPER" } : {}),
         },
       });
 
@@ -153,7 +143,7 @@ export const PATCH = withAuth(async (
         application.applicantId,
         "DCR_ACCESS",
         "DCR 准入申请已通过",
-        "您的 DCR 私密区准入申请已通过审核，现在可以访问 DCR 区并接受互助委托了",
+        "您的 DCR 私密区准入申请已通过审核，现在可以访问 DCR 私密区了",
         "/dcr",
       );
 
@@ -167,7 +157,7 @@ export const PATCH = withAuth(async (
           applicantId: application.applicantId,
           decision: "APPROVED",
           reviewNote: reviewNote ?? null,
-          rolePromoted: shouldPromote ? "DCR_HELPER" : null,
+          rolePromoted: null,
         },
       );
 

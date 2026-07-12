@@ -210,7 +210,7 @@ export default function ChatRoomPage() {
         </div>
 
         {/* Messages */}
-        <div ref={scrollRef} className="max-h-[60vh] overflow-y-auto rounded-lg border bg-card p-3 space-y-2">
+        <div ref={scrollRef} className="max-h-[60vh] overflow-y-auto rounded-lg border bg-card p-3 space-y-2" aria-live="polite" aria-label="消息列表" role="log">
         {!isMember ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Lock className="h-10 w-10 text-muted-foreground/40" />
