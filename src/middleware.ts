@@ -113,6 +113,27 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
+  // 已完成引导但未设置昵称 → 重定向至设置用户名页
+  if (token.phone && (token.onboardingDone || token.quizPassed)) {
+    const isSetUsernamePath = req.nextUrl.pathname.startsWith("/set-username") ||
+      req.nextUrl.pathname.startsWith("/api/auth/username");
+    if (isSetUsernamePath) return NextResponse.next();
+
+    try {
+      const uid = (token.sub || (token as any).id || (token as any).userId) as string;
+      if (uid) {
+        const { prisma: db } = await import("@/lib/prisma");
+        const user = await db.user.findUnique({
+          where: { id: uid },
+          select: { nickname: true },
+        });
+        if (user?.nickname) return NextResponse.next();
+      }
+    } catch { /* DB unavailable — redirect to set-username */ }
+
+    return NextResponse.redirect(new URL("/set-username", req.url));
+  }
+
   return NextResponse.next();
 }
 
@@ -138,5 +159,6 @@ export const config = {
     "/u/:path*",
     "/onboarding",
     "/bindphone",
+    "/set-username",
   ],
 };

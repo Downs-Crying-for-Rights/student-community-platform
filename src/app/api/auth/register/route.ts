@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password, phone, code } = parsed.data;
+    const { email, password, phone, code, nickname } = parsed.data;
 
     // 检查邮箱是否已注册
     const existingEmail = await prisma.user.findUnique({
