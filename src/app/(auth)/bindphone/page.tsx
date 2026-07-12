@@ -52,6 +52,14 @@ function BindPhoneContent() {
     };
   }, []);
 
+  // 如果 session 中已有 phone，直接跳走（已绑定的用户不应看到此页面）
+  useEffect(() => {
+    if ((session?.user as any)?.phone) {
+      const callbackUrl = searchParams.get("callbackUrl") || "/";
+      router.replace(callbackUrl);
+    }
+  }, [session, router, searchParams]);
+
   const LoadingSpinner = () => (
     <svg
       className="mr-2 h-4 w-4 animate-spin"

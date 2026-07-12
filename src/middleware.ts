@@ -72,14 +72,16 @@ export default async function middleware(req: NextRequest) {
     // DB 回退：JWT 中 phone 可能过期（用户刚绑定手机号），查一次 DB
     try {
       const { prisma: db } = await import("@/lib/prisma");
-      const user = await db.user.findUnique({
-        where: { id: token.sub as string },
-        select: { phone: true },
-      });
-      if (user?.phone) {
-        // 手机号已在 DB 中绑定，但 JWT 未同步 — 放行此请求
-        // 前端应在 bindphone 页面完成后调用 signIn 刷新 JWT
-        return NextResponse.next();
+      const uid = (token.sub || (token as any).id || (token as any).userId) as string;
+      if (uid) {
+        const user = await db.user.findUnique({
+          where: { id: uid },
+          select: { phone: true },
+        });
+        if (user?.phone) {
+          // 手机号已在 DB 中绑定，但 JWT 未同步 — 放行此请求
+          return NextResponse.next();
+        }
       }
     } catch {
       // DB unavailable — fall through to bindphone redirect
