@@ -20,7 +20,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       }),
       prisma.user.findUnique({
         where: { id: userId },
-        select: { quizPassed: true },
+        select: { quizPassed: true, dcrAccess: true },
       }),
     ]);
 
@@ -29,6 +29,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         hasSubmitted: hasSubmitted > 0,
         hasApproved: hasApproved > 0,
         quizPassed: user?.quizPassed ?? false,
+        dcrAccess: user?.dcrAccess ?? false,
       },
     });
   } catch (error) {

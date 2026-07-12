@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   BookOpen,
   CheckCircle2,
@@ -81,6 +82,7 @@ type Phase = "tutorial" | "quiz" | "result";
 
 export default function QuizPage() {
   const router = useRouter();
+  const { data: session, update } = useSession();
 
   // Phase management
   const [phase, setPhase] = useState<Phase>("tutorial");
@@ -220,6 +222,8 @@ export default function QuizPage() {
     try {
       const res = await fetch("/api/dcr/join", { method: "POST" });
       if (res.ok) {
+        // Refresh JWT to pick up dcrAccess
+        await update();
         router.push("/dcr");
       } else {
         const data = await res.json().catch(() => ({}));

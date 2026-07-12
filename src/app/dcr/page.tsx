@@ -37,13 +37,12 @@ interface StepConfig {
 }
 
 function getSteps(progress: DCRProgress): (StepConfig & { status: "done" | "current" | "locked" })[] {
-  const currentStep = progress.quizPassed
-    ? 4
-    : progress.hasApproved
-      ? 3
-      : progress.hasSubmitted
-        ? 2
-        : 1;
+  // 3-step flow: 提交 → 审核 → 交流
+  const currentStep = progress.hasApproved
+    ? 3
+    : progress.hasSubmitted
+      ? 2
+      : 1;
 
   const allSteps: StepConfig[] = [
     {
@@ -62,20 +61,12 @@ function getSteps(progress: DCRProgress): (StepConfig & { status: "done" | "curr
       lockedText: "请先提交委托表",
     },
     {
-      icon: GraduationCap,
-      title: "③ 参加入频考核",
-      description: "完成入频考核，了解政策边界与合规要求，通过后解锁交流权限。",
-      buttonText: "参加考核",
-      buttonHref: "/dcr/quiz",
-      lockedText: "审核通过后可参加",
-    },
-    {
       icon: MessageSquareText,
-      title: "④ 信息参考与交流",
+      title: "③ 信息参考与交流",
       description: "在社区内进行经验分享、政策学习和互助交流，获取信息层面的参考与风险提示。",
       buttonText: "进入互助任务",
       buttonHref: "/dcr/tasks",
-      lockedText: "考核通过后可进入",
+      lockedText: "审核通过后可进入",
     },
   ];
 
@@ -116,6 +107,8 @@ function StepStatusBadge({ status }: { status: "done" | "current" | "locked" }) 
 
 export default function DCREntryPage() {
   const { data: session } = useSession();
+  const hasDcrAccess = (session?.user as any)?.dcrAccess === true;
+  const router = useRouter();
   const [progress, setProgress] = useState<DCRProgress>({
     hasSubmitted: false,
     hasApproved: false,
@@ -137,12 +130,14 @@ export default function DCREntryPage() {
         setLoading(false);
       }
     }
-    if (session) {
+    if (session && hasDcrAccess) {
       fetchProgress();
+    } else if (session) {
+      setLoading(false);
     } else {
       setLoading(false);
     }
-  }, [session]);
+  }, [session, hasDcrAccess]);
 
   const steps = getSteps(progress);
 
@@ -166,10 +161,30 @@ export default function DCREntryPage() {
 
         <h1 className="mb-1 text-2xl font-bold text-foreground">DCR 信息互助</h1>
         <p className="mb-8 text-sm text-muted-foreground">
-          合规信息互助服务模块，四步完成委托审核与入频交流
+          合规信息互助服务模块，先通过入频测试获取访问权限
         </p>
 
-        {/* 四步流程 */}
+        {/* Gate: no dcrAccess → prompt to take quiz */}
+        {!loading && !hasDcrAccess && (
+          <div className="mb-8 rounded-2xl border-2 border-blue-300 bg-blue-50/50 p-6 text-center shadow-md dark:border-blue-700/50 dark:bg-blue-950/20">
+            <GraduationCap className="mx-auto mb-3 h-10 w-10 text-blue-600 dark:text-blue-400" />
+            <h2 className="mb-2 text-lg font-semibold">入频测试</h2>
+            <p className="mb-4 text-sm text-muted-foreground">
+              你需要通过入频测试了解 DCR 互助区规则后，才能提交委托表和参与互助交流。
+              测试共 5 题，达到 80% 正确率即为通过。
+            </p>
+            <Button asChild size="lg">
+              <Link href="/dcr/quiz">
+                参加入频测试
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        )}
+
+        {/* 四步流程 — only visible to users with dcrAccess */}
+        {!loading && hasDcrAccess && (
+        <>
         <div className="space-y-3">
           {steps.map((step, i) => {
             const Icon = step.icon;
@@ -245,6 +260,8 @@ export default function DCREntryPage() {
             <Link href="/kb">浏览知识库与政策模板</Link>
           </Button>
         </div>
+        )}
+        {/* End: dcrAccess-only content */}
 
         {/* 页面底部 */}
         <div className="mt-8 rounded-lg bg-muted/30 px-4 py-3">

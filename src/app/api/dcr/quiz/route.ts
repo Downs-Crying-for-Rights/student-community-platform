@@ -10,10 +10,10 @@ import { quizAnswerSchema } from "@/lib/validators";
 
 /**
  * GET /api/dcr/quiz
- * Fetch 5 random quiz questions for the authenticated user.
+ * Fetch 5 random quiz questions. No APPROVED case required —
+ * quiz is the entry gate to DCR.
  * - quizPassed=true → 409 "已通过考核"
- * - No APPROVED 委托表 → 403 "请先完成委托表审核"
- * - Otherwise → 200 with 5 questions (correctKey stripped)
+ * - Otherwise → 200 with 5 questions
  */
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   try {
@@ -28,23 +28,26 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       return NextResponse.json({ error: "已通过考核" }, { status: 409 });
     }
 
-    // 检查是否有 APPROVED 委托表（审核通过才有考核资格）
-    const approvedCase = await prisma.case.findFirst({
-      where: { submitterId: userId, requestStatus: "APPROVED" },
+    // Try DB questions first, fall back to hardcoded
+    const dbQuestions = await prisma.quizQuestion.findMany({
+      where: { active: true },
+      take: 5,
     });
 
-    if (!approvedCase) {
-      return NextResponse.json(
-        { error: "请先完成委托表审核，审核通过后方可参加入频考核" },
-        { status: 403 },
-      );
+    let questions: { id: string; text: string; options: { key: string; label: string }[] }[];
+    if (dbQuestions.length >= 5) {
+      // Shuffle and pick 5 from DB
+      const shuffled = dbQuestions.sort(() => Math.random() - 0.5).slice(0, 5);
+      questions = shuffled.map((q) => ({
+        id: q.id,
+        text: q.text,
+        options: q.options.map((label, idx) => ({ key: String.fromCharCode(65 + idx), label })),
+      }));
+    } else {
+      // Fallback to hardcoded questions
+      const { pickRandomQuestions } = await import("@/lib/dcr-quiz-data");
+      questions = pickRandomQuestions(5).map(({ id, text, options }) => ({ id, text, options }));
     }
-
-    const questions = pickRandomQuestions(5).map(({ id, text, options }) => ({
-      id,
-      text,
-      options,
-    }));
 
     return NextResponse.json({ questions });
   } catch (error) {
@@ -78,33 +81,54 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { answers } = parsed.data;
+    // Build answer map: try DB first, fall back to hardcoded
+    const { answers: userAnswers } = parsed.data;
+    const questionIds = userAnswers.map((a) => a.questionId);
 
-    // Build a lookup map for the quiz questions
-    const questionMap = new Map(QUIZ_QUESTIONS.map((q) => [q.id, q]));
+    const dbQs = await prisma.quizQuestion.findMany({
+      where: { id: { in: questionIds } },
+    });
 
-    // Match submitted questionIds to actual questions
-    const matchedQuestions = answers
-      .map((a) => questionMap.get(a.questionId))
-      .filter((q): q is NonNullable<typeof q> => q != null);
+    let matchedCount: number;
+    let correctCount: number;
 
-    if (matchedQuestions.length !== answers.length) {
-      return NextResponse.json(
-        { error: "包含无效的题目 ID" },
-        { status: 400 },
-      );
+    if (dbQs.length >= 5) {
+      // DB-based grading: convert letter key to index (A=0, B=1, ...) and compare
+      matchedCount = dbQs.length;
+      correctCount = 0;
+      for (const a of userAnswers) {
+        const q = dbQs.find((d) => d.id === a.questionId);
+        const selectedIndex = a.selectedKey.charCodeAt(0) - "A".charCodeAt(0);
+        if (q && selectedIndex === q.answer) correctCount++;
+      }
+    } else {
+      // Fallback to hardcoded grading
+      const questionMap = new Map(QUIZ_QUESTIONS.map((q) => [q.id, q]));
+      const matchedQuestions = userAnswers
+        .map((a) => questionMap.get(a.questionId))
+        .filter((q): q is NonNullable<typeof q> => q != null);
+
+      if (matchedQuestions.length !== userAnswers.length) {
+        return NextResponse.json({ error: "包含无效的题目 ID" }, { status: 400 });
+      }
+
+      const result = gradeQuiz(matchedQuestions, userAnswers);
+      matchedCount = result.total;
+      correctCount = result.correctCount;
     }
 
-    const result = gradeQuiz(matchedQuestions, answers);
+    const total = matchedCount;
+    const score = correctCount;
+    const passed = score / total >= 0.8;
 
-    if (result.passed) {
+    if (passed) {
       await prisma.user.update({
         where: { id: userId },
         data: { quizPassed: true, dcrAccess: true },
       });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json({ passed, score, total });
   } catch (error) {
     console.error("POST /api/dcr/quiz error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

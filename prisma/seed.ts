@@ -232,6 +232,27 @@ export async function main() {
   });
   console.log(`✅ 新手测验题目已创建: ${quizQuestions.length} 题`);
 
+  // ========== Quiz Questions (入频考核) ==========
+
+  const quizQs = [
+    { text: "DCR互助区委托表中，以下哪项是必须如实提供的？", options: ["学校名称和地址", "个人手机号码", "家庭收入情况", "个人兴趣爱好"], answer: 0 },
+    { text: "以下哪种行为违反了DCR互助区的隐私保护规定？", options: ["使用匿名方式描述问题", "在工单中公开教师的身份证号码", "描述违规行为的具体时间和地点", "上传学校公开发布的通知截图"], answer: 1 },
+    { text: "提交委托表时，以下哪项是正确的做法？", options: ["使用真实姓名以便核实", "移除所有可识别个人信息", "留下手机号方便联系", "在委托表中添加其他同学的真实姓名"], answer: 1 },
+    { text: "DCR互助区的核心功能是什么？", options: ["代办法律诉讼", "信息交流与合规参考", "组织线下活动", "代替家长维权"], answer: 1 },
+    { text: "平台关于AI生成内容的声明是什么？", options: ["AI保证完全准确", "AI生成内容仅供参考", "AI可以替代律师", "AI会自动提交举报"], answer: 1 },
+    { text: "遇到委托表审核不通过时，应如何操作？", options: ["重新提交相同内容", "查看审核意见并补充所需信息", "放弃使用该功能", "直接联系管理员要求通过"], answer: 1 },
+    { text: "以下哪项不属于DCR互助区支持的内容类型？", options: ["学校补课类", "违规收费类", "个人感情咨询", "假期补课类"], answer: 2 },
+    { text: "委托表的'自愿自主声明'意味着什么？", options: ["平台代替你做决定", "你确认自愿提交真实信息并自行承担相关责任", "可以随意填写虚假信息", "提交后无法修改"], answer: 1 },
+  ];
+
+  for (const q of quizQs) {
+    const existing = await prisma.quizQuestion.findFirst({ where: { text: q.text } });
+    if (!existing) {
+      await prisma.quizQuestion.create({ data: q });
+    }
+  }
+  console.log(`✅ 入频考核题目已创建: ${quizQs.length} 题`);
+
   console.log("🎉 种子数据播种完成！");
 }
 

@@ -858,3 +858,16 @@ model MutualAidLink {
   @@index([fromUserId, status])
   @@index([toUserId, status])
 }
+
+// ==================== 入频考核题目 ====================
+
+model QuizQuestion {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  text    String   // 题目
+  options String[] // 4个选项
+  answer  Int      // 正确答案索引 (0-3)
+  active  Boolean  @default(true)
+}
