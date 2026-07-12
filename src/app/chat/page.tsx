@@ -31,6 +31,7 @@ export default function ChatListPage() {
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newType, setNewType] = useState<"PUBLIC" | "PRIVATE">("PUBLIC");
+  const [newJoinMode, setNewJoinMode] = useState<"DIRECT" | "APPROVAL">("DIRECT");
   const [creating, setCreating] = useState(false);
 
   const fetchRooms = useCallback(async () => {
