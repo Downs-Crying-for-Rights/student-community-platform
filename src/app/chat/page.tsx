@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle, Plus, Users, Lock, Hash } from "lucide-react";
+import { MessageCircle, Plus, Users, Lock, Hash, Shield, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TopBar } from "@/components/layout/TopBar";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
@@ -56,7 +57,7 @@ export default function ChatListPage() {
       const res = await fetch("/api/chat/rooms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), description: newDesc.trim(), type: newType }),
+        body: JSON.stringify({ name: newName.trim(), description: newDesc.trim(), type: newType, joinMode: newJoinMode }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -112,9 +113,12 @@ export default function ChatListPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-medium truncate">{room.name}</span>
-                      {room.type === "PRIVATE" && (
-                        <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
-                      )}
+                  {room.type === "PRIVATE" && (
+                    <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+                  )}
+                  {room.joinMode === "APPROVAL" && (
+                    <Shield className="h-3 w-3 text-amber-500 shrink-0" />
+                  )}
                     </div>
                     {room.lastMessage ? (
                       <p className="text-xs text-muted-foreground truncate">
@@ -183,6 +187,29 @@ export default function ChatListPage() {
                   </Button>
                 </div>
               </div>
+              {newType === "PUBLIC" && (
+                <div>
+                  <label className="text-sm font-medium">加入方式</label>
+                  <div className="mt-1 flex gap-2">
+                    <Button
+                      type="button"
+                      variant={newJoinMode === "DIRECT" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setNewJoinMode("DIRECT")}
+                    >
+                      <LogIn className="mr-1 h-4 w-4" />自由加入
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={newJoinMode === "APPROVAL" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setNewJoinMode("APPROVAL")}
+                    >
+                      <Shield className="mr-1 h-4 w-4" />审核加入
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 justify-end">
                 <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>取消</Button>
                 <Button type="submit" disabled={creating || !newName.trim()}>

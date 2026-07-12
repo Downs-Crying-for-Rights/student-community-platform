@@ -41,6 +41,7 @@ export default function ChatRoomPage() {
   const [sending, setSending] = useState(false);
   const [joining, setJoining] = useState(false);
   const [isMember, setIsMember] = useState(false);
+  const [requestStatus, setRequestStatus] = useState<string | null>(null); // PENDING | APPROVED | REJECTED
   const scrollRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -53,7 +54,20 @@ export default function ChatRoomPage() {
       }
       const data = await res.json();
       setRoom(data.room);
-      setIsMember(data.room.members.some((m: { id: string }) => m.id === userId));
+      const member = data.room.members.some((m: { id: string }) => m.id === userId);
+      setIsMember(member);
+
+      // Check pending join request if approval mode and not a member
+      if (!member && data.room.joinMode === "APPROVAL") {
+        try {
+          const reqRes = await fetch(`/api/chat/rooms/${roomId}/join-requests`);
+          if (reqRes.ok) {
+            const reqData = await reqRes.json();
+            const myReq = reqData.requests?.find((r: { userId: string; status: string }) => r.userId === userId);
+            if (myReq) setRequestStatus(myReq.status);
+          }
+        } catch { /* ignore */ }
+      }
     } catch { /* ignore */ }
   }, [roomId, userId, router]);
 
@@ -112,11 +126,18 @@ export default function ChatRoomPage() {
   async function handleJoin() {
     setJoining(true);
     try {
-      const res = await fetch(`/api/chat/rooms/${roomId}`, { method: "POST" });
+      const url = room?.joinMode === "APPROVAL"
+        ? `/api/chat/rooms/${roomId}/join-requests`
+        : `/api/chat/rooms/${roomId}`;
+      const res = await fetch(url, { method: "POST" });
       if (res.ok) {
-        setIsMember(true);
+        if (room?.joinMode === "APPROVAL") {
+          setRequestStatus("PENDING");
+        } else {
+          setIsMember(true);
+          fetchMessages();
+        }
         fetchRoom();
-        fetchMessages();
       } else {
         const data = await res.json();
         alert(data.error || "加入失败");
@@ -163,11 +184,28 @@ export default function ChatRoomPage() {
               {room?.memberCount ?? 0} 名成员
             </p>
           </div>
-          {!isMember && room?.type === "PUBLIC" && (
-            <Button size="sm" onClick={handleJoin} disabled={joining}>
-              <LogIn className="mr-1 h-4 w-4" />
-              {joining ? "加入中..." : "加入"}
-            </Button>
+          {!isMember && room?.type === "PUBLIC" && requestStatus !== "PENDING" && (
+            room.joinMode === "APPROVAL" ? (
+              <Button size="sm" onClick={handleJoin} disabled={joining}>
+                <LogIn className="mr-1 h-4 w-4" />
+                {joining ? "提交中..." : "申请加入"}
+              </Button>
+            ) : (
+              <Button size="sm" onClick={handleJoin} disabled={joining}>
+                <LogIn className="mr-1 h-4 w-4" />
+                {joining ? "加入中..." : "加入"}
+              </Button>
+            )
+          )}
+          {requestStatus === "PENDING" && (
+            <span className="text-xs text-amber-600 bg-amber-100 dark:bg-amber-900/30 px-2 py-1 rounded">
+              审核中...
+            </span>
+          )}
+          {requestStatus === "REJECTED" && (
+            <span className="text-xs text-red-600 bg-red-100 dark:bg-red-900/30 px-2 py-1 rounded">
+              已拒绝 · <button onClick={handleJoin} className="underline hover:no-underline">重新申请</button>
+            </span>
           )}
         </div>
 

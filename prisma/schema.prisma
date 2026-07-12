@@ -808,12 +808,14 @@ model ChatRoom {
   description String?  @default("")
   type        String   @default("PUBLIC") // PUBLIC | PRIVATE
   status      String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  joinMode    String   @default("DIRECT") // DIRECT | APPROVAL
   createdById String
   createdBy   User     @relation("ChatRoomCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   members  ChatRoomMember[]
+  joinRequests ChatRoomJoinRequest[]
   messages ChatMessage[]
 
   @@index([type, updatedAt])
@@ -832,6 +834,21 @@ model ChatRoomMember {
   @@unique([roomId, userId])
   @@index([userId])
   @@index([roomId])
+}
+
+model ChatRoomJoinRequest {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId    String
+  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, userId]) // Only one join request per room per user (reapply updates status)
+  @@index([roomId, status])
+  @@index([userId])
 }
 
 model ChatMessage {

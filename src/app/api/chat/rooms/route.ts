@@ -58,6 +58,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       name: r.name,
       description: r.description,
       type: r.type,
+      joinMode: r.joinMode,
       createdBy: r.createdBy,
       memberCount: r._count.members,
       lastMessage: r.messages[0] ?? null,
@@ -93,6 +94,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         name,
         description: description ?? "",
         type,
+        joinMode,
         createdById: userId,
         members: {
           create: {

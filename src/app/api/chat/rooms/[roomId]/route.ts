@@ -43,6 +43,7 @@ export const GET = withAuth(async (
         name: room.name,
         description: room.description,
         type: room.type,
+        joinMode: room.joinMode,
         createdBy: room.createdBy,
         members: room.members.map((m) => ({
           role: m.role,
