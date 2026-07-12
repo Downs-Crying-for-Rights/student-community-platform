@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { TopBar } from "@/components/layout/TopBar";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { BottomNav } from "@/components/layout/BottomNav";
 
 interface ChatRoom {
   id: string;
@@ -68,7 +71,10 @@ export default function ChatListPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-2xl px-4 py-6">
+      <TopBar />
+      <Sidebar />
+
+      <main className="mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold flex items-center gap-2">
             <MessageCircle className="h-5 w-5" />
@@ -186,7 +192,8 @@ export default function ChatListPage() {
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+      </main>
+      <BottomNav />
     </div>
   );
 }

@@ -24,6 +24,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const [rooms, total] = await Promise.all([
       prisma.chatRoom.findMany({
         where: {
+          status: "APPROVED",
           OR: [
             { type: "PUBLIC" },
             { members: { some: { userId } } },

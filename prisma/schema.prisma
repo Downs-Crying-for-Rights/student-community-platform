@@ -807,6 +807,7 @@ model ChatRoom {
   name        String
   description String?  @default("")
   type        String   @default("PUBLIC") // PUBLIC | PRIVATE
+  status      String   @default("PENDING") // PENDING | APPROVED | REJECTED
   createdById String
   createdBy   User     @relation("ChatRoomCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())

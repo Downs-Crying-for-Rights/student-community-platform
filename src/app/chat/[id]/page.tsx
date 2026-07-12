@@ -7,6 +7,9 @@ import { ArrowLeft, Send, LogIn, Users, Hash, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { TopBar } from "@/components/layout/TopBar";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { BottomNav } from "@/components/layout/BottomNav";
 
 interface Message {
   id: string;
@@ -136,38 +139,40 @@ export default function ChatRoomPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="flex items-center gap-3 border-b px-4 py-3">
-        <Button variant="ghost" size="icon" onClick={() => router.push("/chat")}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            {room?.type === "PRIVATE" ? (
-              <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            ) : (
-              <Hash className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            )}
-            <h1 className="text-sm font-semibold truncate">{room?.name ?? "加载中..."}</h1>
-          </div>
-          {room && (
+    <div className="min-h-screen bg-background">
+      <TopBar />
+      <Sidebar />
+
+      <main className="mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60">
+        {/* Back button + Room info */}
+        <div className="mb-3 flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => router.push("/chat")}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              {room?.type === "PRIVATE" ? (
+                <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              ) : (
+                <Hash className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              )}
+              <h1 className="text-base font-semibold truncate">{room?.name ?? "加载中..."}</h1>
+            </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Users className="h-3 w-3" />
-              {room.memberCount} 名成员
+              {room?.memberCount ?? 0} 名成员
             </p>
+          </div>
+          {!isMember && room?.type === "PUBLIC" && (
+            <Button size="sm" onClick={handleJoin} disabled={joining}>
+              <LogIn className="mr-1 h-4 w-4" />
+              {joining ? "加入中..." : "加入"}
+            </Button>
           )}
         </div>
-        {!isMember && room?.type === "PUBLIC" && (
-          <Button size="sm" onClick={handleJoin} disabled={joining}>
-            <LogIn className="mr-1 h-4 w-4" />
-            {joining ? "加入中..." : "加入"}
-          </Button>
-        )}
-      </header>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+        {/* Messages */}
+        <div ref={scrollRef} className="max-h-[60vh] overflow-y-auto rounded-lg border bg-card p-3 space-y-2">
         {!isMember ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Lock className="h-10 w-10 text-muted-foreground/40" />
@@ -208,7 +213,7 @@ export default function ChatRoomPage() {
 
       {/* Input */}
       {isMember && (
-        <form onSubmit={handleSend} className="flex items-center gap-2 border-t px-4 py-3">
+        <form onSubmit={handleSend} className="mt-3 flex items-center gap-2">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -222,6 +227,8 @@ export default function ChatRoomPage() {
           </Button>
         </form>
       )}
+      </main>
+      <BottomNav />
     </div>
   );
 }
