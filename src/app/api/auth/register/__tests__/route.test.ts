@@ -3,8 +3,8 @@ import { NextRequest } from "next/server";
 import { POST } from "../route";
 
 // Mock prisma
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const client: any = {
     user: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -13,8 +13,10 @@ vi.mock("@/lib/prisma", () => ({
     session: {
       create: vi.fn(),
     },
-  },
-}));
+  };
+  client.$transaction = vi.fn((callback) => callback(client));
+  return { prisma: client, default: client };
+});
 
 // Mock bcryptjs
 vi.mock("bcryptjs", () => ({
@@ -41,12 +43,14 @@ const validBody = {
   email: "test@example.com",
   password: "password123",
   phone: "13800138000",
+  nickname: "测试用户",
   code: "123456",
 };
 
 describe("POST /api/auth/register", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(verifyCode).mockResolvedValue(true);
   });
 
   it("should return 400 for invalid input", async () => {
@@ -124,6 +128,7 @@ describe("POST /api/auth/register", () => {
         email: "test@example.com",
         passwordHash: "hashed_password",
         phone: "13800138000",
+        nickname: "测试用户",
       },
     });
   });

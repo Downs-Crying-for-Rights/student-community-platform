@@ -553,6 +553,7 @@ function LoginContent() {
       email: regEmail.trim(),
       password: regPassword,
       phone: regPhone.trim(),
+      nickname: regNickname.trim(),
       code: regCode.trim(),
     });
 

@@ -54,7 +54,7 @@ vi.mock("@/lib/sms/verification", () => ({
   verifyCode: vi.fn(),
 }));
 
-import { authOptions } from "../auth";
+import { authOptions, escapeHtmlAttribute } from "../auth";
 import bcrypt from "bcryptjs";
 import { verifyCode } from "@/lib/sms/verification";
 import QQProvider, { parseCallbackResponse } from "../auth/qq-provider";
@@ -67,6 +67,12 @@ describe("NextAuth 配置", () => {
   });
 
   describe("魔法链接配置", () => {
+    it("应转义 HTML 链接中的查询参数分隔符", () => {
+      expect(escapeHtmlAttribute('https://example.com/callback?a=1&b="2"')).toBe(
+        "https://example.com/callback?a=1&amp;b=&quot;2&quot;",
+      );
+    });
+
     it("应配置15分钟的魔法链接有效期", () => {
       const emailProvider = authOptions.providers[0] as unknown as Record<string, unknown>;
       expect(emailProvider.maxAge).toBe(15 * 60);
@@ -324,34 +330,15 @@ describe("NextAuth 配置", () => {
       ).rejects.toThrow("验证码错误或已过期");
     });
 
-    it("手机号不存在时应自动创建新用户", async () => {
+    it("手机号不存在时应要求先完成注册", async () => {
       const authorize = getSmsAuthorize();
       vi.mocked(verifyCode).mockResolvedValueOnce(true);
       mockFindFirst.mockResolvedValueOnce(null); // No existing user
-      mockCreate.mockResolvedValueOnce({
-        id: "new-user-1",
-        email: null,
-        nickname: null,
-        role: "USER",
-        phone: "13900139000",
-      });
 
-      const result = await authorize({
-        phone: "13900139000",
-        code: "888888",
-      });
-
-      expect(result).toEqual({
-        id: "new-user-1",
-        email: null,
-        name: null,
-        role: "USER",
-        phone: "13900139000",
-      });
-      expect(mockCreate).toHaveBeenCalledWith({
-        data: { phone: "13900139000" },
-        select: { id: true, email: true, nickname: true, role: true, phone: true },
-      });
+      await expect(
+        authorize({ phone: "13900139000", code: "888888" }),
+      ).rejects.toThrow("手机号未注册，请通过注册页完成注册");
+      expect(mockCreate).not.toHaveBeenCalled();
     });
   });
 });

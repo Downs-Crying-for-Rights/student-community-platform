@@ -10,6 +10,14 @@ import bcrypt from "bcryptjs";
 import { loginPasswordSchema, loginSmsSchema } from "@/lib/validators";
 import { verifyCode } from "@/lib/sms/verification";
 
+export function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 // ==================== QQ OAuth (dynamic import to avoid build crash) ====================
 
 async function getQQProvider() {
@@ -43,6 +51,7 @@ export const authOptions: NextAuthOptions = {
       maxAge: 15 * 60,
       async sendVerificationRequest({ identifier: email, url, provider }) {
         const transport = nodemailer.createTransport(provider.server);
+        const escapedUrl = escapeHtmlAttribute(url);
         await transport.sendMail({
           to: email,
           from: provider.from,
@@ -52,7 +61,7 @@ export const authOptions: NextAuthOptions = {
             <div style="max-width: 480px; margin: 0 auto; font-family: sans-serif;">
               <h2 style="color: #1a1a1a;">登录学生交流社区</h2>
               <p>点击下方按钮登录您的账户：</p>
-              <a href="${url}" style="display: inline-block; padding: 12px 24px; background: #1a1a1a; color: #fff; text-decoration: none; border-radius: 8px; margin: 16px 0;">
+              <a href="${escapedUrl}" style="display: inline-block; padding: 12px 24px; background: #1a1a1a; color: #fff; text-decoration: none; border-radius: 8px; margin: 16px 0;">
                 登录
               </a>
               <p style="color: #666; font-size: 14px;">此链接将在 15 分钟后过期。如果您没有请求此邮件，请忽略。</p>
