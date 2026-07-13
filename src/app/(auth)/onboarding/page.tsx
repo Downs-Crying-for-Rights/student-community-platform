@@ -322,13 +322,10 @@ export default function OnboardingPage() {
         setError(data.error || "提交失败，请重试");
         return;
       }
-      // 刷新 JWT 以同步 onboardingDone/quizPassed，避免 middleware 重复拦截
-      try {
-        await session?.update();
-      } catch { /* session update failure is non-critical */ }
-
-      router.push("/");
-      router.refresh();
+      // 刷新 JWT 以同步 onboardingDone/quizPassed
+      // wait for update to complete, then hard-refresh so cookie is sent to server
+      await session?.update();
+      window.location.href = "/";
     } catch {
       setError("网络错误，请检查网络连接后重试");
     } finally {

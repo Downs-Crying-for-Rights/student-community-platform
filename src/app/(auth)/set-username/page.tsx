@@ -59,11 +59,9 @@ function SetUsernameContent() {
         return;
       }
 
-      // 刷新 session 以同步昵称（非关键，失败不影响导航）
-      try { await update(); } catch { /* ignore */ }
-
-      const callbackUrl = searchParams.get("callbackUrl") || "/";
-      router.push(callbackUrl);
+      // 刷新 session 以同步昵称，硬刷新确保 cookie 已写入
+      await update();
+      window.location.href = searchParams.get("callbackUrl") || "/";
     } catch {
       setError("网络错误，请检查连接后重试");
     } finally {
