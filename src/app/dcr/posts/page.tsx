@@ -2,9 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Lock } from "lucide-react";
-import { TopBar } from "@/components/layout/TopBar";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { WaterfallGrid } from "@/components/feed/WaterfallGrid";
 import { PostCard, type PostCardProps } from "@/components/feed/PostCard";
 import { CardSkeleton } from "@/components/shared/Skeleton";
@@ -170,10 +167,8 @@ export default function DCRPostsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopBar />
-      <Sidebar />
 
-      <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60")}>
+      <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4")}>
         {/* Header */}
         <div className="mb-4 flex items-center gap-2">
           <Lock className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
@@ -240,7 +235,6 @@ export default function DCRPostsPage() {
         )}
       </main>
 
-      <BottomNav />
     </div>
   );
 }

@@ -4,9 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Shield, FileText, AlertTriangle, User, Filter } from "lucide-react";
-import { TopBar } from "@/components/layout/TopBar";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -166,12 +163,9 @@ export default function ModerationPage() {
   if (sessionStatus === "loading") {
     return (
       <div className="min-h-screen bg-background">
-        <TopBar />
-        <Sidebar />
         <main className="mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60">
           <ListSkeleton count={4} />
         </main>
-        <BottomNav />
       </div>
     );
   }
@@ -179,8 +173,6 @@ export default function ModerationPage() {
   if (!canAccessModeration(userRole)) {
     return (
       <div className="min-h-screen bg-background">
-        <TopBar />
-        <Sidebar />
         <main className="mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60">
           <div className="flex flex-col items-center justify-center py-20">
             <Shield className="mb-4 h-16 w-16 text-destructive" aria-hidden="true" />
@@ -193,7 +185,6 @@ export default function ModerationPage() {
             </Button>
           </div>
         </main>
-        <BottomNav />
       </div>
     );
   }
@@ -249,9 +240,6 @@ export default function ModerationPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopBar />
-      <Sidebar />
-
       <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60")}>
         {/* Header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -443,7 +431,6 @@ export default function ModerationPage() {
         </DialogContent>
       </Dialog>
 
-      <BottomNav />
     </div>
   );
 }

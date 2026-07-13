@@ -1,6 +1,5 @@
 "use client";
 
-import { PageShell } from "@/components/layout/PageShell";
 import { Suspense } from "react";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -74,7 +73,7 @@ const TAB_OPTIONS: { value: RequestStatus | "ALL"; label: string }[] = [
 
 export default function RequestsPage() {
   return (
-    <PageShell>
+    <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
       <Suspense fallback={
         <div className="min-h-screen flex items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -82,7 +81,7 @@ export default function RequestsPage() {
       }>
         <RequestsContent />
       </Suspense>
-    </PageShell>
+    </div>
   );
 }
 

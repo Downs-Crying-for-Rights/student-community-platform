@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PageShell } from "@/components/layout/PageShell";
 import { PsychLayout, getCrisisHotlines } from "@/components/psych/PsychLayout";
 
 /* ========== Pure Helper Functions (exported for testing) ========== */
@@ -77,7 +76,7 @@ export default function PsychMainPage() {
   const hotlines = getCrisisHotlines();
 
   return (
-    <PageShell>
+    <div className="min-h-screen bg-background">
       <PsychLayout>
         <div className="mx-auto max-w-2xl px-4 py-8">
         {/* Header */}
@@ -186,6 +185,6 @@ export default function PsychMainPage() {
         </div>
         </div>
       </PsychLayout>
-    </PageShell>
+    </div>
   );
 }

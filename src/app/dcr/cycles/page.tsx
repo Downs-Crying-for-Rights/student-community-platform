@@ -1,6 +1,5 @@
 "use client";
 
-import { PageShell } from "@/components/layout/PageShell";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -85,7 +84,7 @@ export default function CyclesPage() {
   useEffect(() => { fetchCycles(); }, [fetchCycles]);
 
   return (
-    <PageShell>
+    <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-2xl px-4 py-8">
         <div className="flex items-center justify-between mb-6">
         <div>
@@ -143,6 +142,6 @@ export default function CyclesPage() {
         </div>
       )}
     </div>
-    </PageShell>
+    </div>
   );
 }

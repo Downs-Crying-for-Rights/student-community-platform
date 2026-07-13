@@ -1,6 +1,5 @@
 "use client";
 
-import { PageShell } from "@/components/layout/PageShell";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Plus, Loader2, ChevronRight } from "lucide-react";
@@ -170,8 +169,7 @@ export default function TaskFeedPage() {
   };
 
   return (
-    <PageShell>
-      <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
+    <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
         <div className="mx-auto max-w-2xl px-4 py-8">
           {/* Privacy Banner */}
           <div className="mb-6">
@@ -323,6 +321,5 @@ export default function TaskFeedPage() {
         )}
       </div>
     </div>
-    </PageShell>
   );
 }

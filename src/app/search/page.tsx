@@ -5,9 +5,6 @@ import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { Hash, User } from "lucide-react";
-import { TopBar } from "@/components/layout/TopBar";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { PostCard, type PostCardProps } from "@/components/feed/PostCard";
 import { WaterfallGrid } from "@/components/feed/WaterfallGrid";
 import { CardSkeleton, ListSkeleton } from "@/components/shared/Skeleton";
@@ -131,12 +128,9 @@ export default function SearchPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-background">
-        <TopBar />
-        <Sidebar />
-        <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60")}>
+        <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4")}>
           <CardSkeleton count={4} />
         </main>
-        <BottomNav />
       </div>
     }>
       <SearchContent />
@@ -221,10 +215,7 @@ function SearchContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopBar />
-      <Sidebar />
-
-      <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60")}>
+      <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4")}>
         {/* Search query heading */}
         {query && (
           <h1 className="mb-4 text-lg font-semibold text-foreground">
@@ -348,8 +339,6 @@ function SearchContent() {
           </p>
         )}
       </main>
-
-      <BottomNav />
     </div>
   );
 }

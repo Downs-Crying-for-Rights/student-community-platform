@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Providers } from "@/components/providers/Providers";
+import { MemberShell } from "@/components/layout/MemberShell";
 import { VersionFooter } from "@/components/layout/VersionFooter";
 import "./globals.css";
 import "@/styles/a11y.css";
@@ -21,7 +22,7 @@ export default function RootLayout({
           <a href="#main-content" className="skip-to-content">
             跳转到主要内容
           </a>
-          <main id="main-content">{children}</main>
+          <MemberShell>{children}</MemberShell>
           <VersionFooter />
         </Providers>
       </body>

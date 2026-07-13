@@ -3,9 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Hash, LayoutGrid, Star, RefreshCw } from "lucide-react";
-import { TopBar } from "@/components/layout/TopBar";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { CardSkeleton, ListSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
@@ -219,10 +216,8 @@ export default function DiscoverPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopBar />
-      <Sidebar />
 
-      <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60")}>
+      <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4")}>
         {/* Page header with refresh */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-lg font-semibold text-foreground">发现</h1>
@@ -310,7 +305,6 @@ export default function DiscoverPage() {
         </section>
       </main>
 
-      <BottomNav />
     </div>
   );
 }

@@ -5,7 +5,6 @@ import { authOptions } from "@/lib/auth";
 import { hasMinimumRole } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { AdminNav } from "@/components/layout/AdminNav";
-import { AdminLayoutClient } from "@/components/layout/AdminLayoutClient";
 import type { Role } from "@prisma/client";
 
 /**
@@ -42,9 +41,9 @@ export default async function AdminLayout({
   }
 
   return (
-    <AdminLayoutClient>
+    <>
       <AdminNav isSuperAdmin={role === "SUPER_ADMIN"} />
       {children}
-    </AdminLayoutClient>
+    </>
   );
 }

@@ -11,7 +11,6 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { PageShell } from "@/components/layout/PageShell";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { formatHelperCaseCount } from "@/lib/dcr-ui-helpers";
 
@@ -156,7 +155,7 @@ export default function HelperDashboardPage() {
   }, [sessionLoaded, hasPermission, fetchCases]);
 
   return (
-    <PageShell className="bg-slate-50/40 dark:bg-slate-950/10">
+    <div className="bg-slate-50/40 dark:bg-slate-950/10 min-h-screen">
       <div className="mx-auto max-w-2xl px-4 py-8">
         {!sessionLoaded ? (
           <div className="flex items-center justify-center py-16">
@@ -239,7 +238,7 @@ export default function HelperDashboardPage() {
           </>
         )}
       </div>
-    </PageShell>
+    </div>
   );
 }
 

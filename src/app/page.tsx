@@ -1,9 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TopBar } from "@/components/layout/TopBar";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { WaterfallGrid } from "@/components/feed/WaterfallGrid";
 import { PostCard, type PostCardProps } from "@/components/feed/PostCard";
 import { CardSkeleton } from "@/components/shared/Skeleton";
@@ -138,10 +135,8 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopBar />
-      <Sidebar />
 
-      <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4 lg:ml-60")}>
+      <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4")}>
         {/* 电子扫盲精选 Banner */}
         <div className="mb-5 rounded-2xl bg-gradient-to-r from-indigo-50 via-blue-50 to-cyan-50 p-5 dark:from-indigo-950/30 dark:via-blue-950/20 dark:to-cyan-950/20 border border-indigo-100 dark:border-indigo-800/30">
           <div className="flex items-center gap-2 mb-2">
@@ -255,7 +250,6 @@ export default function HomePage() {
         )}
       </main>
 
-      <BottomNav />
     </div>
   );
 }

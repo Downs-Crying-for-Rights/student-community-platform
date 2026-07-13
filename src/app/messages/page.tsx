@@ -11,9 +11,6 @@ import {
   Settings,
   CheckCheck,
 } from "lucide-react";
-import { TopBar } from "@/components/layout/TopBar";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -265,10 +262,7 @@ export default function MessagesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopBar />
-      <Sidebar />
-
-      <main className={cn("mx-auto max-w-screen-md px-4 pb-24 pt-4 lg:ml-60")}>
+      <main className={cn("mx-auto max-w-screen-md px-4 pb-24 pt-4")}>
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
@@ -342,7 +336,6 @@ export default function MessagesPage() {
         )}
       </main>
 
-      <BottomNav />
     </div>
   );
 }

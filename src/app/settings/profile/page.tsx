@@ -4,9 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { User, Save, Loader2, Lock, Camera } from "lucide-react";
 import Image from "next/image";
-import { TopBar } from "@/components/layout/TopBar";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -259,10 +256,8 @@ export default function SettingsProfilePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopBar />
-      <Sidebar />
 
-      <main className={cn("mx-auto max-w-screen-md px-4 pb-24 pt-4 lg:ml-60")}>
+      <main className={cn("mx-auto max-w-screen-md px-4 pb-24 pt-4")}>
         <h1 className="mb-6 text-2xl font-bold text-foreground">个人设置</h1>
 
         {/* Profile Edit Card */}
@@ -449,7 +444,6 @@ export default function SettingsProfilePage() {
         </Card>
       </main>
 
-      <BottomNav />
-    </div>
+      </div>
   );
 }

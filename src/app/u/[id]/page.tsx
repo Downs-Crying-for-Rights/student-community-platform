@@ -5,9 +5,6 @@ import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import { User, CalendarDays } from "lucide-react";
-import { TopBar } from "@/components/layout/TopBar";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PostCard, type PostCardProps } from "@/components/feed/PostCard";
 import { WaterfallGrid } from "@/components/feed/WaterfallGrid";
@@ -232,10 +229,8 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopBar />
-      <Sidebar />
 
-      <main className={cn("mx-auto max-w-screen-md px-4 pb-24 pt-4 lg:ml-60")}>
+      <main className={cn("mx-auto max-w-screen-md px-4 pb-24 pt-4")}>
         {/* Profile Header */}
         {userLoading ? (
           <div className="mb-6 flex flex-col items-center gap-3 py-8">
@@ -323,7 +318,6 @@ export default function ProfilePage() {
         )}
       </main>
 
-      <BottomNav />
     </div>
   );
 }

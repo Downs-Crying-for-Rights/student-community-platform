@@ -1,6 +1,5 @@
 "use client";
 
-import { PageShell } from "@/components/layout/PageShell";
 import Link from "next/link";
 import {
   BookOpen,
@@ -51,8 +50,7 @@ export default function GuidePage() {
   const sections = getGuideSections();
 
   return (
-    <PageShell>
-      <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
+    <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
         <div className="mx-auto max-w-2xl px-4 py-8">
           <div className="mb-6">
             <PrivacyBanner message="本模块不提供法律建议，仅供信息交流参考" />
@@ -104,6 +102,5 @@ export default function GuidePage() {
           </p>
         </div>
       </div>
-    </PageShell>
   );
 }
