@@ -3,6 +3,31 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 /**
+ * 中间件日志记录 — 写入 SystemLog 表（非阻塞，失败静默降级）
+ */
+async function logMiddlewareEvent(
+  level: string,
+  message: string,
+  req: NextRequest,
+  userId?: string,
+) {
+  try {
+    const { prisma: db } = await import("@/lib/prisma");
+    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || null;
+    await db.systemLog.create({
+      data: {
+        level: level as any,
+        source: "middleware",
+        message,
+        detail: JSON.stringify({ path: req.nextUrl.pathname, method: req.method }),
+        ip: ip?.split(",")[0]?.trim() ?? null,
+        userId: userId ?? null,
+      },
+    });
+  } catch { /* 日志写入失败不影响业务流程 */ }
+}
+
+/**
  * 设置用户名相关路径 — 未设昵称时唯一可访问的路径
  */
 const SET_USERNAME_PATHS = ["/set-username", "/api/auth/username"];
@@ -77,12 +102,17 @@ export default async function middleware(req: NextRequest) {
 
   // 未认证 → 重定向至登录页
   if (!token) {
+    // 仅记录已知路径的未认证访问（避免 API 轮询噪声）
+    if (!pathname.startsWith("/api/") && !pathname.startsWith("/_next/")) {
+      logMiddlewareEvent("WARN", `未认证访问: ${pathname}`, req);
+    }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", req.url);
     return NextResponse.redirect(loginUrl);
   }
 
   const pathname = req.nextUrl.pathname;
+  const uid = (token.sub || (token as any).id || (token as any).userId) as string;
 
   // ========== 第1优先级：强制设置用户名 ==========
   // 未设昵称时，仅允许访问 /set-username 和相关 API
@@ -95,6 +125,7 @@ export default async function middleware(req: NextRequest) {
     }
 
     if (!hasNickname) {
+      logMiddlewareEvent("WARN", `用户 ${uid} 未设置昵称 → 重定向到 /set-username`, req, uid);
       return NextResponse.redirect(new URL("/set-username", req.url));
     }
   }
@@ -112,6 +143,7 @@ export default async function middleware(req: NextRequest) {
         if (user?.phone) return NextResponse.next();
       }
     } catch { /* DB unavailable */ }
+    logMiddlewareEvent("WARN", `用户 ${uid} 未绑定手机号 → 重定向到 /bindphone`, req, uid);
     return NextResponse.redirect(new URL("/bindphone", req.url));
   }
 
@@ -131,7 +163,13 @@ export default async function middleware(req: NextRequest) {
         if (user?.onboardingDone || user?.quizPassed) return NextResponse.next();
       }
     } catch { /* DB unavailable */ }
+    logMiddlewareEvent("WARN", `用户 ${uid} 未完成新手引导 → 重定向到 /onboarding`, req, uid);
     return NextResponse.redirect(new URL("/onboarding", req.url));
+  }
+
+  // 所有检查通过 — 记录正常页面访问日志（API 请求不记录以减少噪声）
+  if (!pathname.startsWith("/api/") && !pathname.startsWith("/_next/")) {
+    logMiddlewareEvent("INFO", `${req.method} ${pathname}`, req, uid);
   }
 
   return NextResponse.next();
