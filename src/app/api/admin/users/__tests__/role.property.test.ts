@@ -93,7 +93,7 @@ describe("Feature: super-admin-role, Property 8: 非 SUPER_ADMIN 不可授予 SU
 
           const { PATCH } = await import("../[id]/role/route");
           const res = await PATCH(makeRequest({ role: "SUPER_ADMIN" }), {
-            params: Promise.resolve({ id: targetId }),
+            params: Promise.resolve({ id: targetId }) as any,
           });
 
           // Non-SUPER_ADMIN operators with insufficient role level get 403 from withAuth

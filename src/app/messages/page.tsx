@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -10,15 +11,34 @@ import {
   Shield,
   Settings,
   CheckCheck,
+  Hash,
+  Lock,
+  Plus,
+  MessageCircle,
+  LogIn,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ListSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
 
 /* ---------- Types ---------- */
+
+interface ChatRoom {
+  id: string;
+  name: string;
+  description: string;
+  type: "PUBLIC" | "PRIVATE";
+  joinMode: string;
+  createdBy: { id: string; nickname: string; avatar: string | null };
+  memberCount: number;
+  lastMessage: { id: string; content: string; createdAt: string } | null;
+  updatedAt: string;
+}
 
 export interface Notification {
   id: string;
@@ -87,6 +107,173 @@ export function formatTime(dateStr: string): string {
 }
 
 /* ---------- Notification Item ---------- */
+
+function getLastRead(roomId: string): string | null {
+  if (typeof window === "undefined") return null;
+  try { return (JSON.parse(localStorage.getItem("chat_last_read") || "{}") as Record<string, string>)[roomId] ?? null; } catch { return null; }
+}
+
+function getChatUnreadCount(room: ChatRoom): number {
+  if (!room.lastMessage) return 0;
+  const lastReadId = getLastRead(room.id);
+  if (!lastReadId) return 1;
+  return room.lastMessage.id !== lastReadId ? 1 : 0;
+}
+
+function ChatRoomList() {
+  const [rooms, setRooms] = useState<ChatRoom[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newType, setNewType] = useState<"PUBLIC" | "PRIVATE">("PUBLIC");
+  const [newJoinMode, setNewJoinMode] = useState<"DIRECT" | "APPROVAL">("DIRECT");
+  const [creating, setCreating] = useState(false);
+
+  const fetchRooms = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/chat/rooms");
+      if (res.ok) {
+        const data = await res.json();
+        setRooms(data.rooms ?? []);
+      }
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchRooms(); }, [fetchRooms]);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setCreating(true);
+    try {
+      const res = await fetch("/api/chat/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), description: newDesc, type: newType, joinMode: newType === "PUBLIC" ? newJoinMode : "APPROVAL" }),
+      });
+      if (res.ok) {
+        setShowCreate(false);
+        setNewName(""); setNewDesc("");
+        fetchRooms();
+      }
+    } catch { /* ignore */ } finally { setCreating(false); }
+  }
+
+  return (
+    <>
+      <div className="mb-4 flex items-center justify-between">
+        <Button size="sm" onClick={() => setShowCreate(true)}>
+          <Plus className="mr-1 h-4 w-4" />创建群聊
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1,2,3].map((i) => (
+            <Card key={i} className="animate-pulse"><CardContent className="p-4 h-16" /></Card>
+          ))}
+        </div>
+      ) : rooms.length === 0 ? (
+        <EmptyState
+          title="暂无群聊"
+          description="创建一个群聊开始交流吧"
+          actionLabel="创建群聊"
+          actionHref="#"
+          onAction={() => setShowCreate(true)}
+        />
+      ) : (
+        <div className="space-y-2">
+          {rooms.map((room) => (
+            <Link key={room.id} href={`/chat/${room.id}`} className="block">
+              <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                    {room.type === "PRIVATE" ? (
+                      <Lock className="h-5 w-5 text-primary" />
+                    ) : (
+                      <Hash className="h-5 w-5 text-primary" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium truncate">{room.name}</span>
+                      {room.type === "PRIVATE" && <Lock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                      {room.joinMode === "APPROVAL" && <Shield className="h-3 w-3 text-amber-500 shrink-0" />}
+                    </div>
+                    {room.lastMessage ? (
+                      <p className="text-xs text-muted-foreground truncate">{room.lastMessage.content.slice(0, 60)}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">暂无消息</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                    {(() => { const c = getChatUnreadCount(room); return c > 0 ? (
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">{c}</span>
+                    ) : null; })()}
+                    <div className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      {room.memberCount}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>创建群聊</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreate} className="space-y-3">
+            <div>
+              <label htmlFor="chat-room-name" className="text-sm font-medium">群聊名称</label>
+              <Input id="chat-room-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="输入群聊名称" maxLength={50} required className="mt-1" />
+            </div>
+            <div>
+              <label htmlFor="chat-room-desc" className="text-sm font-medium">简介（可选）</label>
+              <Input id="chat-room-desc" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="群聊介绍" maxLength={200} className="mt-1" />
+            </div>
+            <div>
+              <label className="text-sm font-medium">类型</label>
+              <div className="mt-1 flex gap-2">
+                <Button type="button" variant={newType === "PUBLIC" ? "default" : "outline"} size="sm" onClick={() => setNewType("PUBLIC")}>
+                  <Hash className="mr-1 h-4 w-4" />公开
+                </Button>
+                <Button type="button" variant={newType === "PRIVATE" ? "default" : "outline"} size="sm" onClick={() => setNewType("PRIVATE")}>
+                  <Lock className="mr-1 h-4 w-4" />私密
+                </Button>
+              </div>
+            </div>
+            {newType === "PUBLIC" && (
+              <div>
+                <label className="text-sm font-medium">加入方式</label>
+                <div className="mt-1 flex gap-2">
+                  <Button type="button" variant={newJoinMode === "DIRECT" ? "default" : "outline"} size="sm" onClick={() => setNewJoinMode("DIRECT")}>
+                    <LogIn className="mr-1 h-4 w-4" />自由加入
+                  </Button>
+                  <Button type="button" variant={newJoinMode === "APPROVAL" ? "default" : "outline"} size="sm" onClick={() => setNewJoinMode("APPROVAL")}>
+                    <Shield className="mr-1 h-4 w-4" />审核加入
+                  </Button>
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2 justify-end">
+              <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>取消</Button>
+              <Button type="submit" disabled={creating || !newName.trim()}>
+                {creating ? "创建中..." : "创建"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 function NotificationItem({
   notification,
@@ -299,13 +486,13 @@ export default function MessagesPage() {
           <Tabs defaultValue="all">
             <TabsList className="mb-4 w-full">
               <TabsTrigger value="all" className="flex-1">
-                全部
+                通知
               </TabsTrigger>
               <TabsTrigger value="interactive" className="flex-1">
-                互动通知
+                互动
               </TabsTrigger>
-              <TabsTrigger value="system" className="flex-1">
-                系统通知
+              <TabsTrigger value="chat" className="flex-1">
+                群聊
               </TabsTrigger>
             </TabsList>
 
@@ -325,12 +512,8 @@ export default function MessagesPage() {
               />
             </TabsContent>
 
-            <TabsContent value="system">
-              <NotificationList
-                notifications={system}
-                onMarkRead={handleMarkRead}
-                onNavigate={handleNavigate}
-              />
+            <TabsContent value="chat">
+              <ChatRoomList />
             </TabsContent>
           </Tabs>
         )}

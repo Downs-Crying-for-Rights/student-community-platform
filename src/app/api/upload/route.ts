@@ -27,7 +27,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const rateLimitKey = `upload:${req.user.id}`;
   const limited = await enforceRateLimit(rateLimitKey, UPLOAD_LIMIT, UPLOAD_WINDOW_MS);
   if (limited) {
-    return limited.response;
+    return limited.response as any;
   }
 
   // 检查 OSS 配置

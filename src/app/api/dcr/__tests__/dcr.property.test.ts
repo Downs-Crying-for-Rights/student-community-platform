@@ -262,7 +262,7 @@ describe("属性 11: 工单状态流转合法性", () => {
         let current: CaseStatus = "OPENED";
         for (const next of sequence) {
           const valid = isValidTransition(current, next);
-          const allowed = VALID_TRANSITIONS[current];
+          const allowed = (VALID_TRANSITIONS as any)[current] as CaseStatus[] | undefined;
           if (allowed && allowed.includes(next)) {
             expect(valid).toBe(true);
             current = next;
@@ -376,7 +376,7 @@ describe("属性 13: CSV 导出二次脱敏", () => {
         for (const [key, value] of Object.entries(desensitized)) {
           if (typeof value === "string") {
             for (const word of SENSITIVE_WORDS) {
-              const originalValue = formData[key];
+              const originalValue = (formData as any)[key];
               if (typeof originalValue === "string" && originalValue.toLowerCase().includes(word.toLowerCase())) {
                 expect(value.toLowerCase()).not.toContain(word.toLowerCase());
               }

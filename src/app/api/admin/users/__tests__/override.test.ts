@@ -78,7 +78,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     mockGetServerSession.mockResolvedValue(null);
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(makeRequest({ reputationScore: 50 }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(401);
   });
@@ -87,7 +87,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     setSession("user1", "USER");
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(makeRequest({ reputationScore: 50 }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(403);
   });
@@ -96,7 +96,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     setSession("admin1", "ADMIN");
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(makeRequest({ reputationScore: 50 }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
     expect(res.status).toBe(403);
@@ -108,7 +108,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     mockUserFindUnique.mockResolvedValue(null);
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(makeRequest({ reputationScore: 50 }), {
-      params: Promise.resolve({ id: "nonexistent" }),
+      params: Promise.resolve({ id: "nonexistent" }) as any,
     });
     const data = await res.json();
     expect(res.status).toBe(404);
@@ -119,7 +119,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     setSession("sa1", "SUPER_ADMIN");
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(makeRequest({}), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
     expect(res.status).toBe(400);
@@ -130,7 +130,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     setSession("sa1", "SUPER_ADMIN");
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(makeRequest({ reputationScore: "abc" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(400);
   });
@@ -144,7 +144,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
 
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(makeRequest({ reputationScore: 500 }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 
@@ -175,7 +175,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(
       makeRequest({ reputationScore: 200, violationCount: 5, psychAccess: true }),
-      { params: Promise.resolve({ id: "u1" }) },
+      { params: Promise.resolve({ id: "u1" }) as any },
     );
     const data = await res.json();
 
@@ -207,7 +207,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(
       makeRequest({ dcrAccess: true, dcrPledgeSigned: true }),
-      { params: Promise.resolve({ id: "u1" }) },
+      { params: Promise.resolve({ id: "u1" }) as any },
     );
 
     expect(res.status).toBe(200);
@@ -227,7 +227,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
 
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(makeRequest({ role: "ADMIN" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 

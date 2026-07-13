@@ -60,7 +60,7 @@ function makeRequest(method: string, body?: unknown): NextRequest {
     init.body = JSON.stringify(body);
     init.headers = { "Content-Type": "application/json" };
   }
-  return new NextRequest(url, init);
+  return new NextRequest(url, init as any);
 }
 
 function setSession(id: string, role: string) {

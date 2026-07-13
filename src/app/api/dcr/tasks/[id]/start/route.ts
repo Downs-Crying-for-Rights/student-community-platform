@@ -20,14 +20,14 @@ export const POST = withAuth(async (
 
     const task = await prisma.mutualAidTask.findUnique({
       where: { id },
-      include: { session: { select: { helperId: true } } },
+      include: { helpSession: { select: { helperId: true } } } as any,
     });
 
     if (!task) {
       return NextResponse.json({ error: "任务不存在" }, { status: 404 });
     }
 
-    if (task.session?.helperId !== userId) {
+    if ((task as any).helpSession?.helperId !== userId) {
       return NextResponse.json({ error: "只有领取该任务的互助人才能开始处理" }, { status: 403 });
     }
 

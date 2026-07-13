@@ -209,11 +209,11 @@ describe("属性 4: 审计日志不可篡改性", () => {
     const deleteManySpy = vi.fn();
     const updateManySpy = vi.fn();
 
-    (prisma.auditLog as Record<string, unknown>).update = updateSpy;
-    (prisma.auditLog as Record<string, unknown>).delete = deleteSpy;
-    (prisma.auditLog as Record<string, unknown>).upsert = upsertSpy;
-    (prisma.auditLog as Record<string, unknown>).deleteMany = deleteManySpy;
-    (prisma.auditLog as Record<string, unknown>).updateMany = updateManySpy;
+    (prisma.auditLog as unknown as Record<string, unknown>).update = updateSpy;
+    (prisma.auditLog as unknown as Record<string, unknown>).delete = deleteSpy;
+    (prisma.auditLog as unknown as Record<string, unknown>).upsert = upsertSpy;
+    (prisma.auditLog as unknown as Record<string, unknown>).deleteMany = deleteManySpy;
+    (prisma.auditLog as unknown as Record<string, unknown>).updateMany = updateManySpy;
 
     await fc.assert(
       fc.asyncProperty(

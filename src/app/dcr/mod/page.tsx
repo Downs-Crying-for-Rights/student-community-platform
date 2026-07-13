@@ -47,7 +47,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   EARLY_START: "提前开学", NO_WEEKENDS: "不双休", EXTERNAL_TRAINING: "校外培训",
 };
 
-const TAB_OPTIONS: { value: ReviewDecision; label: string }[] = [
+const TAB_OPTIONS: { value: ReviewDecision | "PENDING"; label: string }[] = [
   { value: "PENDING", label: "待审核" },
   { value: "NEED_MORE_INFO", label: "需补充" },
   { value: "MANUAL_REVIEW", label: "人工审核" },
@@ -61,7 +61,7 @@ export default function DCRModPage() {
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ReviewDecision>("PENDING");
+  const [activeTab, setActiveTab] = useState<ReviewDecision | "PENDING">("PENDING");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
@@ -129,7 +129,7 @@ export default function DCRModPage() {
           {TAB_OPTIONS.map((tab) => (
             <button
               key={tab.value}
-              onClick={() => { setActiveTab(tab.value); setRejectingId(null); }}
+              onClick={() => { setActiveTab(tab.value as any); setRejectingId(null); }}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 activeTab === tab.value
                   ? "bg-primary text-primary-foreground"

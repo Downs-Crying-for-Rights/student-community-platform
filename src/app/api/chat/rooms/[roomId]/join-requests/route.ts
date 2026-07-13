@@ -37,7 +37,7 @@ export const GET = withAuth(async (
         user: {
           select: { id: true, nickname: true, avatar: true },
         },
-      },
+      } as any,
       orderBy: { createdAt: "asc" },
     });
 

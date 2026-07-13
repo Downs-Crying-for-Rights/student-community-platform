@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import {
-  BINDPHONE_WHITELIST,
-  isBindphoneWhitelisted,
+  AUTH_WHITELIST,
+  isAuthWhitelisted,
 } from "../../middleware";
 
 // ==================== Generators ====================
@@ -16,7 +16,7 @@ const arbPathSuffix = fc.oneof(
 /** Generate a path that starts with one of the whitelist prefixes */
 const arbWhitelistedPath = fc
   .tuple(
-    fc.constantFrom(...BINDPHONE_WHITELIST),
+    fc.constantFrom(...AUTH_WHITELIST),
     arbPathSuffix,
   )
   .map(([prefix, suffix]) => `${prefix}${suffix}`);
@@ -54,7 +54,7 @@ describe("属性 10: 手机号绑定守卫路由规则", () => {
   it("白名单前缀路径应被放行（返回 true）", () => {
     fc.assert(
       fc.property(arbWhitelistedPath, (path) => {
-        expect(isBindphoneWhitelisted(path)).toBe(true);
+        expect(isAuthWhitelisted(path)).toBe(true);
       }),
       { numRuns: 100 },
     );
@@ -64,11 +64,11 @@ describe("属性 10: 手机号绑定守卫路由规则", () => {
     fc.assert(
       fc.property(arbNonWhitelistedPath, (path) => {
         // Verify none of the non-whitelisted prefixes start with a whitelist prefix
-        const startsWithWhitelist = BINDPHONE_WHITELIST.some((wp) =>
+        const startsWithWhitelist = AUTH_WHITELIST.some((wp: string) =>
           path.startsWith(wp)
         );
         expect(startsWithWhitelist).toBe(false);
-        expect(isBindphoneWhitelisted(path)).toBe(false);
+        expect(isAuthWhitelisted(path)).toBe(false);
       }),
       { numRuns: 100 },
     );

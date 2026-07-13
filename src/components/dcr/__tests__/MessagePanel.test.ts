@@ -52,7 +52,7 @@ describe("MessagePanel — 发送表单显示/隐藏逻辑", () => {
 
   it("所有活跃状态都允许发送，所有非活跃状态都禁止", () => {
     const allStatuses: CaseStatus[] = ["OPENED", "IN_PROGRESS", "NEED_MORE_INFO", "CLOSED"];
-    const allowed = allStatuses.filter(canSendMessage);
+    const allowed = allStatuses.filter((s: CaseStatus) => canSendMessage(s));
     const blocked = allStatuses.filter((s) => !canSendMessage(s));
 
     expect(allowed).toEqual(["IN_PROGRESS", "NEED_MORE_INFO"]);

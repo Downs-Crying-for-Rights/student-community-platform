@@ -67,7 +67,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
     mockGetServerSession.mockResolvedValue(null);
     const { POST } = await import("../[id]/ban/route");
     const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(401);
   });
@@ -76,7 +76,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
     setSession("mod1", "MODERATOR");
     const { POST } = await import("../[id]/ban/route");
     const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(403);
   });
@@ -87,7 +87,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
 
     const { POST } = await import("../[id]/ban/route");
     const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "nonexistent" }),
+      params: Promise.resolve({ id: "nonexistent" }) as any,
     });
     const data = await res.json();
 
@@ -101,7 +101,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
 
     const { POST } = await import("../[id]/ban/route");
     const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "admin1" }),
+      params: Promise.resolve({ id: "admin1" }) as any,
     });
     const data = await res.json();
 
@@ -114,7 +114,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
 
     const { POST } = await import("../[id]/ban/route");
     const res = await POST(makeRequest({ action: "invalid" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
 
     expect(res.status).toBe(400);
@@ -129,7 +129,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
 
     const { POST } = await import("../[id]/ban/route");
     const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 
@@ -159,7 +159,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
 
     const { POST } = await import("../[id]/ban/route");
     const res = await POST(makeRequest({ action: "ban", shadowBan: true }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 
@@ -189,7 +189,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
 
     const { POST } = await import("../[id]/ban/route");
     const res = await POST(makeRequest({ action: "unban" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 
@@ -220,7 +220,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
     const { POST } = await import("../[id]/ban/route");
     const res = await POST(
       makeRequest({ action: "ban", reason: "repeated violations" }),
-      { params: Promise.resolve({ id: "u1" }) },
+      { params: Promise.resolve({ id: "u1" }) as any },
     );
 
     expect(res.status).toBe(200);

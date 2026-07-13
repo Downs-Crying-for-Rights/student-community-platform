@@ -102,9 +102,7 @@ export default function CyclesPage() {
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin" /></div>
       ) : cycles.length === 0 ? (
-        <EmptyState icon={Repeat} title="暂无互助循环" description="创建一个三方互助循环，开始互助" action={
-          <Button asChild><Link href="/dcr/cycles/new">创建互助循环</Link></Button>
-        } />
+        <EmptyState icon={Repeat as any} title="暂无互助循环" description="创建一个三方互助循环，开始互助" actionLabel="创建互助循环" actionHref="/dcr/cycles/new" />
       ) : (
         <div className="space-y-3">
           {cycles.map((c) => {

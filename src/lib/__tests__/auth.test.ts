@@ -176,11 +176,11 @@ describe("NextAuth 配置", () => {
 
     it("profile 回调应正确映射 QQ 用户信息", () => {
       const qqProvider = QQProvider({ clientId: "test-id", clientSecret: "test-secret" });
-      const profile = qqProvider.profile!({
+      const profile = (qqProvider.profile!({
         openid: "qq-openid-123",
         nickname: "测试用户",
         figureurl_qq_2: "https://example.com/avatar.jpg",
-      } as any);
+      } as any, {} as any) as any) as { id: string; name: string; image: string };
 
       expect(profile.id).toBe("qq-openid-123");
       expect(profile.name).toBe("测试用户");

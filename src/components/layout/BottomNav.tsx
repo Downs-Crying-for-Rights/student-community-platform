@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Home, Compass, Plus, MessageCircle, Ellipsis,
-  User, MessagesSquare, Shield, ShieldCheck,
+  User, Shield, ShieldCheck,
   FileText, Lock, Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,6 @@ interface MoreItem {
 /** Items shown in the "更多" slide-up sheet */
 const moreItems: MoreItem[] = [
   { href: "/u/me", label: "我的", icon: User },
-  { href: "/chat", label: "群聊", icon: MessagesSquare },
   { href: "/dcr", label: "DCR 互助", icon: ShieldCheck, requireDcrAccess: true },
   { href: "/dcr/tasks", label: "互助任务", icon: FileText, requireDcrAccess: true },
   { href: "/dcr/tickets", label: "我的工单", icon: Lock, requireDcrAccess: true },

@@ -157,8 +157,8 @@ describe("PostDetailPage delete logic", () => {
   });
 
   it("should not identify current user as author when IDs differ", () => {
-    const sessionUserId = "user-2";
-    const postAuthorId = "user-1";
+    const sessionUserId = "user-2" as string;
+    const postAuthorId = "user-1" as string;
     const isAuthor = sessionUserId === postAuthorId;
     expect(isAuthor).toBe(false);
   });

@@ -19,45 +19,39 @@ describe("404 Not Found 页面", () => {
     const NotFound = mod.default;
     const result = NotFound();
     expect(result).toBeDefined();
-    expect(result.type).toBe("div");
+    expect((result as any).type).toBe("div");
   });
 
   it("渲染包含'页面未找到'标题", async () => {
     const mod = await import("../not-found");
     const result = mod.default();
-    const children = result.props.children as React.ReactElement[];
+    const children = (result as any).props.children as any[];
 
-    const h1 = children.find(
-      (child: React.ReactElement) => child?.type === "h1"
-    );
+    const h1 = children.find((child: any) => child?.type === "h1");
     expect(h1).toBeDefined();
-    expect((h1 as React.ReactElement).props.children).toBe("页面未找到");
+    expect((h1 as any).props.children).toBe("页面未找到");
   });
 
   it("包含描述文本", async () => {
     const mod = await import("../not-found");
     const result = mod.default();
-    const children = result.props.children as React.ReactElement[];
+    const children = (result as any).props.children as any[];
 
-    const p = children.find(
-      (child: React.ReactElement) => child?.type === "p"
-    );
+    const p = children.find((child: any) => child?.type === "p");
     expect(p).toBeDefined();
-    expect((p as React.ReactElement).props.children).toContain("不存在");
+    expect((p as any).props.children).toContain("不存在");
   });
 
   it("包含返回首页链接", async () => {
     const mod = await import("../not-found");
     const result = mod.default();
-    const children = result.props.children as React.ReactElement[];
+    const children = (result as any).props.children as any[];
 
     // Find the Button wrapper (has asChild prop)
-    const button = children.find(
-      (child: React.ReactElement) => child?.props?.asChild
-    );
+    const button = children.find((child: any) => child?.props?.asChild);
     expect(button).toBeDefined();
 
-    const link = (button as React.ReactElement).props.children;
+    const link = (button as any).props.children;
     expect(link.props.href).toBe("/");
     expect(link.props.children).toBe("返回首页");
   });
@@ -65,12 +59,12 @@ describe("404 Not Found 页面", () => {
   it("包含装饰性插画 emoji 且标记为 aria-hidden", async () => {
     const mod = await import("../not-found");
     const result = mod.default();
-    const children = result.props.children as React.ReactElement[];
+    const children = (result as any).props.children as any[];
 
     const illustration = children.find(
-      (child: React.ReactElement) => child?.props?.["aria-hidden"] === "true"
+      (child: any) => child?.props?.["aria-hidden"] === "true"
     );
     expect(illustration).toBeDefined();
-    expect((illustration as React.ReactElement).props.children).toBe("🔍");
+    expect((illustration as any).props.children).toBe("🔍");
   });
 });

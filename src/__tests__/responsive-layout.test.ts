@@ -135,7 +135,7 @@ describe("响应式布局验证", () => {
 
     it("帖子详情页底部操作栏应有 max-w-2xl 宽度限制", () => {
       // The fixed bottom action bar also constrains to max-w-2xl
-      expect(source).toMatch(/max-w-2xl.*items-center.*justify-around/s);
+      expect(source).toMatch(/max-w-2xl[\s\S]*items-center[\s\S]*justify-around/);
     });
   });
 

@@ -63,7 +63,7 @@ describe("DELETE /api/admin/invites/[id]", () => {
     mockGetServerSession.mockResolvedValue(null);
     const { DELETE } = await import("../[id]/route");
     const res = await DELETE(makeRequest(), {
-      params: Promise.resolve({ id: "inv1" }),
+      params: Promise.resolve({ id: "inv1" }) as any,
     });
     expect(res.status).toBe(401);
   });
@@ -72,7 +72,7 @@ describe("DELETE /api/admin/invites/[id]", () => {
     setSession("user1", "USER");
     const { DELETE } = await import("../[id]/route");
     const res = await DELETE(makeRequest(), {
-      params: Promise.resolve({ id: "inv1" }),
+      params: Promise.resolve({ id: "inv1" }) as any,
     });
     expect(res.status).toBe(403);
   });
@@ -81,7 +81,7 @@ describe("DELETE /api/admin/invites/[id]", () => {
     setSession("mod1", "MODERATOR");
     const { DELETE } = await import("../[id]/route");
     const res = await DELETE(makeRequest(), {
-      params: Promise.resolve({ id: "inv1" }),
+      params: Promise.resolve({ id: "inv1" }) as any,
     });
     expect(res.status).toBe(403);
   });
@@ -92,7 +92,7 @@ describe("DELETE /api/admin/invites/[id]", () => {
 
     const { DELETE } = await import("../[id]/route");
     const res = await DELETE(makeRequest(), {
-      params: Promise.resolve({ id: "nonexistent" }),
+      params: Promise.resolve({ id: "nonexistent" }) as any,
     });
     const data = await res.json();
 
@@ -111,7 +111,7 @@ describe("DELETE /api/admin/invites/[id]", () => {
 
     const { DELETE } = await import("../[id]/route");
     const res = await DELETE(makeRequest(), {
-      params: Promise.resolve({ id: "inv1" }),
+      params: Promise.resolve({ id: "inv1" }) as any,
     });
     const data = await res.json();
 
@@ -130,7 +130,7 @@ describe("DELETE /api/admin/invites/[id]", () => {
 
     const { DELETE } = await import("../[id]/route");
     const res = await DELETE(makeRequest(), {
-      params: Promise.resolve({ id: "inv1" }),
+      params: Promise.resolve({ id: "inv1" }) as any,
     });
     const data = await res.json();
 
@@ -154,7 +154,7 @@ describe("DELETE /api/admin/invites/[id]", () => {
 
     const { DELETE } = await import("../[id]/route");
     const res = await DELETE(makeRequest(), {
-      params: Promise.resolve({ id: "inv1" }),
+      params: Promise.resolve({ id: "inv1" }) as any,
     });
     const data = await res.json();
 

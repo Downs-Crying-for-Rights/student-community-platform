@@ -66,7 +66,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
     mockGetServerSession.mockResolvedValue(null);
     const { PATCH } = await import("../[id]/role/route");
     const res = await PATCH(makeRequest({ role: "MODERATOR" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(401);
   });
@@ -75,7 +75,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
     setSession("user1", "USER");
     const { PATCH } = await import("../[id]/role/route");
     const res = await PATCH(makeRequest({ role: "MODERATOR" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(403);
   });
@@ -86,7 +86,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
 
     const { PATCH } = await import("../[id]/role/route");
     const res = await PATCH(makeRequest({ role: "MODERATOR" }), {
-      params: Promise.resolve({ id: "nonexistent" }),
+      params: Promise.resolve({ id: "nonexistent" }) as any,
     });
     const data = await res.json();
 
@@ -100,7 +100,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
 
     const { PATCH } = await import("../[id]/role/route");
     const res = await PATCH(makeRequest({ role: "USER" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 
@@ -113,7 +113,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
 
     const { PATCH } = await import("../[id]/role/route");
     const res = await PATCH(makeRequest({ role: "INVALID_ROLE" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
 
     expect(res.status).toBe(400);
@@ -128,7 +128,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
 
     const { PATCH } = await import("../[id]/role/route");
     const res = await PATCH(makeRequest({ role: "MODERATOR" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 
@@ -157,7 +157,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
 
     const { PATCH } = await import("../[id]/role/route");
     const res = await PATCH(makeRequest({ role: "SUPER_ADMIN" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 
@@ -175,7 +175,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
 
     const { PATCH } = await import("../[id]/role/route");
     const res = await PATCH(makeRequest({ role: "SUPER_ADMIN" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 
@@ -190,7 +190,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
 
     const { PATCH } = await import("../[id]/role/route");
     const res = await PATCH(makeRequest({ role: "ADMIN" }), {
-      params: Promise.resolve({ id: "sa1" }),
+      params: Promise.resolve({ id: "sa1" }) as any,
     });
     const data = await res.json();
 
@@ -208,7 +208,7 @@ describe("PATCH /api/admin/users/[id]/role", () => {
 
     const { PATCH } = await import("../[id]/role/route");
     await PATCH(makeRequest({ role: "SUPER_ADMIN" }), {
-      params: Promise.resolve({ id: "u1" }),
+      params: Promise.resolve({ id: "u1" }) as any,
     });
 
     // 应记录常规 ROLE_CHANGE 日志

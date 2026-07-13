@@ -112,7 +112,7 @@ describe("Feature: super-admin-role, Property 5: 属性覆写 API 正确应用�
 
         const { PATCH } = await import("../[id]/override/route");
         const res = await PATCH(makeRequest(fields), {
-          params: Promise.resolve({ id: "target1" }),
+          params: Promise.resolve({ id: "target1" }) as any,
         });
 
         expect(res.status).toBe(200);
@@ -141,7 +141,7 @@ describe("Feature: super-admin-role, Property 6: 覆写 API 仅限 SUPER_ADMIN �
 
         const { PATCH } = await import("../[id]/override/route");
         const res = await PATCH(makeRequest(fields), {
-          params: Promise.resolve({ id: "target1" }),
+          params: Promise.resolve({ id: "target1" }) as any,
         });
 
         expect(res.status).toBe(403);
@@ -176,7 +176,7 @@ describe("Feature: super-admin-role, Property 7: 覆写操作审计日志完整�
 
         const { PATCH } = await import("../[id]/override/route");
         await PATCH(makeRequest(fields), {
-          params: Promise.resolve({ id: "target1" }),
+          params: Promise.resolve({ id: "target1" }) as any,
         });
 
         expect(mockLogAudit).toHaveBeenCalledTimes(1);

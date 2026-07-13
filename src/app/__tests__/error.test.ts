@@ -19,30 +19,28 @@ describe("500 Error 页面", () => {
     const ErrorPage = mod.default;
     const result = ErrorPage({ error: new Error("test"), reset: vi.fn() });
     expect(result).toBeDefined();
-    expect(result.type).toBe("div");
+    expect((result as any).type).toBe("div");
   });
 
   it("渲染包含'服务器错误'标题", async () => {
     const mod = await import("../error");
     const result = mod.default({ error: new Error("test"), reset: vi.fn() });
-    const children = result.props.children as React.ReactElement[];
+    const children = (result as any).props.children as any[];
 
-    const h1 = children.find(
-      (child: React.ReactElement) => child?.type === "h1"
-    );
+    const h1 = children.find((child: any) => child?.type === "h1");
     expect(h1).toBeDefined();
-    expect((h1 as React.ReactElement).props.children).toBe("服务器错误");
+    expect((h1 as any).props.children).toBe("服务器错误");
   });
 
   it("重试按钮点击时调用 reset 函数", async () => {
     const mod = await import("../error");
     const mockReset = vi.fn();
     const result = mod.default({ error: new Error("test"), reset: mockReset });
-    const children = result.props.children as React.ReactElement[];
+    const children = (result as any).props.children as any[];
 
     // Find the button group div (contains flex gap)
     const buttonGroup = children.find(
-      (child: React.ReactElement) =>
+      (child: any) =>
         child?.type === "div" &&
         typeof child?.props?.className === "string" &&
         child.props.className.includes("flex gap")
@@ -50,8 +48,7 @@ describe("500 Error 页面", () => {
     expect(buttonGroup).toBeDefined();
 
     // First child is the retry button
-    const retryButton = (buttonGroup as React.ReactElement).props
-      .children[0] as React.ReactElement;
+    const retryButton = (buttonGroup as any).props.children[0] as any;
     expect(retryButton.props.children).toBe("重试");
 
     // Simulate click
@@ -62,18 +59,17 @@ describe("500 Error 页面", () => {
   it("包含返回首页链接", async () => {
     const mod = await import("../error");
     const result = mod.default({ error: new Error("test"), reset: vi.fn() });
-    const children = result.props.children as React.ReactElement[];
+    const children = (result as any).props.children as any[];
 
     const buttonGroup = children.find(
-      (child: React.ReactElement) =>
+      (child: any) =>
         child?.type === "div" &&
         typeof child?.props?.className === "string" &&
         child.props.className.includes("flex gap")
     );
 
-    const homeButton = (buttonGroup as React.ReactElement).props
-      .children[1] as React.ReactElement;
-    const link = homeButton.props.children as React.ReactElement;
+    const homeButton = (buttonGroup as any).props.children[1] as any;
+    const link = homeButton.props.children as any;
     expect(link.props.href).toBe("/");
     expect(link.props.children).toBe("返回首页");
   });
@@ -81,12 +77,12 @@ describe("500 Error 页面", () => {
   it("包含装饰性插画 emoji 且标记为 aria-hidden", async () => {
     const mod = await import("../error");
     const result = mod.default({ error: new Error("test"), reset: vi.fn() });
-    const children = result.props.children as React.ReactElement[];
+    const children = (result as any).props.children as any[];
 
     const illustration = children.find(
-      (child: React.ReactElement) => child?.props?.["aria-hidden"] === "true"
+      (child: any) => child?.props?.["aria-hidden"] === "true"
     );
     expect(illustration).toBeDefined();
-    expect((illustration as React.ReactElement).props.children).toBe("⚠️");
+    expect((illustration as any).props.children).toBe("⚠️");
   });
 });

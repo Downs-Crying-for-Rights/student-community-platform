@@ -21,7 +21,6 @@ import {
   Terminal,
   Sun,
   Moon,
-  MessagesSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
@@ -65,7 +64,6 @@ const coreNavItems: NavItem[] = [
   { href: "/discover", label: "发现", icon: Compass },
   { href: "/messages", label: "消息", icon: MessageCircle },
   { href: "/create", label: "发布", icon: PlusCircle },
-  { href: "/chat", label: "群聊", icon: MessagesSquare },
   { href: "/u/me", label: "个人主页", icon: User },
 ];
 

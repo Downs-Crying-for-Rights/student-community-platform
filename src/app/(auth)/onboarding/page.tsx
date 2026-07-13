@@ -274,7 +274,7 @@ function QuizStep({
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [showResults, setShowResults] = useState(false);
@@ -324,7 +324,7 @@ export default function OnboardingPage() {
       }
       // 刷新 JWT 以同步 onboardingDone/quizPassed
       // wait for update to complete, then hard-refresh so cookie is sent to server
-      await session?.update();
+      await update();
       window.location.href = "/";
     } catch {
       setError("网络错误，请检查网络连接后重试");

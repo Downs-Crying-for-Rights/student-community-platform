@@ -14,6 +14,7 @@ import {
   Plus,
   UserX,
   ShieldAlert,
+  FileEdit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -170,14 +171,11 @@ function RequestsContent() {
           </div>
         ) : cases.length === 0 ? (
           <EmptyState
-            icon={FileEdit}
+            icon={FileEdit as any}
             title="暂无委托表"
             description={activeTab === "ALL" ? "您还没有提交过委托表" : `没有${TAB_OPTIONS.find(t => t.value === activeTab)?.label}状态的委托表`}
-            action={
-              <Button asChild variant="outline" size="sm">
-                <Link href="/dcr/delegate">新建委托表</Link>
-              </Button>
-            }
+            actionLabel="新建委托表"
+            actionHref="/dcr/delegate"
           />
         ) : (
           <div className="space-y-3">

@@ -115,7 +115,7 @@ describe("ThemeToggle 逻辑", () => {
     it("挂载后（mounted=true）正确反映主题", () => {
       const mounted = true;
       expect(mounted && "dark" === "dark").toBe(true);
-      expect(mounted && "light" === "dark").toBe(false);
+      expect(mounted && ("light" as string) === "dark").toBe(false);
     });
   });
 });
