@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
@@ -142,6 +142,8 @@ export default function ProfilePage() {
   const [likesLoading, setLikesLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
+  const bookmarksFetched = useRef(false);
+  const likesFetched = useRef(false);
 
   const visibleTabs = getVisibleTabs(isOwnProfile);
 
@@ -218,13 +220,15 @@ export default function ProfilePage() {
 
   // Lazy-load bookmarks/likes when tab is first activated
   useEffect(() => {
-    if (activeTab === "bookmarks" && bookmarks.length === 0 && !bookmarksLoading) {
+    if (activeTab === "bookmarks" && !bookmarksFetched.current) {
+      bookmarksFetched.current = true;
       fetchBookmarks();
     }
-    if (activeTab === "likes" && likes.length === 0 && !likesLoading) {
+    if (activeTab === "likes" && !likesFetched.current) {
+      likesFetched.current = true;
       fetchLikes();
     }
-  }, [activeTab, bookmarks.length, bookmarksLoading, likes.length, likesLoading, fetchBookmarks, fetchLikes]);
+  }, [activeTab, fetchBookmarks, fetchLikes]);
 
   return (
     <div className="min-h-screen bg-background">
