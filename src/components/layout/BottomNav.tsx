@@ -34,8 +34,8 @@ function hasMinRole(userRole: string, minRole: string): boolean {
 const navItems: NavItem[] = [
   { href: "/", label: "首页", icon: Home },
   { href: "/discover", label: "发现", icon: Compass },
-  { href: "/create", label: "发布", icon: Plus, raised: true },
   { href: "/messages", label: "消息", icon: MessageCircle },
+  { href: "/create", label: "发布", icon: Plus, raised: true },
   { href: "/chat", label: "群聊", icon: MessagesSquare },
   { href: "/moderation", label: "管理", icon: Shield, minRole: "MODERATOR" },
   { href: "/u/me", label: "我的", icon: User },

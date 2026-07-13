@@ -63,8 +63,8 @@ const ROLE_HIERARCHY: Record<string, number> = {
 const coreNavItems: NavItem[] = [
   { href: "/", label: "首页", icon: Home },
   { href: "/discover", label: "发现", icon: Compass },
-  { href: "/create", label: "发布", icon: PlusCircle },
   { href: "/messages", label: "消息", icon: MessageCircle },
+  { href: "/create", label: "发布", icon: PlusCircle },
   { href: "/chat", label: "群聊", icon: MessagesSquare },
   { href: "/u/me", label: "个人主页", icon: User },
 ];
