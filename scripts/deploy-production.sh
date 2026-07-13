@@ -33,6 +33,17 @@ cd "$RELEASE_DIR"
 docker compose -p "$PROJECT_NAME" config --quiet
 docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
 
+docker compose -p "$PROJECT_NAME" exec -T web sh -ec '
+  test -n "$OSS_REGION"
+  test -n "$OSS_BUCKET"
+  test -n "$OSS_ACCESS_KEY_ID"
+  test -n "$OSS_ACCESS_KEY_SECRET"
+  test -n "$OSS_ENDPOINT"
+  test -n "$OSS_CDN_DOMAIN"
+  case "$OSS_ENDPOINT" in https://*) ;; *) exit 1 ;; esac
+  case "$OSS_CDN_DOMAIN" in https://*) ;; *) exit 1 ;; esac
+'
+
 healthy=false
 for attempt in {1..24}; do
   if curl --fail --silent --show-error --max-time 10 \
