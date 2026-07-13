@@ -7,6 +7,7 @@ const createRoomSchema = z.object({
   name: z.string().min(1).max(50),
   description: z.string().max(200).optional(),
   type: z.enum(["PUBLIC", "PRIVATE"]).default("PUBLIC"),
+  joinMode: z.enum(["DIRECT", "APPROVAL"]).default("DIRECT"),
 });
 
 /**
@@ -24,10 +25,10 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const [rooms, total] = await Promise.all([
       prisma.chatRoom.findMany({
         where: {
-          status: "APPROVED",
           OR: [
-            { type: "PUBLIC" },
+            { type: "PUBLIC", status: "APPROVED" },
             { members: { some: { userId } } },
+            { createdById: userId },
           ],
         },
         include: {
@@ -46,8 +47,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       prisma.chatRoom.count({
         where: {
           OR: [
-            { type: "PUBLIC" },
+            { type: "PUBLIC", status: "APPROVED" },
             { members: { some: { userId } } },
+            { createdById: userId },
           ],
         },
       }),
