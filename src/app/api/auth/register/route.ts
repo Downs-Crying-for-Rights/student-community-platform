@@ -5,20 +5,6 @@ import { createUserWithSession, validateNickname } from "@/lib/auth/register-hel
 
 export async function POST(request: NextRequest) {
   try {
-    // 速率限制：5 次/分钟/IP（防注册轰炸）
-    try {
-      const { enforceRateLimit } = await import("@/lib/rate-limiter");
-      const ip = (request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown")
-        .split(",")[0].trim();
-      const limitResult = await enforceRateLimit(`register:${ip}`, 5, 60 * 1000);
-      if (!limitResult?.result.allowed) {
-        return NextResponse.json(
-          { error: "注册请求过于频繁，请稍后再试" },
-          { status: 429, headers: { "Retry-After": "60" } },
-        );
-      }
-    } catch { /* rate limiter 不可用，降级放行 */ }
-
     const body = await request.json();
     const parsed = registerSchema.safeParse(body);
     if (!parsed.success) {
