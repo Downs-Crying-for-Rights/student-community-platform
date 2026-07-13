@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import sharp from "sharp";
 import crypto from "crypto";
 
@@ -9,7 +9,6 @@ const OSS_BUCKET = process.env.OSS_BUCKET || "";
 const OSS_ACCESS_KEY_ID = process.env.OSS_ACCESS_KEY_ID || "";
 const OSS_ACCESS_KEY_SECRET = process.env.OSS_ACCESS_KEY_SECRET || "";
 const OSS_ENDPOINT = process.env.OSS_ENDPOINT || `https://${OSS_REGION}.aliyuncs.com`;
-const OSS_CDN_DOMAIN = process.env.OSS_CDN_DOMAIN || `https://${OSS_BUCKET}.${OSS_REGION}.aliyuncs.com`;
 
 /** Max file size before compression: 10 MB */
 export const MAX_RAW_SIZE = 10 * 1024 * 1024;
@@ -87,7 +86,41 @@ export async function uploadToOSS(
     }),
   );
 
-  return `${OSS_CDN_DOMAIN}/${key}`;
+  return createPrivateMediaUrl(key);
+}
+
+/**
+ * Return an application-owned URL for a private OSS object. The signature
+ * prevents callers from enumerating arbitrary object keys through the proxy.
+ */
+export function createPrivateMediaUrl(key: string): string {
+  const appUrl = (process.env.NEXTAUTH_URL || "http://localhost:3000").replace(/\/$/, "");
+  const signature = signMediaKey(key);
+  return `${appUrl}/api/media?key=${encodeURIComponent(key)}&sig=${signature}`;
+}
+
+export function verifyMediaSignature(key: string, signature: string): boolean {
+  if (!signature) return false;
+  const expected = signMediaKey(key);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function signMediaKey(key: string): string {
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    throw new Error("NEXTAUTH_SECRET is required for private media URLs");
+  }
+  return crypto.createHmac("sha256", secret).update(key).digest("base64url");
+}
+
+export async function getPrivateOSSObject(key: string) {
+  return s3.send(new GetObjectCommand({
+    Bucket: OSS_BUCKET,
+    Key: key,
+  }));
 }
 
 /**

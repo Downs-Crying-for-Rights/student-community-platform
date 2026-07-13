@@ -25,6 +25,7 @@ const { mockSend, mockSharpInstance } = vi.hoisted(() => {
 vi.mock("@aws-sdk/client-s3", () => ({
   S3Client: class { send = mockSend; },
   PutObjectCommand: class { constructor(params: unknown) { Object.assign(this, params); } },
+  GetObjectCommand: class { constructor(params: unknown) { Object.assign(this, params); } },
 }));
 
 vi.mock("sharp", () => ({
@@ -37,13 +38,17 @@ import {
   generateObjectKey,
   validateFile,
   compressImage,
+  createPrivateMediaUrl,
   uploadToOSS,
+  verifyMediaSignature,
   MAX_RAW_SIZE,
   ALLOWED_TYPES,
 } from "../oss";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env.NEXTAUTH_SECRET = "test-nextauth-secret";
+  process.env.NEXTAUTH_URL = "http://localhost:3000";
   mockSharpInstance.resize.mockReturnThis();
   mockSharpInstance.webp.mockReturnThis();
   mockSharpInstance.toBuffer.mockResolvedValue(Buffer.from("compressed"));
@@ -160,7 +165,7 @@ describe("compressImage", () => {
 // ==================== uploadToOSS ====================
 
 describe("uploadToOSS", () => {
-  it("sends PutObjectCommand and returns CDN URL", async () => {
+  it("sends PutObjectCommand and returns a signed private media URL", async () => {
     mockSend.mockResolvedValue({});
     const url = await uploadToOSS(
       Buffer.from("data"),
@@ -168,14 +173,16 @@ describe("uploadToOSS", () => {
       "image/webp",
     );
     expect(mockSend).toHaveBeenCalledTimes(1);
-    expect(url).toContain("uploads/2026/02/abc.webp");
+    expect(url).toContain("/api/media?key=");
+    expect(decodeURIComponent(url)).toContain("uploads/2026/02/abc.webp");
   });
 
-  it("sets correct ContentType and CacheControl", async () => {
+  it("sets private ACL, ContentType and CacheControl", async () => {
     mockSend.mockResolvedValue({});
     await uploadToOSS(Buffer.from("data"), "key.webp", "image/webp");
 
     const command = mockSend.mock.calls[0][0];
+    expect(command.ACL).toBe("private");
     expect(command.ContentType).toBe("image/webp");
     expect(command.CacheControl).toContain("immutable");
   });
@@ -185,5 +192,28 @@ describe("uploadToOSS", () => {
     await expect(
       uploadToOSS(Buffer.from("data"), "key.webp", "image/webp"),
     ).rejects.toThrow("S3 failure");
+  });
+});
+
+describe("private media URLs", () => {
+  it("creates a signed application URL that verifies", () => {
+    const key = "uploads/2026/07/d615317cea51e56e394ea36378aa1497.webp";
+    const url = new URL(createPrivateMediaUrl(key));
+
+    expect(url.origin).toBe("http://localhost:3000");
+    expect(url.searchParams.get("key")).toBe(key);
+    expect(verifyMediaSignature(key, url.searchParams.get("sig") || "")).toBe(true);
+  });
+
+  it("rejects a signature when the object key is changed", () => {
+    const key = "uploads/2026/07/d615317cea51e56e394ea36378aa1497.webp";
+    const url = new URL(createPrivateMediaUrl(key));
+
+    expect(
+      verifyMediaSignature(
+        "uploads/2026/07/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp",
+        url.searchParams.get("sig") || "",
+      ),
+    ).toBe(false);
   });
 });
