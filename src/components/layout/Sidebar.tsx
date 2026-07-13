@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
@@ -113,7 +113,6 @@ function isVisible(
 
 export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -153,10 +152,8 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
   const role = (session?.user?.role as string) ?? "USER";
 
   function isActive(href: string): boolean {
-    const chatView = pathname.startsWith("/chat")
-      || (pathname === "/messages" && searchParams.get("tab") === "chat");
-    if (href === "/messages?tab=chat") return chatView;
-    if (href === "/messages") return pathname.startsWith("/messages") && !chatView;
+    if (href === "/messages?tab=chat") return pathname.startsWith("/chat");
+    if (href === "/messages") return pathname.startsWith("/messages");
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   }

@@ -1,6 +1,5 @@
 "use client";
 
-import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { TopBar } from "@/components/layout/TopBar";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -54,15 +53,11 @@ export function MemberShell({ children }: MemberShellProps) {
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-6">
       <TopBar />
-      <Suspense fallback={null}>
-        <Sidebar />
-      </Suspense>
+      <Sidebar />
       <div id="main-content" className="lg:ml-60">
         {children}
       </div>
-      <Suspense fallback={null}>
-        <BottomNav />
-      </Suspense>
+      <BottomNav />
     </div>
   );
 }

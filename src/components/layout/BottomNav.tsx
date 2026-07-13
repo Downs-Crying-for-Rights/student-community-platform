@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -49,7 +49,6 @@ const moreItems: MoreItem[] = [
 
 export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const role = (session?.user?.role as string) ?? "USER";
   const [dcrAccess, setDcrAccess] = useState(false);
@@ -72,10 +71,8 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
   }, [session]);
 
   function isActive(href: string) {
-    const chatView = pathname.startsWith("/chat")
-      || (pathname === "/messages" && searchParams.get("tab") === "chat");
-    if (href === "/messages?tab=chat") return chatView;
-    if (href === "/messages") return pathname.startsWith("/messages") && !chatView;
+    if (href === "/messages?tab=chat") return pathname.startsWith("/chat");
+    if (href === "/messages") return pathname.startsWith("/messages");
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   }

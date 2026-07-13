@@ -31,13 +31,16 @@ describe("统一会员导航壳", () => {
     expect(source).toContain("MessagesSquare");
   });
 
-  it("消息与群聊入口具有互斥的激活状态", () => {
+  it("全局导航不依赖查询参数或 Suspense 才能渲染", () => {
     for (const file of ["components/layout/BottomNav.tsx", "components/layout/Sidebar.tsx"]) {
       const source = read(file);
-      expect(source).toContain('searchParams.get("tab") === "chat"');
+      expect(source).not.toContain("useSearchParams");
       expect(source).toContain('href === "/messages?tab=chat"');
       expect(source).toContain('href === "/messages"');
     }
+
+    const shell = read("components/layout/MemberShell.tsx");
+    expect(shell).not.toContain("Suspense");
   });
 
   it("消息页根据 URL 参数控制群聊标签", () => {
