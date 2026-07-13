@@ -17,6 +17,7 @@ import {
   Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/layout/PageShell";
 
 /* ========== Types ========== */
 
@@ -143,7 +144,7 @@ export default function DCREntryPage() {
   const steps = getSteps(progress);
 
   return (
-    <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
+    <PageShell className="bg-slate-50/40 dark:bg-slate-950/10">
       <div className="mx-auto max-w-2xl px-4 py-8">
         {/* 风险提示条 */}
         <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/30 dark:bg-amber-950/20">
@@ -276,6 +277,6 @@ export default function DCREntryPage() {
           </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

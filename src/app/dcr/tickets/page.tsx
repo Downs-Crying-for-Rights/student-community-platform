@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageShell } from "@/components/layout/PageShell";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
 import { EmptyState } from "@/components/shared/EmptyState";
 
@@ -187,8 +188,8 @@ export default function TicketListPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
-      <div className="mx-auto max-w-2xl px-4 py-8">
+    <PageShell className="bg-slate-50/40 dark:bg-slate-950/10">
+      <div className="px-4 py-8">
         {/* Privacy Banner */}
         <div className="mb-6">
           <PrivacyBanner />
@@ -363,6 +364,6 @@ export default function TicketListPage() {
           </>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

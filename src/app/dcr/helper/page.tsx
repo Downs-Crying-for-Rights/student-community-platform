@@ -11,6 +11,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageShell } from "@/components/layout/PageShell";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { formatHelperCaseCount } from "@/lib/dcr-ui-helpers";
 
@@ -154,25 +155,15 @@ export default function HelperDashboardPage() {
     }
   }, [sessionLoaded, hasPermission, fetchCases]);
 
-  // Loading session
-  if (!sessionLoaded) {
-    return (
-      <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
-        <div className="mx-auto max-w-2xl px-4 py-8">
+  return (
+    <PageShell className="bg-slate-50/40 dark:bg-slate-950/10">
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        {!sessionLoaded ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
             <span className="ml-2 text-sm text-muted-foreground">加载中...</span>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  // No permission
-  if (!hasPermission) {
-    return (
-      <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
-        <div className="mx-auto max-w-2xl px-4 py-8">
+        ) : !hasPermission ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <ShieldAlert className="h-16 w-16 text-muted-foreground mb-4" aria-hidden="true" />
             <h2 className="text-lg font-medium text-foreground">无权限访问</h2>
@@ -180,79 +171,75 @@ export default function HelperDashboardPage() {
               此页面仅对 DCR_HELPER 和管理员开放
             </p>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-foreground">Helper 工作台</h1>
-          <span className="text-sm text-muted-foreground">
-            处理中: {formatHelperCaseCount(myCases.length, 5)}
-          </span>
-        </div>
-
-        {error && (
-          <div
-            role="alert"
-            className="mb-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200"
-          >
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
-            <span className="ml-2 text-sm text-muted-foreground">加载中...</span>
-          </div>
         ) : (
           <>
-            {/* Section: 待接单工单 */}
-            <section className="mb-8">
-              <h2 className="mb-4 text-base font-semibold text-foreground">
-                待接单工单
-              </h2>
-              {openCases.length === 0 ? (
-                <EmptyState
-                  title="暂无待接单工单"
-                  description="当前没有等待处理的工单"
-                />
-              ) : (
-                <div className="space-y-3">
-                  {openCases.map((c) => (
-                    <CaseCard key={c.id} caseItem={c} onClick={() => router.push(`/dcr/tickets/${c.id}`)} />
-                  ))}
-                </div>
-              )}
-            </section>
+            {/* Header */}
+            <div className="mb-6 flex items-center justify-between">
+              <h1 className="text-xl font-bold text-foreground">Helper 工作台</h1>
+              <span className="text-sm text-muted-foreground">
+                处理中: {formatHelperCaseCount(myCases.length, 5)}
+              </span>
+            </div>
 
-            {/* Section: 我的处理中工单 */}
-            <section>
-              <h2 className="mb-4 text-base font-semibold text-foreground">
-                我的处理中工单
-              </h2>
-              {myCases.length === 0 ? (
-                <EmptyState
-                  title="暂无处理中工单"
-                  description="您当前没有正在处理的工单"
-                />
-              ) : (
-                <div className="space-y-3">
-                  {myCases.map((c) => (
-                    <CaseCard key={c.id} caseItem={c} onClick={() => router.push(`/dcr/tickets/${c.id}`)} />
-                  ))}
-                </div>
-              )}
-            </section>
+            {error && (
+              <div
+                role="alert"
+                className="mb-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200"
+              >
+                {error}
+              </div>
+            )}
+
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+                <span className="ml-2 text-sm text-muted-foreground">加载中...</span>
+              </div>
+            ) : (
+              <>
+                {/* Section: 待接单工单 */}
+                <section className="mb-8">
+                  <h2 className="mb-4 text-base font-semibold text-foreground">
+                    待接单工单
+                  </h2>
+                  {openCases.length === 0 ? (
+                    <EmptyState
+                      title="暂无待接单工单"
+                      description="当前没有等待处理的工单"
+                    />
+                  ) : (
+                    <div className="space-y-3">
+                      {openCases.map((c) => (
+                        <CaseCard key={c.id} caseItem={c} onClick={() => router.push(`/dcr/tickets/${c.id}`)} />
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Section: 我的处理中工单 */}
+                <section>
+                  <h2 className="mb-4 text-base font-semibold text-foreground">
+                    我的处理中工单
+                  </h2>
+                  {myCases.length === 0 ? (
+                    <EmptyState
+                      title="暂无处理中工单"
+                      description="您当前没有正在处理的工单"
+                    />
+                  ) : (
+                    <div className="space-y-3">
+                      {myCases.map((c) => (
+                        <CaseCard key={c.id} caseItem={c} onClick={() => router.push(`/dcr/tickets/${c.id}`)} />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
           </>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }
 

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/layout/PageShell";
 import { PsychLayout } from "@/components/psych/PsychLayout";
 
 /* ========== Pure Helper Functions (exported for testing) ========== */
@@ -83,7 +84,8 @@ export default function PsychConfidePage() {
   };
 
   return (
-    <PsychLayout>
+    <PageShell>
+      <PsychLayout>
       <div className="mx-auto max-w-2xl px-4 py-8">
         {/* Header */}
         <div className="mb-8 text-center">
@@ -198,6 +200,7 @@ export default function PsychConfidePage() {
           </CardContent>
         </Card>
       </div>
-    </PsychLayout>
+      </PsychLayout>
+    </PageShell>
   );
 }
