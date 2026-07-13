@@ -1,5 +1,6 @@
 "use client";
 
+import { PageShell } from "@/components/layout/PageShell";
 import Link from "next/link";
 import {
   BookOpen,
@@ -50,57 +51,59 @@ export default function GuidePage() {
   const sections = getGuideSections();
 
   return (
-    <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <div className="mb-6">
-          <PrivacyBanner message="本模块不提供法律建议，仅供信息交流参考" />
+    <PageShell>
+      <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
+        <div className="mx-auto max-w-2xl px-4 py-8">
+          <div className="mb-6">
+            <PrivacyBanner message="本模块不提供法律建议，仅供信息交流参考" />
+          </div>
+
+          <h1 className="mb-2 text-2xl font-bold text-foreground">新手引导</h1>
+          <p className="mb-8 text-sm text-muted-foreground">
+            了解 DCR 模块的使用方式和注意事项
+          </p>
+
+          <div className="space-y-4">
+            {sections.map((section, i) => {
+              const Icon = section.icon;
+              return (
+                <Card key={i}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Icon className="h-5 w-5 text-primary" />
+                      {section.title}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="whitespace-pre-line text-sm text-muted-foreground leading-relaxed">
+                      {section.content}
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="mt-8 flex flex-col gap-3">
+            <Button asChild size="lg" className="w-full">
+              <Link href="/dcr/delegate">
+                开始提交委托表
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/kb">浏览知识库与模板</Link>
+            </Button>
+            <Button asChild variant="ghost" className="w-full">
+              <Link href="/dcr/requests">查看我的委托表审核状态</Link>
+            </Button>
+          </div>
+
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            AI 生成内容仅供参考
+          </p>
         </div>
-
-        <h1 className="mb-2 text-2xl font-bold text-foreground">新手引导</h1>
-        <p className="mb-8 text-sm text-muted-foreground">
-          了解 DCR 模块的使用方式和注意事项
-        </p>
-
-        <div className="space-y-4">
-          {sections.map((section, i) => {
-            const Icon = section.icon;
-            return (
-              <Card key={i}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Icon className="h-5 w-5 text-primary" />
-                    {section.title}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="whitespace-pre-line text-sm text-muted-foreground leading-relaxed">
-                    {section.content}
-                  </p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        <div className="mt-8 flex flex-col gap-3">
-          <Button asChild size="lg" className="w-full">
-            <Link href="/dcr/delegate">
-              开始提交委托表
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="w-full">
-            <Link href="/kb">浏览知识库与模板</Link>
-          </Button>
-          <Button asChild variant="ghost" className="w-full">
-            <Link href="/dcr/requests">查看我的委托表审核状态</Link>
-          </Button>
-        </div>
-
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          AI 生成内容仅供参考
-        </p>
       </div>
-    </div>
+    </PageShell>
   );
 }

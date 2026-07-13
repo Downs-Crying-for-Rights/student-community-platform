@@ -1,5 +1,6 @@
 "use client";
 
+import { PageShell } from "@/components/layout/PageShell";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -234,14 +235,15 @@ export default function DelegatePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        {/* Privacy Banner */}
-        <div className="mb-6">
-          <PrivacyBanner message="请勿在委托表中包含真实姓名、教师姓名等可识别个人信息" />
-        </div>
+    <PageShell>
+      <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
+        <div className="mx-auto max-w-2xl px-4 py-8">
+          {/* Privacy Banner */}
+          <div className="mb-6">
+            <PrivacyBanner message="请勿在委托表中包含真实姓名、教师姓名等可识别个人信息" />
+          </div>
 
-        <h1 className="mb-6 text-2xl font-bold text-foreground">填写委托表</h1>
+          <h1 className="mb-6 text-2xl font-bold text-foreground">填写委托表</h1>
 
         {/* Sensitive content warning */}
         {sensitiveMatches.length > 0 && (
@@ -671,5 +673,6 @@ export default function DelegatePage() {
         </form>
       </div>
     </div>
+    </PageShell>
   );
 }

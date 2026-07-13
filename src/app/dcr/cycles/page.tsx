@@ -1,5 +1,6 @@
 "use client";
 
+import { PageShell } from "@/components/layout/PageShell";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -84,8 +85,9 @@ export default function CyclesPage() {
   useEffect(() => { fetchCycles(); }, [fetchCycles]);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
+    <PageShell>
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold">互助循环</h1>
           <p className="text-sm text-muted-foreground mt-1">三方互助：A→B、B→C、C→A 闭环链路</p>
@@ -141,5 +143,6 @@ export default function CyclesPage() {
         </div>
       )}
     </div>
+    </PageShell>
   );
 }

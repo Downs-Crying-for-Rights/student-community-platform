@@ -2,8 +2,9 @@
 
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Home, Compass, Plus, MessageCircle, User, Shield, MessagesSquare } from "lucide-react";
+import { Home, Compass, Plus, MessageCircle, User, Shield, MessagesSquare, ShieldCheck, Lock, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface BottomNavProps {
@@ -16,6 +17,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   raised?: boolean;
   minRole?: string;
+  requireDcrAccess?: boolean;
 }
 
 const ROLE_HIERARCHY: Record<string, number> = {
@@ -31,7 +33,7 @@ function hasMinRole(userRole: string, minRole: string): boolean {
   return (ROLE_HIERARCHY[userRole] ?? 0) >= (ROLE_HIERARCHY[minRole] ?? 999);
 }
 
-const navItems: NavItem[] = [
+const coreNavItems: NavItem[] = [
   { href: "/", label: "首页", icon: Home },
   { href: "/discover", label: "发现", icon: Compass },
   { href: "/messages", label: "消息", icon: MessageCircle },
@@ -41,24 +43,50 @@ const navItems: NavItem[] = [
   { href: "/u/me", label: "我的", icon: User },
 ];
 
+const dcrNavItems: NavItem[] = [
+  { href: "/dcr", label: "DCR", icon: ShieldCheck, requireDcrAccess: true },
+  { href: "/dcr/tasks", label: "互助", icon: FileText, requireDcrAccess: true },
+  { href: "/dcr/tickets", label: "工单", icon: Lock, requireDcrAccess: true },
+];
+
 export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const role = (session?.user?.role as string) ?? "USER";
+  const [dcrAccess, setDcrAccess] = useState(false);
 
-  const visibleItems = navItems.filter(
+  // Fetch dcrAccess from user profile
+  useEffect(() => {
+    const userId = (session?.user as any)?.id;
+    if (!userId) return;
+    fetch(`/api/users/${userId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user?.dcrAccess) setDcrAccess(true);
+      })
+      .catch(() => {});
+  }, [session]);
+
+  // Merge items: core + DCR (when eligible), respecting max 5 slots
+  const filteredCore = coreNavItems.filter(
     (item) => !item.minRole || hasMinRole(role, item.minRole),
   );
+  const dcrEligible = dcrNavItems.filter(
+    (item) => item.requireDcrAccess && dcrAccess,
+  );
+  // Show at most 1 DCR item in the bottom nav to avoid crowding (prefer /dcr main entry)
+  const dcrItem = dcrEligible.length > 0 ? [dcrEligible[0]] : [];
+  const allItems = [...filteredCore, ...dcrItem];
 
   function isActive(href: string): boolean {
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   }
 
-  const raisedIdx = visibleItems.findIndex((i) => i.raised);
-  const leftItems = raisedIdx >= 0 ? visibleItems.slice(0, raisedIdx) : [];
-  const rightItems = raisedIdx >= 0 ? visibleItems.slice(raisedIdx + 1) : visibleItems;
-  const raisedItem = raisedIdx >= 0 ? visibleItems[raisedIdx] : null;
+  const raisedIdx = allItems.findIndex((i) => i.raised);
+  const leftItems = raisedIdx >= 0 ? allItems.slice(0, raisedIdx) : [];
+  const rightItems = raisedIdx >= 0 ? allItems.slice(raisedIdx + 1) : allItems;
+  const raisedItem = raisedIdx >= 0 ? allItems[raisedIdx] : null;
 
   function renderRegular(item: NavItem) {
     const active = isActive(item.href);

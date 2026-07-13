@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { Sidebar } from "@/components/layout/Sidebar";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -211,6 +212,11 @@ export default function ChatRoomPage() {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-background pb-16 lg:pb-0">
+      {/* Desktop: Sidebar */}
+      <div className="hidden lg:block">
+        <Sidebar />
+      </div>
+
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/40 px-3">
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push("/chat")}>
