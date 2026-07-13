@@ -7,7 +7,6 @@ import { Home, Compass, Plus, MessageCircle, User, Shield, MessagesSquare } from
 import { cn } from "@/lib/utils";
 
 export interface BottomNavProps {
-  /** Number of unread messages to display on the message badge */
   unreadCount?: number;
 }
 
@@ -15,9 +14,7 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  /** Whether this item uses the raised/prominent center style */
   raised?: boolean;
-  /** Minimum role required to see this item */
   minRole?: string;
 }
 
@@ -58,6 +55,49 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
     return pathname.startsWith(href);
   }
 
+  const raisedIdx = visibleItems.findIndex((i) => i.raised);
+  const leftItems = raisedIdx >= 0 ? visibleItems.slice(0, raisedIdx) : [];
+  const rightItems = raisedIdx >= 0 ? visibleItems.slice(raisedIdx + 1) : visibleItems;
+  const raisedItem = raisedIdx >= 0 ? visibleItems[raisedIdx] : null;
+
+  function renderRegular(item: NavItem) {
+    const active = isActive(item.href);
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        aria-label={item.label}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "flex flex-col items-center justify-center gap-0.5",
+          "min-h-[44px] min-w-[44px] flex-1",
+          "transition-colors duration-150",
+          active
+            ? "text-primary"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <span className="relative">
+          <Icon className="h-5 w-5" />
+          {item.href === "/messages" && unreadCount > 0 && (
+            <span
+              className={cn(
+                "absolute -right-2 -top-1.5 flex items-center justify-center",
+                "min-w-[16px] rounded-full bg-destructive px-1 py-0.5",
+                "text-[10px] font-medium leading-none text-destructive-foreground"
+              )}
+              aria-label={`${unreadCount} 条未读消息`}
+            >
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </span>
+        <span className="text-[10px] font-medium">{item.label}</span>
+      </Link>
+    );
+  }
+
   return (
     <nav
       className={cn(
@@ -68,29 +108,24 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
       )}
       aria-label="底部导航"
     >
-      <div className="relative mx-auto flex h-16 max-w-screen-xl items-center justify-around px-2">
-        {visibleItems.map((item, idx) => {
-          const active = isActive(item.href);
-          const Icon = item.icon;
-          const total = visibleItems.length;
-          // Position the raised button dead-center regardless of item count
-          const isRaised = !!item.raised;
-          const centerIdx = Math.floor(total / 2);
+      <div className="relative mx-auto flex h-16 max-w-screen-xl items-center px-1">
+        {/* Left group */}
+        <div className="flex flex-1 items-center justify-around">
+          {leftItems.map(renderRegular)}
+        </div>
 
-          if (item.raised) {
+        {/* Raised center button — fixed width to prevent overlap */}
+        <div className="relative flex w-[56px] shrink-0 items-end justify-center self-stretch pb-0.5">
+          {raisedItem && (() => {
+            const active = isActive(raisedItem.href);
+            const Icon = raisedItem.icon;
             return (
               <Link
-                key={item.href}
-                href={item.href}
-                aria-label={item.label}
+                href={raisedItem.href}
+                aria-label={raisedItem.label}
                 aria-current={active ? "page" : undefined}
-                className={cn(
-                  "absolute left-1/2 -translate-x-1/2",
-                  "flex flex-col items-center justify-center",
-                  "min-h-[44px] min-w-[44px]",
-                  "-mt-5"
-                )}
-                style={{ bottom: 0 }}
+                className="absolute bottom-0 flex flex-col items-center justify-center"
+                style={{ transform: "translateY(-8px)" }}
               >
                 <span
                   className={cn(
@@ -102,46 +137,17 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
                   <Icon className="h-6 w-6" />
                 </span>
                 <span className="mt-0.5 text-[10px] font-medium text-primary">
-                  {item.label}
+                  {raisedItem.label}
                 </span>
               </Link>
             );
-          }
+          })()}
+        </div>
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-label={item.label}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "relative flex flex-col items-center justify-center gap-0.5",
-                "min-h-[44px] min-w-[44px]",
-                "transition-colors duration-150",
-                active
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <span className="relative">
-                <Icon className="h-5 w-5" />
-                {item.href === "/messages" && unreadCount > 0 && (
-                  <span
-                    className={cn(
-                      "absolute -right-2 -top-1.5 flex items-center justify-center",
-                      "min-w-[16px] rounded-full bg-destructive px-1 py-0.5",
-                      "text-[10px] font-medium leading-none text-destructive-foreground"
-                    )}
-                    aria-label={`${unreadCount} 条未读消息`}
-                  >
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
-              </span>
-              <span className="text-[10px] font-medium">{item.label}</span>
-            </Link>
-          );
-        })}
+        {/* Right group */}
+        <div className="flex flex-1 items-center justify-around">
+          {rightItems.map(renderRegular)}
+        </div>
       </div>
     </nav>
   );
