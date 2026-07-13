@@ -99,6 +99,7 @@ export default async function middleware(req: NextRequest) {
   if (rateLimitResponse) return rateLimitResponse;
 
   const token = await getToken({ req });
+  const pathname = req.nextUrl.pathname;
 
   // 未认证 → 重定向至登录页
   if (!token) {
@@ -111,7 +112,6 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const pathname = req.nextUrl.pathname;
   const uid = (token.sub || (token as any).id || (token as any).userId) as string;
 
   // ========== 第1优先级：强制设置用户名 ==========
