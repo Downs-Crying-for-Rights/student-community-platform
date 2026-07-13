@@ -189,7 +189,7 @@ export default function PostDetailPage() {
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-6">
-      <main className="mx-auto max-w-screen-xl px-4 pt-4 lg:ml-60">
+      <main className="mx-auto max-w-screen-xl px-4 pt-4">
       {loading ? (
         <PostDetailSkeleton />
       ) : error ? (

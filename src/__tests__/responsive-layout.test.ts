@@ -90,31 +90,18 @@ describe("响应式布局验证", () => {
     });
   });
 
-  describe("PC 端主内容区域偏移 (lg:ml-60)", () => {
-    it("首页主内容区域应有 lg:ml-60 偏移", () => {
-      const source = readSourceFile("app/page.tsx");
-      expect(source).toContain("lg:ml-60");
+  describe("PC 端主内容区域统一偏移 (lg:ml-60)", () => {
+    it("应只由 MemberShell 统一设置侧栏偏移", () => {
+      const shell = readSourceFile("components/layout/MemberShell.tsx");
+      expect(shell).toContain("lg:ml-60");
     });
 
-    it("发现页主内容区域应有 lg:ml-60 偏移", () => {
-      const source = readSourceFile("app/discover/page.tsx");
-      expect(source).toContain("lg:ml-60");
-    });
-
-    it("搜索页主内容区域应有 lg:ml-60 偏移", () => {
-      const source = readSourceFile("app/search/page.tsx");
-      expect(source).toContain("lg:ml-60");
-    });
-
-    it("消息页主内容区域应有 lg:ml-60 偏移", () => {
-      const source = readSourceFile("app/messages/page.tsx");
-      expect(source).toContain("lg:ml-60");
-    });
-
-    it("设置页主内容区域应有 lg:ml-60 偏移", () => {
-      const source = readSourceFile("app/settings/profile/page.tsx");
-      expect(source).toContain("lg:ml-60");
-    });
+    for (const page of ["page.tsx", "discover/page.tsx", "search/page.tsx", "messages/page.tsx", "settings/profile/page.tsx"]) {
+      it(`${page} 不应重复设置侧栏偏移`, () => {
+        const source = readSourceFile(`app/${page}`);
+        expect(source).not.toContain("lg:ml-60");
+      });
+    }
   });
 
   describe("帖子详情页宽度限制", () => {

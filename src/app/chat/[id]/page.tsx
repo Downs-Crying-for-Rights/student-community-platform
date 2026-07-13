@@ -209,7 +209,7 @@ export default function ChatRoomPage() {
   }
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background pb-16 lg:pb-0">
+    <div className="fixed inset-x-0 bottom-16 top-14 flex flex-col bg-background lg:bottom-0 lg:left-60">
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/40 px-3">
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push("/chat")}>

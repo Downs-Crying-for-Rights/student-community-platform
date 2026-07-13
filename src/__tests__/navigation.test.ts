@@ -60,6 +60,7 @@ const EXPECTED_ROUTES: { route: string; description: string }[] = [
   { route: "/discover", description: "发现页" },
   { route: "/create", description: "发布页" },
   { route: "/messages", description: "通知页" },
+  { route: "/chat", description: "群聊入口" },
   { route: "/settings/profile", description: "个人设置" },
   { route: "/search", description: "搜索页" },
   { route: "/login", description: "登录页" },
@@ -193,23 +194,27 @@ describe("全局路由与导航集成", () => {
     const bottomNavSource = readSourceFile("components/layout/BottomNav.tsx");
 
     it("应包含首页链接 /", () => {
-      expect(bottomNavSource).toContain('href: "/"');
+      expect(bottomNavSource).toContain('href="/"');
     });
 
     it("应包含发现页链接 /discover", () => {
-      expect(bottomNavSource).toContain('href: "/discover"');
+      expect(bottomNavSource).toContain('href="/discover"');
     });
 
     it("应包含发布页链接 /create", () => {
-      expect(bottomNavSource).toContain('href: "/create"');
+      expect(bottomNavSource).toContain('href="/create"');
     });
 
     it("应包含消息页链接 /messages", () => {
-      expect(bottomNavSource).toContain('href: "/messages"');
+      expect(bottomNavSource).toContain('href="/messages"');
     });
 
     it("应包含个人主页链接 /u/me", () => {
       expect(bottomNavSource).toContain('href: "/u/me"');
+    });
+
+    it("更多菜单应包含群聊标签入口", () => {
+      expect(bottomNavSource).toContain('href: "/messages?tab=chat"');
     });
 
     it("应包含五个导航项", () => {
@@ -241,6 +246,10 @@ describe("全局路由与导航集成", () => {
 
     it("核心导航应包含消息页 /messages", () => {
       expect(sidebarSource).toContain('href: "/messages"');
+    });
+
+    it("核心导航应直接包含群聊入口", () => {
+      expect(sidebarSource).toContain('href: "/messages?tab=chat"');
     });
 
     it("核心导航应包含个人主页 /u/me", () => {

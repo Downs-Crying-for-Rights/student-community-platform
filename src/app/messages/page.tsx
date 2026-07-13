@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Bell,
   MessageSquare,
@@ -38,6 +38,12 @@ interface ChatRoom {
   memberCount: number;
   lastMessage: { id: string; content: string; createdAt: string } | null;
   updatedAt: string;
+}
+
+type MessagesTab = "all" | "interactive" | "chat";
+
+export function getMessagesTab(value: string | null): MessagesTab {
+  return value === "interactive" || value === "chat" ? value : "all";
 }
 
 export interface Notification {
@@ -384,8 +390,10 @@ function NotificationList({
 
 /* ---------- Main Page ---------- */
 
-export default function MessagesPage() {
+function MessagesPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = getMessagesTab(searchParams.get("tab"));
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
@@ -445,6 +453,13 @@ export default function MessagesPage() {
     router.push(link);
   }
 
+  function handleTabChange(value: string) {
+    const tab = getMessagesTab(value);
+    router.replace(tab === "all" ? "/messages" : `/messages?tab=${tab}`, {
+      scroll: false,
+    });
+  }
+
   const { interactive, system } = groupNotifications(notifications);
 
   return (
@@ -476,14 +491,7 @@ export default function MessagesPage() {
         </div>
 
         {/* Content */}
-        {error ? (
-          <div role="alert" aria-live="polite" className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
-            <p className="text-sm text-destructive">{error}</p>
-          </div>
-        ) : loading ? (
-          <ListSkeleton count={5} />
-        ) : (
-          <Tabs defaultValue="all">
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="mb-4 w-full">
               <TabsTrigger value="all" className="flex-1">
                 通知
@@ -497,28 +505,47 @@ export default function MessagesPage() {
             </TabsList>
 
             <TabsContent value="all">
-              <NotificationList
-                notifications={notifications}
-                onMarkRead={handleMarkRead}
-                onNavigate={handleNavigate}
-              />
+              {error ? (
+                <div role="alert" aria-live="polite" className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
+                  <p className="text-sm text-destructive">{error}</p>
+                </div>
+              ) : loading ? (
+                <ListSkeleton count={5} />
+              ) : (
+                <NotificationList
+                  notifications={notifications}
+                  onMarkRead={handleMarkRead}
+                  onNavigate={handleNavigate}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="interactive">
-              <NotificationList
-                notifications={interactive}
-                onMarkRead={handleMarkRead}
-                onNavigate={handleNavigate}
-              />
+              {loading ? (
+                <ListSkeleton count={5} />
+              ) : (
+                <NotificationList
+                  notifications={interactive}
+                  onMarkRead={handleMarkRead}
+                  onNavigate={handleNavigate}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="chat">
               <ChatRoomList />
             </TabsContent>
           </Tabs>
-        )}
       </main>
 
     </div>
+  );
+}
+
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={<ListSkeleton count={5} />}>
+      <MessagesPageContent />
+    </Suspense>
   );
 }

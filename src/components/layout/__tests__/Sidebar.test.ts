@@ -52,6 +52,7 @@ const coreNavItems: NavItem[] = [
   { href: "/discover", label: "发现" },
   { href: "/create", label: "发布" },
   { href: "/messages", label: "消息" },
+  { href: "/messages?tab=chat", label: "群聊" },
   { href: "/u/me", label: "个人主页" },
 ];
 
@@ -85,12 +86,12 @@ const allNavItems = [
 describe("Sidebar 逻辑", () => {
   describe("核心导航项配置", () => {
     it("应包含五个核心导航入口", () => {
-      expect(coreNavItems).toHaveLength(5);
+      expect(coreNavItems).toHaveLength(6);
     });
 
     it("核心导航项标签应正确", () => {
       const labels = coreNavItems.map((i) => i.label);
-      expect(labels).toEqual(["首页", "发现", "发布", "消息", "个人主页"]);
+      expect(labels).toEqual(["首页", "发现", "发布", "消息", "群聊", "个人主页"]);
     });
 
     it("核心导航项无角色限制", () => {
@@ -123,7 +124,7 @@ describe("Sidebar 逻辑", () => {
 
     it("可见核心导航项", () => {
       const visible = coreNavItems.filter((i) => isVisible(i, role, flags));
-      expect(visible).toHaveLength(5);
+      expect(visible).toHaveLength(6);
     });
 
     it("不可见审核入口", () => {
@@ -378,8 +379,8 @@ describe("Sidebar 逻辑", () => {
 
   describe("保持性：现有导航项不变（Req 3.9）", () => {
     it("核心导航项数量和标签不变", () => {
-      expect(coreNavItems).toHaveLength(5);
-      expect(coreNavItems.map((i) => i.label)).toEqual(["首页", "发现", "发布", "消息", "个人主页"]);
+      expect(coreNavItems).toHaveLength(6);
+      expect(coreNavItems.map((i) => i.label)).toEqual(["首页", "发现", "发布", "消息", "群聊", "个人主页"]);
     });
 
     it("审核导航项不变", () => {

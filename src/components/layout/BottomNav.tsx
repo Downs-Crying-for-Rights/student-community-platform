@@ -1,12 +1,12 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Home, Compass, Plus, MessageCircle, Ellipsis,
-  User, Shield, ShieldCheck,
+  User, MessagesSquare, Shield, ShieldCheck,
   FileText, Lock, Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,7 @@ interface MoreItem {
 /** Items shown in the "更多" slide-up sheet */
 const moreItems: MoreItem[] = [
   { href: "/u/me", label: "我的", icon: User },
+  { href: "/messages?tab=chat", label: "群聊", icon: MessagesSquare },
   { href: "/dcr", label: "DCR 互助", icon: ShieldCheck, requireDcrAccess: true },
   { href: "/dcr/tasks", label: "互助任务", icon: FileText, requireDcrAccess: true },
   { href: "/dcr/tickets", label: "我的工单", icon: Lock, requireDcrAccess: true },
@@ -48,6 +49,7 @@ const moreItems: MoreItem[] = [
 
 export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const role = (session?.user?.role as string) ?? "USER";
   const [dcrAccess, setDcrAccess] = useState(false);
@@ -70,6 +72,10 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
   }, [session]);
 
   function isActive(href: string) {
+    const chatView = pathname.startsWith("/chat")
+      || (pathname === "/messages" && searchParams.get("tab") === "chat");
+    if (href === "/messages?tab=chat") return chatView;
+    if (href === "/messages") return pathname.startsWith("/messages") && !chatView;
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   }

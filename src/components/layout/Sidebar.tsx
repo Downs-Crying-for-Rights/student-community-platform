@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
@@ -21,6 +21,7 @@ import {
   Terminal,
   Sun,
   Moon,
+  MessagesSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
@@ -63,6 +64,7 @@ const coreNavItems: NavItem[] = [
   { href: "/", label: "首页", icon: Home },
   { href: "/discover", label: "发现", icon: Compass },
   { href: "/messages", label: "消息", icon: MessageCircle },
+  { href: "/messages?tab=chat", label: "群聊", icon: MessagesSquare },
   { href: "/create", label: "发布", icon: PlusCircle },
   { href: "/u/me", label: "个人主页", icon: User },
 ];
@@ -111,6 +113,7 @@ function isVisible(
 
 export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -150,6 +153,10 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
   const role = (session?.user?.role as string) ?? "USER";
 
   function isActive(href: string): boolean {
+    const chatView = pathname.startsWith("/chat")
+      || (pathname === "/messages" && searchParams.get("tab") === "chat");
+    if (href === "/messages?tab=chat") return chatView;
+    if (href === "/messages") return pathname.startsWith("/messages") && !chatView;
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   }
