@@ -14,9 +14,6 @@ const reviewSchema = z.object({
 /** Cold start limit: max 50 DCR users */
 const DCR_COLD_START_LIMIT = 50;
 
-/** Minimum account age in days */
-const MIN_ACCOUNT_AGE_DAYS = 7;
-
 /** Maximum allowed violations */
 const MAX_VIOLATION_COUNT = 3;
 
@@ -88,20 +85,11 @@ export const PATCH = withAuth(async (
       // Fetch applicant info for eligibility checks
       const applicant = await prisma.user.findUnique({
         where: { id: application.applicantId },
-        select: { createdAt: true, violationCount: true, reputationScore: true },
+        select: { violationCount: true, reputationScore: true },
       });
 
       if (!applicant) {
         return NextResponse.json({ error: "申请人不存在" }, { status: 404 });
-      }
-
-      // Check account age >= 7 days
-      const accountAgeDays = (Date.now() - applicant.createdAt.getTime()) / (1000 * 60 * 60 * 24);
-      if (accountAgeDays < MIN_ACCOUNT_AGE_DAYS) {
-        return NextResponse.json(
-          { error: "申请人账号年龄不足 7 天" },
-          { status: 403 },
-        );
       }
 
       // Check violation count < 3

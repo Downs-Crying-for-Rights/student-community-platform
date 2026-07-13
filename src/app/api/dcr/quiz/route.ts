@@ -123,9 +123,26 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     const passed = score / total >= 0.8;
 
     if (passed) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { quizPassed: true, dcrAccess: true },
+      // Mark quiz as passed and create access application for admin review
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: userId },
+          data: { quizPassed: true },
+        });
+        // Check if application already exists
+        const existing = await tx.accessApplication.findFirst({
+          where: { applicantId: userId, type: "DCR", status: "PENDING" },
+        });
+        if (!existing) {
+          await tx.accessApplication.create({
+            data: {
+              type: "DCR",
+              status: "PENDING",
+              applicantId: userId,
+              pledgeText: "已通过入频考核，申请加入 DCR 互助区",
+            },
+          });
+        }
       });
     }
 

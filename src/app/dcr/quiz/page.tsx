@@ -101,9 +101,6 @@ export default function QuizPage() {
   const [result, setResult] = useState<QuizResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Join state
-  const [joining, setJoining] = useState(false);
-
   // Error state
   const [error, setError] = useState<string | null>(null);
 
@@ -214,26 +211,6 @@ export default function QuizPage() {
   const handleRetry = () => {
     setResult(null);
     fetchQuestions();
-  };
-
-  const handleJoin = async () => {
-    setJoining(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/dcr/join", { method: "POST" });
-      if (res.ok) {
-        // Refresh JWT to pick up dcrAccess
-        await update();
-        router.push("/dcr");
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "加入失败，请稍后重试");
-      }
-    } catch {
-      setError("网络错误，请检查连接后重试");
-    } finally {
-      setJoining(false);
-    }
   };
 
   /* ========== Render ========== */
@@ -498,15 +475,17 @@ export default function QuizPage() {
             )}
 
             {/* Action buttons */}
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-3">
               {result.passed ? (
-                <Button onClick={handleJoin} disabled={joining}>
-                  {joining && (
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
-                  )}
-                  加入互助队伍
-                  <ArrowRight className="ml-1 h-4 w-4" aria-hidden="true" />
-                </Button>
+                <>
+                  <div className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+                    考核通过！入频申请已自动提交，等待管理员审核后即可进入 DCR 互助区。
+                  </div>
+                  <Button onClick={() => router.push("/dcr/requests")} variant="outline">
+                    查看申请状态
+                    <ArrowRight className="ml-1 h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </>
               ) : (
                 <Button onClick={handleRetry}>
                   重新答题
