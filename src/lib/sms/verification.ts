@@ -63,6 +63,11 @@ export async function verifyCode(
   code: string,
   purpose: string
 ): Promise<boolean> {
+  // 测试模式固定验证码 888888
+  if (process.env.SMS_TEST_MODE === "true" && code === "888888") {
+    return true;
+  }
+
   const codeKey = `sms:${purpose}:${phone}`;
   const storedCode = await redis.get(codeKey);
 
