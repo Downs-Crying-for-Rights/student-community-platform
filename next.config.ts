@@ -27,6 +27,12 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
+    // 本地开发需要 unsafe-eval（React Fast Refresh 依赖 eval）
+    // 生产环境移除 unsafe-eval 以增强安全性
+    const isDev = process.env.NODE_ENV === "development";
+    const scriptSrc = isDev
+      ? "'self' 'unsafe-inline' 'unsafe-eval'"
+      : "'self' 'unsafe-inline'";
     return [
       {
         source: "/(.*)",
@@ -38,7 +44,7 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:;",
+              `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:;`,
           },
         ],
       },
