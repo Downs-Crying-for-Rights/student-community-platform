@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["nodemailer", "bcryptjs"],
   // Allow up to 10MB uploads for image upload API
   experimental: {
+    instrumentationHook: true,
     serverActions: {
       bodySizeLimit: "10mb",
     },
