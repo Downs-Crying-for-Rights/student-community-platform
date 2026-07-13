@@ -18,6 +18,12 @@ services:
       - QQ_APP_ID=${QQ_APP_ID}
       - QQ_APP_SECRET=${QQ_APP_SECRET}
       - SMS_TEST_MODE=${SMS_TEST_MODE}
+      - OSS_REGION=${OSS_REGION}
+      - OSS_BUCKET=${OSS_BUCKET}
+      - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID}
+      - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET}
+      - OSS_ENDPOINT=${OSS_ENDPOINT}
+      - OSS_CDN_DOMAIN=${OSS_CDN_DOMAIN}
       - NODE_ENV=production
     depends_on:
       postgres:
