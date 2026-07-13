@@ -41,6 +41,9 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
       zone: searchParams.get("zone") ?? undefined,
       status: searchParams.get("status") ?? undefined,
       caseIds: searchParams.get("caseIds") ?? undefined,
+      authorId: searchParams.get("authorId") ?? undefined,
+      bookmarkedBy: searchParams.get("bookmarkedBy") ?? undefined,
+      likedBy: searchParams.get("likedBy") ?? undefined,
     });
 
     if (!parsed.success) {
