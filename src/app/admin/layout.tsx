@@ -43,7 +43,7 @@ export default async function AdminLayout({
 
   return (
     <AdminLayoutClient>
-      <AdminNav />
+      <AdminNav isSuperAdmin={role === "SUPER_ADMIN"} />
       {children}
     </AdminLayoutClient>
   );

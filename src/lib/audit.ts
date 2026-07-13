@@ -47,6 +47,7 @@ export const AuditAction = {
   SUPER_ADMIN_OVERRIDE: "SUPER_ADMIN_OVERRIDE",
 
   // 系统
+  SYSTEM_RESTART: "SYSTEM_RESTART",
   UNAUTHORIZED_ACCESS: "UNAUTHORIZED_ACCESS",
 } as const;
 
@@ -67,6 +68,7 @@ export const AuditTargetType = {
   ACCESS_APPLICATION: "ACCESS_APPLICATION",
   CONFIDE_REQUEST: "CONFIDE_REQUEST",
   KNOWLEDGE_ARTICLE: "KNOWLEDGE_ARTICLE",
+  SYSTEM: "SYSTEM",
 } as const;
 
 export type AuditTargetTypeValue =

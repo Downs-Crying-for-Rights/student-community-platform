@@ -12,12 +12,40 @@ export function VersionFooter() {
   const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/VERSION")
-      .then((res) => (res.ok ? res.text() : null))
+    let active = true;
+    let deploymentId: string | null = null;
+
+    const fetchUncachedText = (url: string) =>
+      fetch(`${url}?t=${Date.now()}`, { cache: "no-store" })
+        .then((res) => (res.ok ? res.text() : null));
+
+    fetchUncachedText("/VERSION")
       .then((text) => {
-        if (text) setVersion(text.trim());
+        if (active && text) setVersion(text.trim());
       })
       .catch(() => {});
+
+    const checkDeployment = async () => {
+      try {
+        const text = await fetchUncachedText("/DEPLOYMENT");
+        if (!active || !text) return;
+        const nextId = text.trim();
+        if (deploymentId && deploymentId !== nextId) {
+          window.location.reload();
+          return;
+        }
+        deploymentId = nextId;
+      } catch {
+        // A deployment may make the service briefly unavailable.
+      }
+    };
+
+    void checkDeployment();
+    const timer = window.setInterval(checkDeployment, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   if (!version) return null;

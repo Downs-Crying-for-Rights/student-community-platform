@@ -29,6 +29,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/(VERSION|DEPLOYMENT)",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate, max-age=0" },
+        ],
+      },
+      {
         source: "/(.*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },

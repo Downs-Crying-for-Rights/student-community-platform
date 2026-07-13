@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, BookOpen, ShieldCheck, Shield, Terminal } from "lucide-react";
+import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adminLinks = [
@@ -17,8 +17,13 @@ const adminLinks = [
   { href: "/admin/logs", label: "系统日志", icon: Terminal },
 ];
 
-export function AdminNav() {
+const superAdminLinks = [
+  { href: "/admin/system", label: "系统维护", icon: RefreshCw },
+];
+
+export function AdminNav({ isSuperAdmin = false }: { isSuperAdmin?: boolean }) {
   const pathname = usePathname();
+  const links = isSuperAdmin ? [...adminLinks, ...superAdminLinks] : adminLinks;
 
   return (
     <nav className="border-b border-border bg-background" aria-label="管理后台导航">
@@ -35,7 +40,7 @@ export function AdminNav() {
           首页
         </Link>
         <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
-        {adminLinks.map(({ href, label, icon: Icon }) => {
+        {links.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href;
           return (
             <Link

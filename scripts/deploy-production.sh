@@ -30,6 +30,7 @@ cp "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 chmod 600 "$RELEASE_DIR/.env"
 
 cd "$RELEASE_DIR"
+printf '%s\n' "$RELEASE_SHA" > public/DEPLOYMENT
 docker compose -p "$PROJECT_NAME" config --quiet
 docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
 
