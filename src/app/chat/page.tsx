@@ -18,10 +18,23 @@ interface ChatRoom {
   name: string;
   description: string;
   type: "PUBLIC" | "PRIVATE";
+  joinMode: string;
   createdBy: { id: string; nickname: string; avatar: string | null };
   memberCount: number;
-  lastMessage: { content: string; createdAt: string } | null;
+  lastMessage: { id: string; content: string; createdAt: string } | null;
   updatedAt: string;
+}
+
+function getLastRead(roomId: string): string | null {
+  if (typeof window === "undefined") return null;
+  try { return (JSON.parse(localStorage.getItem("chat_last_read") || "{}") as Record<string, string>)[roomId] ?? null; } catch { return null; }
+}
+
+function getUnreadCount(room: ChatRoom): number {
+  if (!room.lastMessage) return 0;
+  const lastReadId = getLastRead(room.id);
+  if (!lastReadId) return 1; // never read → show at least 1
+  return room.lastMessage.id !== lastReadId ? 1 : 0; // simplified: show 1 if unread
 }
 
 export default function ChatListPage() {
@@ -131,9 +144,14 @@ export default function ChatListPage() {
                       <p className="text-xs text-muted-foreground">暂无消息</p>
                     )}
                   </div>
-                  <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                    <Users className="h-3 w-3" />
-                    {room.memberCount}
+                  <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                    {(() => { const c = getUnreadCount(room); return c > 0 ? (
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">{c}</span>
+                    ) : null; })()}
+                    <div className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      {room.memberCount}
+                    </div>
                   </div>
                 </CardContent>
               </Card>

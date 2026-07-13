@@ -37,7 +37,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           messages: {
             orderBy: { createdAt: "desc" },
             take: 1,
-            select: { content: true, createdAt: true },
+            select: { id: true, content: true, createdAt: true },
           },
         },
         orderBy: { updatedAt: "desc" },

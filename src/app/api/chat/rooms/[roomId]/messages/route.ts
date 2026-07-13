@@ -30,23 +30,39 @@ export const GET = withAuth(async (
 
     const { searchParams } = new URL(req.url);
     const cursor = searchParams.get("cursor");
-    const take = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "50")));
+    const before = searchParams.get("before"); // message ID cursor for "load older"
+    const after = searchParams.get("after");   // message ID cursor for "poll new"
+    const take = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "30")));
+
+    // Resolve message ID cursors to createdAt timestamps
+    let cursorDate: Date | undefined;
+    if (cursor) {
+      cursorDate = new Date(cursor);
+    } else if (before) {
+      const beforeMsg = await prisma.chatMessage.findUnique({ where: { id: before }, select: { createdAt: true } });
+      if (beforeMsg) cursorDate = beforeMsg.createdAt;
+    } else if (after) {
+      const afterMsg = await prisma.chatMessage.findUnique({ where: { id: after }, select: { createdAt: true } });
+      if (afterMsg) cursorDate = afterMsg.createdAt;
+    }
+
+    const isAfterMode = !!after;
 
     const messages = await prisma.chatMessage.findMany({
       where: {
         roomId,
-        ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
+        ...(cursorDate ? { createdAt: isAfterMode ? { gt: cursorDate } : { lt: cursorDate } } : {}),
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: isAfterMode ? "asc" : "desc" },
       take: take + 1,
     });
 
     const hasMore = messages.length > take;
-    const result = messages.slice(0, take).reverse();
+    const sliced = messages.slice(0, take);
+    const result = isAfterMode ? sliced : sliced.reverse();
 
     return NextResponse.json({
       messages: result,
-      nextCursor: hasMore ? result[0]?.createdAt?.toISOString() ?? null : null,
       hasMore,
     });
   } catch (error) {
