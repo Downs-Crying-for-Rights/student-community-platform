@@ -59,8 +59,8 @@ function SetUsernameContent() {
         return;
       }
 
-      // 刷新 session 以同步昵称
-      await update();
+      // 刷新 session 以同步昵称（非关键，失败不影响导航）
+      try { await update(); } catch { /* ignore */ }
 
       const callbackUrl = searchParams.get("callbackUrl") || "/";
       router.push(callbackUrl);

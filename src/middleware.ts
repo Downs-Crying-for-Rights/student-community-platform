@@ -48,8 +48,6 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const uid = (token.sub || (token as any).id || (token as any).userId) as string;
-
   // ========== 第1优先级：强制设置用户名 ==========
   if (!isSetUsernamePath(pathname)) {
     if (!(token as any).nickname) {

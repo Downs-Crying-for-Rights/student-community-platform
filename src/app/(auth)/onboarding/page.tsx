@@ -323,8 +323,9 @@ export default function OnboardingPage() {
         return;
       }
       // 刷新 JWT 以同步 onboardingDone/quizPassed，避免 middleware 重复拦截
-      // @ts-expect-error — next-auth Session.update() 运行时可用，但类型定义未包含
-      await session?.update();
+      try {
+        await session?.update();
+      } catch { /* session update failure is non-critical */ }
 
       router.push("/");
       router.refresh();
