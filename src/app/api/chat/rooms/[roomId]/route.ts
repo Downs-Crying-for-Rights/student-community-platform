@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { hasMinimumRole, withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 
 /**
  * GET /api/chat/rooms/[roomId] — 获取群聊详情（含成员列表）
@@ -31,9 +31,11 @@ export const GET = withAuth(async (
       return NextResponse.json({ error: "群聊不存在" }, { status: 404 });
     }
 
-    // Check access: public room or member
+    // Pending/rejected public rooms are visible only to members and moderators.
     const isMember = room.members.some((m) => m.userId === userId);
-    if (room.type !== "PUBLIC" && !isMember && req.user.role !== "SUPER_ADMIN") {
+    const canReview = hasMinimumRole(req.user.role, "MODERATOR");
+    const isApprovedPublic = room.type === "PUBLIC" && room.status === "APPROVED";
+    if (!isApprovedPublic && !isMember && !canReview) {
       return NextResponse.json({ error: "无权访问此私密群聊" }, { status: 403 });
     }
 
@@ -43,6 +45,7 @@ export const GET = withAuth(async (
         name: room.name,
         description: room.description,
         type: room.type,
+        status: room.status,
         joinMode: room.joinMode,
         createdBy: room.createdBy,
         members: room.members.map((m) => ({
@@ -73,11 +76,19 @@ export const POST = withAuth(async (
 
     const room = await prisma.chatRoom.findUnique({
       where: { id: roomId },
-      select: { id: true, type: true },
+      select: { id: true, type: true, status: true, joinMode: true },
     });
 
     if (!room) {
       return NextResponse.json({ error: "群聊不存在" }, { status: 404 });
+    }
+
+    if (room.type !== "PUBLIC" || room.status !== "APPROVED") {
+      return NextResponse.json({ error: "该群聊尚未通过审核或不可公开加入" }, { status: 403 });
+    }
+
+    if (room.joinMode !== "DIRECT") {
+      return NextResponse.json({ error: "该群聊需要提交加入申请" }, { status: 400 });
     }
 
     const existing = await prisma.chatRoomMember.findUnique({

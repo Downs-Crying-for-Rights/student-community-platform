@@ -37,7 +37,7 @@ export const GET = withAuth(async (
         user: {
           select: { id: true, nickname: true, avatar: true },
         },
-      } as any,
+      },
       orderBy: { createdAt: "asc" },
     });
 
@@ -67,6 +67,10 @@ export const POST = withAuth(async (
 
     if (!room) {
       return NextResponse.json({ error: "群聊不存在" }, { status: 404 });
+    }
+
+    if (room.status !== "APPROVED") {
+      return NextResponse.json({ error: "该群聊尚未通过平台审核" }, { status: 403 });
     }
 
     if (room.joinMode !== "APPROVAL" || room.type !== "PUBLIC") {

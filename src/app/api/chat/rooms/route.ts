@@ -60,6 +60,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       name: r.name,
       description: r.description,
       type: r.type,
+      status: r.status,
       joinMode: r.joinMode,
       createdBy: r.createdBy,
       memberCount: r._count.members,
@@ -96,6 +97,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         name,
         description: description ?? "",
         type,
+        status: type === "PUBLIC" ? "PENDING" : "APPROVED",
         joinMode,
         createdById: userId,
         members: {
@@ -111,7 +113,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       },
     });
 
-    return NextResponse.json({ room }, { status: 201 });
+    return NextResponse.json(
+      {
+        room,
+        message: type === "PUBLIC" ? "公开群聊已提交审核，通过后将对其他用户可见" : "私密群聊创建成功",
+      },
+      { status: 201 },
+    );
   } catch (error) {
     console.error("POST /api/chat/rooms error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

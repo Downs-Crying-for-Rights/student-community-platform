@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   Home, Compass, Plus, MessageCircle, Ellipsis,
   User, MessagesSquare, Shield, ShieldCheck,
@@ -98,7 +97,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
   }) {
     const active = isActive(href);
     return (
-      <Link
+      <a
         href={href}
         aria-label={label}
         aria-current={active ? "page" : undefined}
@@ -118,7 +117,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
           )}
         </span>
         <span className="text-[10px] font-medium">{label}</span>
-      </Link>
+      </a>
     );
   }
 
@@ -141,7 +140,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
 
         {/* Slot 3: 发布 (raised center) */}
         <div className="relative flex w-[56px] shrink-0 items-end justify-center self-stretch pb-0.5">
-          <Link
+          <a
             href="/create"
             aria-label="发布"
             aria-current={isActive("/create") ? "page" : undefined}
@@ -157,7 +156,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
               <Plus className="h-6 w-6" />
             </span>
             <span className="mt-0.5 text-[10px] font-medium text-primary">发布</span>
-          </Link>
+          </a>
         </div>
 
         {/* Slot 4: 消息 */}
@@ -194,7 +193,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
                   const Icon = item.icon;
                   const active = isActive(item.href);
                   return (
-                    <Link
+                    <a
                       key={item.href}
                       href={item.href}
                       onClick={() => setSheetOpen(false)}
@@ -207,7 +206,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
                     >
                       <Icon className="h-6 w-6" />
                       <span className="text-xs font-medium">{item.label}</span>
-                    </Link>
+                    </a>
                   );
                 })}
               </div>

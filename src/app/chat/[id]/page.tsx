@@ -29,6 +29,7 @@ interface RoomInfo {
   name: string;
   description: string;
   type: "PUBLIC" | "PRIVATE";
+  status: "PENDING" | "APPROVED" | "REJECTED";
   joinMode: string;
   createdBy: { id: string; nickname: string; avatar: string | null };
   members: Member[];
@@ -247,7 +248,13 @@ export default function ChatRoomPage() {
         {loadingMore && (
           <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
         )}
-        {!isMember ? (
+        {room?.status !== "APPROVED" ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <Lock className="h-10 w-10 text-amber-500/60" />
+            <p className="text-sm font-medium">{room?.status === "REJECTED" ? "该群聊未通过平台审核" : "该群聊正在等待平台审核"}</p>
+            <p className="text-xs text-muted-foreground">审核通过后才能加入和发送消息</p>
+          </div>
+        ) : !isMember ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <Lock className="h-10 w-10 text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">{room?.type === "PRIVATE" ? "私密群聊" : "加入群聊以查看和发送消息"}</p>
@@ -270,7 +277,7 @@ export default function ChatRoomPage() {
       </div>
 
       {/* Input bar */}
-      {isMember && (
+      {isMember && room?.status === "APPROVED" && (
         <form onSubmit={handleSend} className="flex shrink-0 items-center gap-2 border-t border-border/40 px-3 py-2 bg-background">
           <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="输入消息..." maxLength={5000}
             className="flex-1 h-9" autoComplete="off" />
@@ -320,11 +327,11 @@ export default function ChatRoomPage() {
                   <span className="text-sm">{r.user?.nickname ?? "未知"}</span>
                   <div className="flex gap-1">
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => {
-                      await fetch(`/api/chat/rooms/${roomId}/join-requests/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "APPROVED" }) });
+                      await fetch(`/api/chat/rooms/${roomId}/join-requests/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "APPROVE" }) });
                       fetchJoinRequests(); fetchRoom();
                     }}>通过</Button>
                     <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={async () => {
-                      await fetch(`/api/chat/rooms/${roomId}/join-requests/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "REJECTED" }) });
+                      await fetch(`/api/chat/rooms/${roomId}/join-requests/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "REJECT" }) });
                       fetchJoinRequests();
                     }}>拒绝</Button>
                   </div>

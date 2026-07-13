@@ -49,6 +49,22 @@ describe("统一会员导航壳", () => {
     expect(source).toContain('searchParams.get("tab")');
     expect(source).toContain("<Tabs value={activeTab} onValueChange={handleTabChange}>");
     expect(source).toContain('<TabsContent value="chat">');
+    expect(source).toContain('<TabsTrigger value="all"');
+    expect(source).toContain('<TabsTrigger value="interactive"');
+    expect(source).toContain('<TabsTrigger value="system"');
+    expect(source).toContain('<TabsTrigger value="chat"');
+    expect(source).toContain("系统通知");
+  });
+
+  it("主导航使用完整页面跳转，避免复用旧路由树", () => {
+    for (const file of ["components/layout/BottomNav.tsx", "components/layout/Sidebar.tsx"]) {
+      const source = read(file);
+      expect(source).not.toContain('from "next/link"');
+      expect(source).toContain("<a");
+    }
+
+    const middleware = read("middleware.ts");
+    expect(middleware).toContain("private, no-store, no-cache, must-revalidate, max-age=0");
   });
 
   it("全局导航只由 MemberShell 挂载", () => {

@@ -68,7 +68,12 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
-  return NextResponse.next();
+  // Member pages and RSC navigation responses must not be reused across
+  // deployments. This prevents the client router from mixing an old page
+  // payload with the current global navigation shell.
+  const response = NextResponse.next();
+  response.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate, max-age=0");
+  return response;
 }
 
 /**

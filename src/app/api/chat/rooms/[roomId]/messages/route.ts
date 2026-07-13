@@ -20,6 +20,17 @@ export const GET = withAuth(async (
     const userId = req.user.id;
     const { roomId } = context.params;
 
+    const room = await prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { status: true },
+    });
+    if (!room) {
+      return NextResponse.json({ error: "群聊不存在" }, { status: 404 });
+    }
+    if (room.status !== "APPROVED") {
+      return NextResponse.json({ error: "群聊尚未通过平台审核" }, { status: 409 });
+    }
+
     // Verify membership
     const isMember = await prisma.chatRoomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
@@ -81,6 +92,17 @@ export const POST = withAuth(async (
   try {
     const userId = req.user.id;
     const { roomId } = context.params;
+
+    const room = await prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { status: true },
+    });
+    if (!room) {
+      return NextResponse.json({ error: "群聊不存在" }, { status: 404 });
+    }
+    if (room.status !== "APPROVED") {
+      return NextResponse.json({ error: "群聊尚未通过平台审核" }, { status: 409 });
+    }
 
     const body = await req.json();
     const parsed = sendMessageSchema.safeParse(body);

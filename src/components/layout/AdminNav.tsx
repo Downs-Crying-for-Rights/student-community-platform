@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw } from "lucide-react";
+import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adminLinks = [
@@ -14,6 +14,7 @@ const adminLinks = [
   { href: "/admin/boards", label: "板块管理", icon: LayoutGrid },
   { href: "/admin/kb", label: "知识库", icon: BookOpen },
   { href: "/admin/applications", label: "准入审核", icon: ShieldCheck },
+  { href: "/admin/chat-rooms", label: "群聊审核", icon: MessagesSquare },
   { href: "/admin/logs", label: "系统日志", icon: Terminal },
 ];
 

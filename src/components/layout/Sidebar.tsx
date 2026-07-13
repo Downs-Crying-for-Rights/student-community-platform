@@ -1,8 +1,9 @@
 "use client";
 
+/* eslint-disable @next/next/no-html-link-for-pages -- full document navigation prevents stale App Router trees across deployments */
+
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import Link from "next/link";
 import {
   Home,
   Compass,
@@ -162,7 +163,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
     const active = isActive(item.href);
     const Icon = item.icon;
     return (
-      <Link
+      <a
         key={item.href}
         href={item.href}
         aria-label={item.label}
@@ -177,7 +178,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
       >
         <Icon className="h-5 w-5 shrink-0" />
         <span>{item.label}</span>
-      </Link>
+      </a>
     );
   }
 
@@ -201,13 +202,13 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
     >
       {/* Logo */}
       <div className="flex h-14 items-center border-b border-border/40 px-6">
-        <Link
+        <a
           href="/"
           className="text-lg font-bold tracking-tight text-foreground"
           aria-label="学互会首页"
         >
           学互会
-        </Link>
+        </a>
       </div>
 
       {/* Navigation */}
@@ -259,7 +260,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
 
       {/* Bottom section: settings + theme toggle */}
       <div className="border-t border-border/40 px-3 py-3">
-        <Link
+        <a
           href="/settings/profile"
           aria-label="设置"
           className={cn(
@@ -272,7 +273,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
         >
           <Settings className="h-5 w-5 shrink-0" />
           <span>设置</span>
-        </Link>
+        </a>
 
         <button
           type="button"

@@ -18,6 +18,7 @@ import {
   groupNotifications,
   getNotificationIcon,
   formatTime,
+  getMessagesTab,
   type Notification,
 } from "../page";
 
@@ -39,6 +40,19 @@ function makeNotification(overrides: Partial<Notification> = {}): Notification {
 /* ---------- Tests ---------- */
 
 describe("通知页面逻辑", () => {
+  describe("消息页标签路由", () => {
+    it("支持全部、互动、系统和群聊四个固定标签", () => {
+      expect(getMessagesTab(null)).toBe("all");
+      expect(getMessagesTab("interactive")).toBe("interactive");
+      expect(getMessagesTab("system")).toBe("system");
+      expect(getMessagesTab("chat")).toBe("chat");
+    });
+
+    it("未知标签回退到全部", () => {
+      expect(getMessagesTab("unknown")).toBe("all");
+    });
+  });
+
   describe("通知类型分类 (classifyNotification)", () => {
     it("COMMENT 归类为互动通知", () => {
       expect(classifyNotification("COMMENT")).toBe("interactive");

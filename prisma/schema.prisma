@@ -100,6 +100,7 @@ model User {
   // 群聊
   chatRooms      ChatRoom[]       @relation("ChatRoomCreator")
   chatMemberships ChatRoomMember[]
+  chatJoinRequests ChatRoomJoinRequest[]
 }
 
 // NextAuth 模型
@@ -844,6 +845,7 @@ model ChatRoomJoinRequest {
   roomId    String
   room      ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
   userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   status    String   @default("PENDING") // PENDING | APPROVED | REJECTED
   reviewedBy String?
   createdAt DateTime @default(now())

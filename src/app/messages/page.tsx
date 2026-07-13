@@ -33,6 +33,7 @@ interface ChatRoom {
   name: string;
   description: string;
   type: "PUBLIC" | "PRIVATE";
+  status: "PENDING" | "APPROVED" | "REJECTED";
   joinMode: string;
   createdBy: { id: string; nickname: string; avatar: string | null };
   memberCount: number;
@@ -40,10 +41,10 @@ interface ChatRoom {
   updatedAt: string;
 }
 
-type MessagesTab = "all" | "interactive" | "chat";
+type MessagesTab = "all" | "interactive" | "system" | "chat";
 
 export function getMessagesTab(value: string | null): MessagesTab {
-  return value === "interactive" || value === "chat" ? value : "all";
+  return value === "interactive" || value === "system" || value === "chat" ? value : "all";
 }
 
 export interface Notification {
@@ -135,6 +136,7 @@ function ChatRoomList() {
   const [newType, setNewType] = useState<"PUBLIC" | "PRIVATE">("PUBLIC");
   const [newJoinMode, setNewJoinMode] = useState<"DIRECT" | "APPROVAL">("DIRECT");
   const [creating, setCreating] = useState(false);
+  const [createNotice, setCreateNotice] = useState("");
 
   const fetchRooms = useCallback(async () => {
     setLoading(true);
@@ -160,11 +162,16 @@ function ChatRoomList() {
         body: JSON.stringify({ name: newName.trim(), description: newDesc, type: newType, joinMode: newType === "PUBLIC" ? newJoinMode : "APPROVAL" }),
       });
       if (res.ok) {
+        const data = await res.json();
         setShowCreate(false);
         setNewName(""); setNewDesc("");
+        setCreateNotice(data.message || "群聊创建成功");
         fetchRooms();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setCreateNotice(data.error || "群聊创建失败");
       }
-    } catch { /* ignore */ } finally { setCreating(false); }
+    } catch { setCreateNotice("网络错误，请稍后重试"); } finally { setCreating(false); }
   }
 
   return (
@@ -174,6 +181,11 @@ function ChatRoomList() {
           <Plus className="mr-1 h-4 w-4" />创建群聊
         </Button>
       </div>
+      {createNotice && (
+        <p className="mb-4 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground" role="status">
+          {createNotice}
+        </p>
+      )}
 
       {loading ? (
         <div className="space-y-3">
@@ -206,6 +218,8 @@ function ChatRoomList() {
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-medium truncate">{room.name}</span>
                       {room.type === "PRIVATE" && <Lock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                      {room.status === "PENDING" && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">待平台审核</span>}
+                      {room.status === "REJECTED" && <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">审核未通过</span>}
                       {room.joinMode === "APPROVAL" && <Shield className="h-3 w-3 text-amber-500 shrink-0" />}
                     </div>
                     {room.lastMessage ? (
@@ -257,6 +271,9 @@ function ChatRoomList() {
             </div>
             {newType === "PUBLIC" && (
               <div>
+                <p className="mb-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  公开群聊创建后需要平台审核，审核通过后才会向其他用户展示。
+                </p>
                 <label className="text-sm font-medium">加入方式</label>
                 <div className="mt-1 flex gap-2">
                   <Button type="button" variant={newJoinMode === "DIRECT" ? "default" : "outline"} size="sm" onClick={() => setNewJoinMode("DIRECT")}>
@@ -469,7 +486,7 @@ function MessagesPageContent() {
         <div className="mb-4 flex items-center justify-between">
           <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
             <Bell className="h-5 w-5" aria-hidden="true" />
-            通知
+            消息
             {unreadCount > 0 && (
               <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
                 {unreadCount}
@@ -492,12 +509,15 @@ function MessagesPageContent() {
 
         {/* Content */}
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="mb-4 w-full">
+            <TabsList className="mb-4 grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
               <TabsTrigger value="all" className="flex-1">
-                通知
+                全部
               </TabsTrigger>
               <TabsTrigger value="interactive" className="flex-1">
-                互动
+                互动通知
+              </TabsTrigger>
+              <TabsTrigger value="system" className="flex-1">
+                系统通知
               </TabsTrigger>
               <TabsTrigger value="chat" className="flex-1">
                 群聊
@@ -526,6 +546,18 @@ function MessagesPageContent() {
               ) : (
                 <NotificationList
                   notifications={interactive}
+                  onMarkRead={handleMarkRead}
+                  onNavigate={handleNavigate}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="system">
+              {loading ? (
+                <ListSkeleton count={5} />
+              ) : (
+                <NotificationList
+                  notifications={system}
                   onMarkRead={handleMarkRead}
                   onNavigate={handleNavigate}
                 />

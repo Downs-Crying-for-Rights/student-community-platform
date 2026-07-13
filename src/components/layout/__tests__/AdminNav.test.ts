@@ -23,6 +23,7 @@ const adminLinks = [
   { href: "/admin/boards", label: "板块管理" },
   { href: "/admin/kb", label: "知识库" },
   { href: "/admin/applications", label: "准入审核" },
+  { href: "/admin/chat-rooms", label: "群聊审核" },
 ];
 
 /** Simulates the active link logic from AdminNav */
@@ -79,8 +80,8 @@ describe("AdminNav original navigation items", () => {
     }
   });
 
-  it("total nav items count is 8 (1 moderation + 5 original + 2 new)", () => {
-    expect(adminLinks).toHaveLength(8);
+  it("total nav items count is 9", () => {
+    expect(adminLinks).toHaveLength(9);
   });
 });
 
@@ -99,9 +100,16 @@ describe("AdminNav new navigation items (Req 10.1, 10.2)", () => {
     expect(appLink!.label).toBe("准入审核");
   });
 
+  it("includes 群聊审核 nav item with /admin/chat-rooms href", () => {
+    const chatLink = adminLinks.find((l) => l.href === "/admin/chat-rooms");
+    expect(chatLink).toBeDefined();
+    expect(chatLink!.label).toBe("群聊审核");
+  });
+
   it("new items are placed after the original 5", () => {
     expect(adminLinks[6].href).toBe("/admin/kb");
     expect(adminLinks[7].href).toBe("/admin/applications");
+    expect(adminLinks[8].href).toBe("/admin/chat-rooms");
   });
 });
 
