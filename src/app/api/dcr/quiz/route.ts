@@ -22,7 +22,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       select: { dcrAccess: true },
     });
     if (user?.dcrAccess) {
-      return NextResponse.json({ error: "已拥有 DCR 访问权限" }, { status: 409 });
+      return NextResponse.json({ completed: true, reason: "已拥有 DCR 访问权限" });
     }
 
     // 已有审核中申请的无需重复考核（避免多次提交）
@@ -30,7 +30,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       where: { applicantId: userId, type: "DCR", status: { in: ["PENDING", "APPROVED"] } },
     });
     if (pendingApp) {
-      return NextResponse.json({ error: "已有 DCR 准入申请在处理中" }, { status: 409 });
+      return NextResponse.json({ completed: true, reason: "已有 DCR 准入申请在处理中" });
     }
     // Fetch 5 random active questions
     const all = await prisma.dcrQuizQuestion.findMany({

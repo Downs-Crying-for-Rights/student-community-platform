@@ -7,6 +7,8 @@ const createQuestionSchema = z.object({
   text: z.string().min(5, "题目至少5字").max(500),
   options: z.array(z.string()).length(4, "必须有4个选项"),
   answer: z.number().int().min(0).max(3, "正确答案索引0-3"),
+}).refine((data) => data.options.every((o) => o.trim().length > 0), {
+  message: "所有选项不能为空",
 });
 
 /**

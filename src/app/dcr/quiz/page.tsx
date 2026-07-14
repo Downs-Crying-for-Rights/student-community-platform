@@ -195,16 +195,16 @@ export default function QuizPage() {
     try {
       const res = await fetch("/api/dcr/quiz");
       if (!res.ok) {
-        if (res.status === 409) {
-          // Already passed — redirect to DCR entry
-          router.push("/dcr");
-          return;
-        }
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? "获取题目失败，请稍后重试");
         return;
       }
       const data = await res.json();
+      // Already completed (has access or pending application)
+      if (data.completed) {
+        router.push("/dcr");
+        return;
+      }
       // Map raw options (string[]) to keyed format
       const mapped: QuizQuestionData[] = data.questions.map(
         (q: { id: string; text: string; options: string[]; type: string; score: number }) => ({
