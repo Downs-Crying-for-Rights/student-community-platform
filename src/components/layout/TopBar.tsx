@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft, Search, Plus, Bell, UserPlus, Shield, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -106,7 +106,7 @@ export function TopBar({ unreadCount = 0 }: TopBarProps) {
                 asChild
                 className="relative min-h-[44px] min-w-[44px]"
               >
-                <Link href="/messages" aria-label="消息通知">
+                <a href="/messages" aria-label="消息通知">
                   <Bell className="h-5 w-5" />
                   {unreadCount > 0 && (
                     <span
@@ -120,7 +120,7 @@ export function TopBar({ unreadCount = 0 }: TopBarProps) {
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
                   )}
-                </Link>
+                </a>
               </Button>
 
               {/* Admin link for MODERATOR+ */}

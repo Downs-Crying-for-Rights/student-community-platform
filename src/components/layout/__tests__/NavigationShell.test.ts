@@ -65,6 +65,17 @@ describe("统一会员导航壳", () => {
 
     const middleware = read("middleware.ts");
     expect(middleware).toContain("private, no-store, no-cache, must-revalidate, max-age=0");
+
+    const rootLayout = read("app/layout.tsx");
+    expect(rootLayout).toContain('export const dynamic = "force-dynamic"');
+    expect(rootLayout).toContain("export const revalidate = 0");
+    expect(rootLayout).toContain('export const fetchCache = "force-no-store"');
+
+    const topBar = read("components/layout/TopBar.tsx");
+    expect(topBar).toContain('<a href="/messages"');
+
+    const chatRedirect = read("app/chat/page.tsx");
+    expect(chatRedirect).toContain('window.location.replace("/messages?tab=chat")');
   });
 
   it("全局导航只由 MemberShell 挂载", () => {

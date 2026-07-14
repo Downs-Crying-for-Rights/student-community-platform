@@ -8,6 +8,7 @@ SHARED_DIR="$APP_DIR/shared"
 CURRENT_LINK="$APP_DIR/current"
 PROJECT_NAME="forum-dcr2026"
 HEALTH_URL="https://forum.dcr2026.com/"
+DEPLOYMENT_URL="https://forum.dcr2026.com/DEPLOYMENT"
 PREVIOUS_RELEASE=""
 
 if [[ -L "$CURRENT_LINK" ]]; then
@@ -52,13 +53,17 @@ docker compose -p "$PROJECT_NAME" exec -T web sh -ec '
 
 healthy=false
 for attempt in {1..24}; do
-  if curl --fail --silent --show-error --max-time 10 \
+  deployment_id="$(curl --fail --silent --show-error --max-time 10 \
     --resolve forum.dcr2026.com:443:127.0.0.1 \
-    "$HEALTH_URL" >/dev/null; then
+    "$DEPLOYMENT_URL" 2>/dev/null || true)"
+  if [[ "$deployment_id" == "$RELEASE_SHA" ]] && \
+    curl --fail --silent --show-error --max-time 10 \
+      --resolve forum.dcr2026.com:443:127.0.0.1 \
+      "$HEALTH_URL" >/dev/null; then
     healthy=true
     break
   fi
-  echo "Health check attempt $attempt/24 failed; retrying in 5 seconds"
+  echo "Health check attempt $attempt/24 failed (deployment=$deployment_id); retrying in 5 seconds"
   sleep 5
 done
 
