@@ -15,6 +15,11 @@ if [[ -L "$CURRENT_LINK" ]]; then
 fi
 
 mkdir -p "$SHARED_DIR"
+install -d -m 755 "$SHARED_DIR/logs"
+touch "$SHARED_DIR/logs/deployment.log" "$SHARED_DIR/logs/services.log" \
+  "$SHARED_DIR/logs/nginx-access.log" "$SHARED_DIR/logs/nginx-error.log"
+chmod 644 "$SHARED_DIR/logs"/*.log
+exec > >(tee -a "$SHARED_DIR/logs/deployment.log") 2>&1
 
 if [[ ! -f "$SHARED_DIR/.env" ]]; then
   if [[ -f "$APP_DIR/.env" ]]; then
@@ -71,6 +76,40 @@ fi
 
 ln -sfn "$RELEASE_DIR" "$CURRENT_LINK.new"
 mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
+
+chmod +x "$CURRENT_LINK/scripts/collect-production-logs.sh"
+cat > /etc/systemd/system/forum-dcr2026-log-collector.service <<EOF
+[Unit]
+Description=Forum DCR2026 production log collector
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment=APP_DIR=$APP_DIR
+ExecStart=$CURRENT_LINK/scripts/collect-production-logs.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/logrotate.d/forum-dcr2026-console <<EOF
+$SHARED_DIR/logs/*.log {
+  daily
+  size 20M
+  rotate 7
+  compress
+  missingok
+  notifempty
+  copytruncate
+}
+EOF
+
+systemctl daemon-reload
+systemctl enable --now forum-dcr2026-log-collector.service
+systemctl restart forum-dcr2026-log-collector.service
 
 find "$APP_DIR/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
   | sort -nr \

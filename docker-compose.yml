@@ -24,7 +24,10 @@ services:
       - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET}
       - OSS_ENDPOINT=${OSS_ENDPOINT}
       - OSS_CDN_DOMAIN=${OSS_CDN_DOMAIN}
+      - TERMINAL_LOG_DIR=/var/log/forum
       - NODE_ENV=production
+    volumes:
+      - ${HOST_TERMINAL_LOG_DIR:-/opt/forum-dcr2026/shared/logs}:/var/log/forum:ro
     depends_on:
       postgres:
         condition: service_healthy
