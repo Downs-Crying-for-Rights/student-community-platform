@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -15,14 +15,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-/* ========== Tutorial Data ========== */
+/* ========== Fallback Tutorial Data ========== */
 
-export interface TutorialChapter {
+interface TutorialChapter {
   title: string;
   paragraphs: string[];
 }
 
-export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
+const FALLBACK_TUTORIAL_CHAPTERS: TutorialChapter[] = [
   {
     title: "DCR 互助区规则",
     paragraphs: [
@@ -62,7 +62,9 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
 interface QuizQuestionData {
   id: string;
   text: string;
-  options: Array<{ key: string; label: string }>;
+  options: { key: string; label: string }[];
+  type: "SINGLE_CHOICE" | "MULTIPLE_CHOICE";
+  score: number;
 }
 
 interface QuizResult {
@@ -71,12 +73,32 @@ interface QuizResult {
   total: number;
   corrections?: Array<{
     questionId: string;
-    correctKey: string;
-    explanation: string;
+    text: string;
+    userAnswer: string[];
+    correctAnswer: number[];
+    explanation?: string;
   }>;
 }
 
 type Phase = "tutorial" | "quiz" | "result";
+
+/* ========== Helpers ========== */
+
+/** Convert raw DB options (string[]) to keyed format, e.g. ["选项A","选项B"] → [{key:"A",label:"选项A"},...] */
+function keyedOptions(raw: string[]): { key: string; label: string }[] {
+  return raw.map((label, i) => ({ key: String.fromCharCode(65 + i), label }));
+}
+
+/** Parse API tutorial content (single string) into paragraphs */
+function parseContentToParagraphs(content: string): string[] {
+  const parts = content.split(/\n\s*\n/).filter((s) => s.trim());
+  return parts.length > 0 ? parts : [content];
+}
+
+/** Convert answer index array to letter keys, e.g. [0,2] → "A、C" */
+function indicesToKeys(indices: number[]): string {
+  return indices.map((i) => String.fromCharCode(65 + i)).join("、");
+}
 
 /* ========== Page Component ========== */
 
@@ -88,21 +110,55 @@ export default function QuizPage() {
   const [phase, setPhase] = useState<Phase>("tutorial");
 
   // Tutorial state
+  const [tutorialChapters, setTutorialChapters] = useState<TutorialChapter[]>([]);
+  const [tutorialLoading, setTutorialLoading] = useState(true);
   const [currentChapter, setCurrentChapter] = useState(0);
   const [readChapters, setReadChapters] = useState<Set<number>>(new Set());
 
   // Quiz state
   const [questions, setQuestions] = useState<QuizQuestionData[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [loadingQuestions, setLoadingQuestions] = useState(false);
 
   // Result state
   const [result, setResult] = useState<QuizResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [appStatusLoading, setAppStatusLoading] = useState(false);
+  const [appStatus, setAppStatus] = useState<string | null>(null);
 
   // Error state
   const [error, setError] = useState<string | null>(null);
+
+  /* ---- Fetch tutorial on mount ---- */
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchTutorial() {
+      try {
+        const res = await fetch("/api/dcr/tutorial");
+        if (!res.ok) throw new Error("tutorial fetch failed");
+        const data = await res.json();
+        if (!cancelled && data.chapters?.length) {
+          const chapters: TutorialChapter[] = data.chapters.map(
+            (ch: { title: string; content: string; order: number }) => ({
+              title: ch.title,
+              paragraphs: parseContentToParagraphs(ch.content),
+            }),
+          );
+          setTutorialChapters(chapters);
+        } else if (!cancelled) {
+          setTutorialChapters(FALLBACK_TUTORIAL_CHAPTERS);
+        }
+      } catch {
+        if (!cancelled) setTutorialChapters(FALLBACK_TUTORIAL_CHAPTERS);
+      } finally {
+        if (!cancelled) setTutorialLoading(false);
+      }
+    }
+    fetchTutorial();
+    return () => { cancelled = true; };
+  }, []);
 
   /* ---- Tutorial handlers ---- */
 
@@ -110,7 +166,8 @@ export default function QuizPage() {
     setReadChapters((prev) => new Set(prev).add(index));
   }, []);
 
-  const allChaptersRead = readChapters.size === TUTORIAL_CHAPTERS.length;
+  const chapters = tutorialChapters.length > 0 ? tutorialChapters : FALLBACK_TUTORIAL_CHAPTERS;
+  const allChaptersRead = readChapters.size === chapters.length;
 
   const goToChapter = (index: number) => {
     setCurrentChapter(index);
@@ -118,19 +175,15 @@ export default function QuizPage() {
   };
 
   const handlePrevChapter = () => {
-    if (currentChapter > 0) {
-      goToChapter(currentChapter - 1);
-    }
+    if (currentChapter > 0) goToChapter(currentChapter - 1);
   };
 
   const handleNextChapter = () => {
-    if (currentChapter < TUTORIAL_CHAPTERS.length - 1) {
-      goToChapter(currentChapter + 1);
-    }
+    if (currentChapter < chapters.length - 1) goToChapter(currentChapter + 1);
   };
 
-  // Mark first chapter as read on initial render
-  if (phase === "tutorial" && readChapters.size === 0) {
+  // Mark first chapter as read on initial render (after chapters load)
+  if (phase === "tutorial" && readChapters.size === 0 && chapters.length > 0 && !tutorialLoading) {
     markChapterRead(0);
   }
 
@@ -147,7 +200,17 @@ export default function QuizPage() {
         return;
       }
       const data = await res.json();
-      setQuestions(data.questions);
+      // Map raw options (string[]) to keyed format
+      const mapped: QuizQuestionData[] = data.questions.map(
+        (q: { id: string; text: string; options: string[]; type: string; score: number }) => ({
+          id: q.id,
+          text: q.text,
+          options: keyedOptions(q.options),
+          type: q.type as "SINGLE_CHOICE" | "MULTIPLE_CHOICE",
+          score: q.score,
+        }),
+      );
+      setQuestions(mapped);
       setCurrentQuestion(0);
       setAnswers({});
       setPhase("quiz");
@@ -162,8 +225,16 @@ export default function QuizPage() {
     fetchQuestions();
   };
 
-  const handleSelectAnswer = (questionId: string, key: string) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: key }));
+  const handleSelectAnswer = (questionId: string, key: string, questionType: "SINGLE_CHOICE" | "MULTIPLE_CHOICE") => {
+    setAnswers((prev) => {
+      const current = prev[questionId] ?? [];
+      if (questionType === "SINGLE_CHOICE") {
+        return { ...prev, [questionId]: [key] };
+      }
+      // MULTIPLE_CHOICE: toggle
+      const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+      return { ...prev, [questionId]: next };
+    });
   };
 
   const handlePrevQuestion = () => {
@@ -174,7 +245,7 @@ export default function QuizPage() {
     if (currentQuestion < questions.length - 1) setCurrentQuestion(currentQuestion + 1);
   };
 
-  const allAnswered = questions.length > 0 && questions.every((q) => answers[q.id]);
+  const allAnswered = questions.length > 0 && questions.every((q) => (answers[q.id]?.length ?? 0) > 0);
 
   const handleSubmitQuiz = async () => {
     setSubmitting(true);
@@ -183,7 +254,7 @@ export default function QuizPage() {
       const payload = {
         answers: questions.map((q) => ({
           questionId: q.id,
-          selectedKey: answers[q.id],
+          selectedKeys: answers[q.id] ?? [],
         })),
       };
       const res = await fetch("/api/dcr/quiz", {
@@ -199,6 +270,25 @@ export default function QuizPage() {
       const data: QuizResult = await res.json();
       setResult(data);
       setPhase("result");
+      // Fetch application status if passed
+      if (data.passed) {
+        setAppStatusLoading(true);
+        try {
+          const statusRes = await fetch("/api/dcr/progress");
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            if (statusData.progress?.dcrAccess) {
+              setAppStatus("approved");
+            } else {
+              setAppStatus("pending");
+            }
+          }
+        } catch {
+          setAppStatus("pending");
+        } finally {
+          setAppStatusLoading(false);
+        }
+      }
     } catch {
       setError("网络错误，请检查连接后重试");
     } finally {
@@ -210,12 +300,13 @@ export default function QuizPage() {
 
   const handleRetry = () => {
     setResult(null);
+    setAppStatus(null);
     fetchQuestions();
   };
 
   /* ========== Render ========== */
 
-  const chapter = TUTORIAL_CHAPTERS[currentChapter];
+  const chapter = chapters[currentChapter];
 
   return (
     <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
@@ -246,72 +337,80 @@ export default function QuizPage() {
         {/* ===== Tutorial Phase ===== */}
         {phase === "tutorial" && (
           <>
-            {/* Chapter progress */}
-            <div className="mb-4 flex items-center gap-2">
-              {TUTORIAL_CHAPTERS.map((ch, i) => (
-                <button
-                  key={ch.title}
-                  onClick={() => goToChapter(i)}
-                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors ${
-                    readChapters.has(i)
-                      ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
-                      : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                  } ${i === currentChapter ? "ring-2 ring-primary ring-offset-2" : ""}`}
-                  aria-label={`第 ${i + 1} 章${readChapters.has(i) ? "（已读）" : ""}`}
-                >
-                  {readChapters.has(i) ? "✓" : i + 1}
-                </button>
-              ))}
-              <span className="ml-auto text-xs text-muted-foreground">
-                已读 {readChapters.size} / {TUTORIAL_CHAPTERS.length}
-              </span>
-            </div>
-
-            {/* Chapter content */}
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="text-lg">{chapter.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {chapter.paragraphs.map((p, i) => (
-                    <p key={i} className="text-sm leading-relaxed text-muted-foreground">
-                      {p}
-                    </p>
+            {tutorialLoading ? (
+              <div className="flex justify-center py-16">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
+              </div>
+            ) : (
+              <>
+                {/* Chapter progress */}
+                <div className="mb-4 flex items-center gap-2">
+                  {chapters.map((ch, i) => (
+                    <button
+                      key={ch.title}
+                      onClick={() => goToChapter(i)}
+                      className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors ${
+                        readChapters.has(i)
+                          ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                          : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                      } ${i === currentChapter ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                      aria-label={`第 ${i + 1} 章${readChapters.has(i) ? "（已读）" : ""}`}
+                    >
+                      {readChapters.has(i) ? "✓" : i + 1}
+                    </button>
                   ))}
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    已读 {readChapters.size} / {chapters.length}
+                  </span>
                 </div>
-              </CardContent>
-            </Card>
 
-            {/* Chapter navigation */}
-            <div className="flex items-center justify-between">
-              <Button
-                variant="outline"
-                onClick={handlePrevChapter}
-                disabled={currentChapter === 0}
-              >
-                <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
-                上一章
-              </Button>
+                {/* Chapter content */}
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle className="text-lg">{chapter.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {chapter.paragraphs.map((p, i) => (
+                        <p key={i} className="text-sm leading-relaxed text-muted-foreground">
+                          {p}
+                        </p>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
 
-              {currentChapter < TUTORIAL_CHAPTERS.length - 1 ? (
-                <Button onClick={handleNextChapter}>
-                  下一章
-                  <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleStartQuiz}
-                  disabled={!allChaptersRead || loadingQuestions}
-                >
-                  {loadingQuestions && (
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
+                {/* Chapter navigation */}
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    onClick={handlePrevChapter}
+                    disabled={currentChapter === 0}
+                  >
+                    <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
+                    上一章
+                  </Button>
+
+                  {currentChapter < chapters.length - 1 ? (
+                    <Button onClick={handleNextChapter}>
+                      下一章
+                      <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleStartQuiz}
+                      disabled={!allChaptersRead || loadingQuestions}
+                    >
+                      {loadingQuestions && (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
+                      )}
+                      开始答题
+                      <ArrowRight className="ml-1 h-4 w-4" aria-hidden="true" />
+                    </Button>
                   )}
-                  开始答题
-                  <ArrowRight className="ml-1 h-4 w-4" aria-hidden="true" />
-                </Button>
-              )}
-            </div>
+                </div>
+              </>
+            )}
           </>
         )}
 
@@ -320,9 +419,14 @@ export default function QuizPage() {
           <>
             <Card className="mb-6">
               <CardHeader>
-                <CardTitle className="text-lg">
-                  第 {currentQuestion + 1} 题
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">
+                    第 {currentQuestion + 1} 题
+                  </CardTitle>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-muted-foreground dark:bg-slate-800">
+                    {questions[currentQuestion].type === "MULTIPLE_CHOICE" ? "多选题" : "单选题"}
+                  </span>
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="mb-4 font-medium text-foreground">
@@ -330,7 +434,8 @@ export default function QuizPage() {
                 </p>
                 <div className="space-y-2">
                   {questions[currentQuestion].options.map((opt) => {
-                    const selected = answers[questions[currentQuestion].id] === opt.key;
+                    const selected = (answers[questions[currentQuestion].id] ?? []).includes(opt.key);
+                    const isMulti = questions[currentQuestion].type === "MULTIPLE_CHOICE";
                     return (
                       <label
                         key={opt.key}
@@ -341,12 +446,16 @@ export default function QuizPage() {
                         }`}
                       >
                         <input
-                          type="radio"
+                          type={isMulti ? "checkbox" : "radio"}
                           name={`question-${questions[currentQuestion].id}`}
                           value={opt.key}
                           checked={selected}
                           onChange={() =>
-                            handleSelectAnswer(questions[currentQuestion].id, opt.key)
+                            handleSelectAnswer(
+                              questions[currentQuestion].id,
+                              opt.key,
+                              questions[currentQuestion].type,
+                            )
                           }
                           className="h-4 w-4 accent-primary"
                         />
@@ -396,11 +505,11 @@ export default function QuizPage() {
                   key={q.id}
                   onClick={() => setCurrentQuestion(i)}
                   className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                    answers[q.id]
+                    (answers[q.id]?.length ?? 0) > 0
                       ? "bg-primary"
                       : "bg-slate-200 dark:bg-slate-700"
                   } ${i === currentQuestion ? "ring-2 ring-primary ring-offset-2" : ""}`}
-                  aria-label={`第 ${i + 1} 题${answers[q.id] ? "（已答）" : "（未答）"}`}
+                  aria-label={`第 ${i + 1} 题${(answers[q.id]?.length ?? 0) > 0 ? "（已答）" : "（未答）"}`}
                 />
               ))}
             </div>
@@ -460,12 +569,17 @@ export default function QuizPage() {
                               {q.text}
                             </p>
                           )}
+                          <p className="text-sm text-red-600 dark:text-red-400">
+                            你的答案：{c.userAnswer.length > 0 ? c.userAnswer.join("、") : "未作答"}
+                          </p>
                           <p className="text-sm text-green-700 dark:text-green-400">
-                            正确答案：{c.correctKey}
+                            正确答案：{indicesToKeys(c.correctAnswer)}
                           </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {c.explanation}
-                          </p>
+                          {c.explanation && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {c.explanation}
+                            </p>
+                          )}
                         </div>
                       );
                     })}
@@ -479,7 +593,19 @@ export default function QuizPage() {
               {result.passed ? (
                 <>
                   <div className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-                    考核通过！入频申请已自动提交，等待管理员审核后即可进入 DCR 互助区。
+                    <p>考核通过！入频申请已自动提交。</p>
+                    {appStatusLoading ? (
+                      <p className="mt-1 flex items-center justify-center gap-1 text-xs">
+                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                        查询审核状态中...
+                      </p>
+                    ) : appStatus === "approved" ? (
+                      <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                        管理员已审核通过，你现在可以进入 DCR 互助区了。
+                      </p>
+                    ) : appStatus === "pending" ? (
+                      <p className="mt-1 text-xs">等待管理员审核中，审核通过后即可进入 DCR 互助区。</p>
+                    ) : null}
                   </div>
                   <Button onClick={() => router.push("/dcr/requests")} variant="outline">
                     查看申请状态

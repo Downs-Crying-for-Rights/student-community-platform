@@ -972,3 +972,41 @@ model QuizQuestion {
   answer  Int      // 正确答案索引 (0-3)
   active  Boolean  @default(true)
 }
+
+// ==================== DCR 专区独立题库 ====================
+
+enum DcrQuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+}
+
+model DcrQuizQuestion {
+  id          String          @id @default(cuid())
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  text        String          @db.Text      // 题目
+  options     String[]                      // 选项列表
+  type        DcrQuestionType @default(SINGLE_CHOICE) // 单选/多选
+  answer      Int[]                         // 正确答案索引数组 (单选[0], 多选[0,2])
+  score       Int             @default(1)   // 分值
+  explanation String?         @db.Text      // 答案解析
+  active      Boolean         @default(true)
+
+  @@index([active])
+}
+
+// ==================== DCR 专区教程 ====================
+
+model DcrTutorialChapter {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title     String                       // 章节标题
+  content   String   @db.Text            // 章节内容（支持 HTML/Markdown）
+  order     Int      @default(0)         // 排序
+  active    Boolean  @default(true)      // 是否显示
+
+  @@index([order])
+}

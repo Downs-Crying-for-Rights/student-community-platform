@@ -14,6 +14,8 @@ const adminLinks = [
   { href: "/admin/boards", label: "板块管理", icon: LayoutGrid },
   { href: "/admin/kb", label: "知识库", icon: BookOpen },
   { href: "/admin/applications", label: "准入审核", icon: ShieldCheck },
+  { href: "/admin/dcr/questions", label: "DCR题库", icon: BookOpen },
+  { href: "/admin/quiz", label: "入频题库", icon: BookOpen },
   { href: "/admin/chat-rooms", label: "群聊审核", icon: MessagesSquare },
   { href: "/admin/logs", label: "系统日志", icon: Terminal },
 ];
@@ -21,6 +23,7 @@ const adminLinks = [
 const superAdminLinks = [
   { href: "/admin/telemetry", label: "应用遥测", icon: Activity },
   { href: "/admin/system", label: "系统维护", icon: RefreshCw },
+  { href: "/admin/dcr/tutorial", label: "DCR教程", icon: BookOpen },
 ];
 
 export function AdminNav({ isSuperAdmin = false }: { isSuperAdmin?: boolean }) {

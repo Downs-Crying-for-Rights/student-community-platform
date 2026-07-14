@@ -24,6 +24,14 @@ interface DCRProgress {
   hasSubmitted: boolean;
   hasApproved: boolean;
   quizPassed: boolean;
+  dcrAccess?: boolean;
+}
+
+interface ApplicationStatus {
+  id?: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "NONE";
+  reviewNote?: string | null;
+  reviewedAt?: string | null;
 }
 
 /* ========== Step Config ========== */
@@ -109,12 +117,15 @@ function StepStatusBadge({ status }: { status: "done" | "current" | "locked" }) 
 export default function DCREntryPage() {
   const { data: session } = useSession();
   const hasDcrAccess = (session?.user as any)?.dcrAccess === true;
+  const quizPassed = (session?.user as any)?.quizPassed === true;
   const router = useRouter();
   const [progress, setProgress] = useState<DCRProgress>({
     hasSubmitted: false,
     hasApproved: false,
     quizPassed: false,
+    dcrAccess: false,
   });
+  const [appStatus, setAppStatus] = useState<ApplicationStatus>({ status: "NONE" });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -125,15 +136,24 @@ export default function DCREntryPage() {
           const data = await res.json();
           setProgress(data.progress);
         }
-      } catch {
-        // 降级：全部显示为未完成
-      } finally {
-        setLoading(false);
-      }
+      } catch { /* ignore */ }
+    }
+    async function fetchAppStatus() {
+      try {
+        const res = await fetch("/api/dcr/application-status");
+        if (res.ok) {
+          const data = await res.json();
+          setAppStatus(data);
+        }
+      } catch { /* ignore */ }
     }
     if (session && hasDcrAccess) {
       fetchProgress();
+      setLoading(false);
     } else if (session) {
+      // No DCR access — check quiz/application status
+      fetchProgress();
+      fetchAppStatus();
       setLoading(false);
     } else {
       setLoading(false);
@@ -165,22 +185,62 @@ export default function DCREntryPage() {
           合规信息互助服务模块，先通过入频测试获取访问权限
         </p>
 
-        {/* Gate: no dcrAccess → prompt to take quiz */}
+        {/* Gate: no dcrAccess → different states */}
         {!loading && !hasDcrAccess && (
-          <div className="mb-8 rounded-2xl border-2 border-blue-300 bg-blue-50/50 p-6 text-center shadow-md dark:border-blue-700/50 dark:bg-blue-950/20">
-            <GraduationCap className="mx-auto mb-3 h-10 w-10 text-blue-600 dark:text-blue-400" />
-            <h2 className="mb-2 text-lg font-semibold">入频测试</h2>
-            <p className="mb-4 text-sm text-muted-foreground">
-              你需要通过入频测试了解 DCR 互助区规则后，才能提交委托表和参与互助交流。
-              测试共 5 题，达到 80% 正确率即为通过。
-            </p>
-            <Button asChild size="lg">
-              <Link href="/dcr/quiz">
-                参加入频测试
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
+          <>
+          {quizPassed && appStatus.status === "PENDING" ? (
+            /* Quiz passed, awaiting admin review */
+            <div className="mb-8 rounded-2xl border-2 border-amber-300 bg-amber-50/50 p-6 text-center shadow-md dark:border-amber-700/50 dark:bg-amber-950/20">
+              <Clock className="mx-auto mb-3 h-10 w-10 text-amber-600 dark:text-amber-400" />
+              <h2 className="mb-2 text-lg font-semibold">等待审核</h2>
+              <p className="mb-1 text-sm text-muted-foreground">
+                你的入频考核已通过，准入申请已自动提交。
+              </p>
+              <p className="mb-4 text-sm text-muted-foreground">
+                管理员正在审核你的申请，审核通过后将自动开通 DCR 专区访问权限。
+              </p>
+            </div>
+          ) : quizPassed && appStatus.status === "REJECTED" ? (
+            /* Quiz passed but application rejected */
+            <div className="mb-8 rounded-2xl border-2 border-red-300 bg-red-50/50 p-6 text-center shadow-md dark:border-red-700/50 dark:bg-red-950/20">
+              <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-red-600 dark:text-red-400" />
+              <h2 className="mb-2 text-lg font-semibold text-red-700 dark:text-red-400">审核被驳回</h2>
+              <p className="mb-1 text-sm text-red-600 dark:text-red-300">
+                你的准入申请已被管理员驳回。
+              </p>
+              {appStatus.reviewNote && (
+                <p className="mb-3 text-sm font-medium text-red-700 dark:text-red-300">
+                  驳回原因：{appStatus.reviewNote}
+                </p>
+              )}
+              <p className="mb-4 text-xs text-muted-foreground">
+                如果你认为驳回有误，请联系管理员。如需重新申请，请再次参加入频测试。
+              </p>
+              <Button asChild size="lg">
+                <Link href="/dcr/quiz">
+                  重新参加入频测试
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            /* No quiz passed — prompt to start */
+            <div className="mb-8 rounded-2xl border-2 border-blue-300 bg-blue-50/50 p-6 text-center shadow-md dark:border-blue-700/50 dark:bg-blue-950/20">
+              <GraduationCap className="mx-auto mb-3 h-10 w-10 text-blue-600 dark:text-blue-400" />
+              <h2 className="mb-2 text-lg font-semibold">入频测试</h2>
+              <p className="mb-4 text-sm text-muted-foreground">
+                你需要先阅读教程并完成入频测试，通过后系统将自动提交准入审核申请。
+                测试共 5 题，支持单选和多选题，达到 80% 正确率即为通过。
+              </p>
+              <Button asChild size="lg">
+                <Link href="/dcr/quiz">
+                  开始入频测试
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          )}
+          </>
         )}
 
         {/* 四步流程 — only visible to users with dcrAccess */}
