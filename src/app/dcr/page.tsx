@@ -23,8 +23,7 @@ import { Button } from "@/components/ui/button";
 interface DCRProgress {
   hasSubmitted: boolean;
   hasApproved: boolean;
-  quizPassed: boolean;
-  dcrAccess?: boolean;
+  dcrAccess: boolean;
 }
 
 interface ApplicationStatus {
@@ -117,12 +116,10 @@ function StepStatusBadge({ status }: { status: "done" | "current" | "locked" }) 
 export default function DCREntryPage() {
   const { data: session } = useSession();
   const hasDcrAccess = (session?.user as any)?.dcrAccess === true;
-  const quizPassed = (session?.user as any)?.quizPassed === true;
   const router = useRouter();
   const [progress, setProgress] = useState<DCRProgress>({
     hasSubmitted: false,
     hasApproved: false,
-    quizPassed: false,
     dcrAccess: false,
   });
   const [appStatus, setAppStatus] = useState<ApplicationStatus>({ status: "NONE" });
@@ -188,7 +185,7 @@ export default function DCREntryPage() {
         {/* Gate: no dcrAccess → different states */}
         {!loading && !hasDcrAccess && (
           <>
-          {quizPassed && appStatus.status === "PENDING" ? (
+          {appStatus.status === "PENDING" ? (
             /* Quiz passed, awaiting admin review */
             <div className="mb-8 rounded-2xl border-2 border-amber-300 bg-amber-50/50 p-6 text-center shadow-md dark:border-amber-700/50 dark:bg-amber-950/20">
               <Clock className="mx-auto mb-3 h-10 w-10 text-amber-600 dark:text-amber-400" />
@@ -200,7 +197,7 @@ export default function DCREntryPage() {
                 管理员正在审核你的申请，审核通过后将自动开通 DCR 专区访问权限。
               </p>
             </div>
-          ) : quizPassed && appStatus.status === "REJECTED" ? (
+          ) : appStatus.status === "REJECTED" ? (
             /* Quiz passed but application rejected */
             <div className="mb-8 rounded-2xl border-2 border-red-300 bg-red-50/50 p-6 text-center shadow-md dark:border-red-700/50 dark:bg-red-950/20">
               <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-red-600 dark:text-red-400" />
