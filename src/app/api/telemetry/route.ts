@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
-import { normalizeTelemetryRoute, sanitizeTelemetryName } from "@/lib/telemetry";
+import { normalizeTelemetryRoute, sanitizeTelemetryMetadata, sanitizeTelemetryName } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,13 @@ const eventSchema = z.object({
   route: z.string().min(1).max(300),
   duration: z.number().finite().min(0).max(3_600_000).optional(),
   value: z.number().finite().min(0).max(10_000_000).optional(),
+  metadata: z.object({
+    message: z.string().max(2_000).optional(),
+    stack: z.string().max(8_000).optional(),
+    source: z.string().max(500).optional(),
+    line: z.number().int().min(0).optional(),
+    column: z.number().int().min(0).optional(),
+  }).optional(),
 });
 
 const bodySchema = z.object({
@@ -55,6 +62,7 @@ export async function POST(req: Request) {
       userId: session?.user?.id,
       release: process.env.APP_RELEASE?.slice(0, 64),
       userAgent,
+      metadata: sanitizeTelemetryMetadata(event.metadata),
     })),
   });
 

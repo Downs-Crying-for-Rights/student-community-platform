@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
-import { trackServerTelemetryLater } from "@/lib/telemetry";
+import { sanitizeTelemetryDetail, trackServerTelemetryLater } from "@/lib/telemetry";
 
 // ==================== Action & Resource Types ====================
 
@@ -193,6 +193,7 @@ export function withAuth(
 ): RouteHandler {
   return async (req, context) => {
     const startedAt = performance.now();
+    const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
@@ -211,6 +212,16 @@ export function withAuth(
 
     try {
       const response = await handler(authenticatedReq, context);
+      response.headers.set("X-Request-Id", requestId);
+      let responseError: string | undefined;
+      if (response.status >= 400) {
+        try {
+          const body = await response.clone().json() as { error?: unknown; message?: unknown };
+          responseError = sanitizeTelemetryDetail(body.error ?? body.message ?? response.statusText, 2_000);
+        } catch {
+          responseError = sanitizeTelemetryDetail(response.statusText, 2_000);
+        }
+      }
       trackServerTelemetryLater({
         type: response.status >= 400 ? "error" : "request",
         name: `${req.method} ${new URL(req.url).pathname}`,
@@ -218,6 +229,12 @@ export function withAuth(
         duration: performance.now() - startedAt,
         status: response.status,
         userId: session.user.id,
+        metadata: {
+          requestId,
+          method: req.method,
+          statusText: response.statusText,
+          ...(responseError ? { errorMessage: responseError } : {}),
+        },
       });
       return response;
     } catch (error) {
@@ -228,6 +245,12 @@ export function withAuth(
         duration: performance.now() - startedAt,
         status: 500,
         userId: session.user.id,
+        metadata: {
+          requestId,
+          method: req.method,
+          errorMessage: sanitizeTelemetryDetail(error instanceof Error ? error.message : error, 2_000),
+          stack: sanitizeTelemetryDetail(error instanceof Error ? error.stack : "", 8_000),
+        },
       });
       throw error;
     }

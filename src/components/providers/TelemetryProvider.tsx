@@ -9,6 +9,13 @@ type ClientTelemetryEvent = {
   route: string;
   duration?: number;
   value?: number;
+  metadata?: {
+    message?: string;
+    stack?: string;
+    source?: string;
+    line?: number;
+    column?: number;
+  };
 };
 
 const queue: ClientTelemetryEvent[] = [];
@@ -56,11 +63,22 @@ export function TelemetryProvider() {
       type: "error",
       name: event.error?.name || "window_error",
       route: location.pathname,
+      metadata: {
+        message: String(event.message || event.error?.message || "Unknown browser error").slice(0, 2_000),
+        stack: String(event.error?.stack || "").slice(0, 8_000),
+        source: String(event.filename || "").split("?")[0].slice(0, 500),
+        line: event.lineno,
+        column: event.colno,
+      },
     });
-    const onRejection = (_event: PromiseRejectionEvent) => reportClientTelemetry({
+    const onRejection = (event: PromiseRejectionEvent) => reportClientTelemetry({
       type: "error",
       name: "unhandled_rejection",
       route: location.pathname,
+      metadata: {
+        message: String(event.reason instanceof Error ? event.reason.message : event.reason || "Unknown rejection").slice(0, 2_000),
+        stack: String(event.reason instanceof Error ? event.reason.stack || "" : "").slice(0, 8_000),
+      },
     });
     const onPageHide = () => flush();
     window.addEventListener("error", onError);

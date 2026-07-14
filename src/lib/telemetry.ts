@@ -11,6 +11,28 @@ export interface ServerTelemetryInput {
   metadata?: Record<string, string | number | boolean | null>;
 }
 
+export function sanitizeTelemetryDetail(value: unknown, maxLength = 8_000): string {
+  let result = value instanceof Error
+    ? `${value.name}: ${value.message}\n${value.stack || ""}`
+    : String(value ?? "");
+  result = result
+    .replace(/(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s,;"']+/gi, "$1[REDACTED]")
+    .replace(/((?:password|passwd|secret|token|api[_-]?key|cookie|set-cookie)\s*[:=]\s*)[^\s,;"']+/gi, "$1[REDACTED]")
+    .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "sk-[REDACTED]")
+    .replace(/\bLTAI[A-Za-z0-9]{12,}\b/g, "LTAI[REDACTED]");
+  return result.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").slice(0, maxLength);
+}
+
+export function sanitizeTelemetryMetadata(
+  metadata?: Record<string, string | number | boolean | null>,
+): Record<string, string | number | boolean | null> | undefined {
+  if (!metadata) return undefined;
+  return Object.fromEntries(Object.entries(metadata).slice(0, 20).map(([key, value]) => [
+    key.slice(0, 60),
+    typeof value === "string" ? sanitizeTelemetryDetail(value) : value,
+  ]));
+}
+
 export function normalizeTelemetryRoute(value: string): string {
   const route = value.split("?")[0].slice(0, 300);
   return route.startsWith("/") ? route : "/unknown";
@@ -40,13 +62,13 @@ export async function trackServerTelemetry(input: ServerTelemetryInput): Promise
       status: input.status,
       userId: input.userId,
       release: process.env.APP_RELEASE?.slice(0, 64),
-      metadata: input.metadata,
+      metadata: sanitizeTelemetryMetadata(input.metadata),
     },
   });
 }
 
 export function trackServerTelemetryLater(input: ServerTelemetryInput): void {
   void trackServerTelemetry(input).catch((error) => {
-    console.error("telemetry.server.write_failed", error);
+    process.stderr.write(`telemetry.server.write_failed ${sanitizeTelemetryDetail(error, 500)}\n`);
   });
 }
