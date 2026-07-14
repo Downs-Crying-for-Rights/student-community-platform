@@ -23,8 +23,11 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   const origin = req.headers.get("origin");
+  const expectedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim()
+    || req.headers.get("host")
+    || new URL(req.url).host;
   try {
-    if (origin && new URL(origin).host !== new URL(req.url).host) {
+    if (origin && new URL(origin).host !== expectedHost) {
       return NextResponse.json({ error: "来源无效" }, { status: 403 });
     }
   } catch {
