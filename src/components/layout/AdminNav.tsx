@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw } from "lucide-react";
+import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adminLinks = [
@@ -19,6 +19,7 @@ const adminLinks = [
 ];
 
 const superAdminLinks = [
+  { href: "/admin/telemetry", label: "应用遥测", icon: Activity },
   { href: "/admin/system", label: "系统维护", icon: RefreshCw },
 ];
 

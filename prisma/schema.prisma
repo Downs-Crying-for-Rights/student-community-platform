@@ -804,6 +804,35 @@ model SystemLog {
   @@index([createdAt])
 }
 
+// ==================== 隐私友好型遥测 ====================
+
+enum TelemetryScope {
+  CLIENT
+  SERVER
+}
+
+model TelemetryEvent {
+  id        String         @id @default(cuid())
+  scope     TelemetryScope
+  type      String
+  name      String
+  route     String
+  duration  Float?
+  value     Float?
+  status    Int?
+  sessionId String?
+  userId    String?
+  release   String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  @@index([scope, createdAt])
+  @@index([type, createdAt])
+  @@index([route, createdAt])
+  @@index([createdAt])
+}
+
 // ==================== 群聊 (IM) ====================
 
 model ChatRoom {

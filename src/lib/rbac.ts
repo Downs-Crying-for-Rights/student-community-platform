@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { trackServerTelemetryLater } from "@/lib/telemetry";
 
 // ==================== Action & Resource Types ====================
 
@@ -191,6 +192,7 @@ export function withAuth(
   requiredRole?: Role,
 ): RouteHandler {
   return async (req, context) => {
+    const startedAt = performance.now();
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
@@ -207,7 +209,28 @@ export function withAuth(
     const authenticatedReq = req as AuthenticatedRequest;
     authenticatedReq.user = { id: session.user.id, role: userRole };
 
-    return handler(authenticatedReq, context);
+    try {
+      const response = await handler(authenticatedReq, context);
+      trackServerTelemetryLater({
+        type: response.status >= 400 ? "error" : "request",
+        name: `${req.method} ${new URL(req.url).pathname}`,
+        route: new URL(req.url).pathname,
+        duration: performance.now() - startedAt,
+        status: response.status,
+        userId: session.user.id,
+      });
+      return response;
+    } catch (error) {
+      trackServerTelemetryLater({
+        type: "error",
+        name: error instanceof Error ? error.name : "route_error",
+        route: new URL(req.url).pathname,
+        duration: performance.now() - startedAt,
+        status: 500,
+        userId: session.user.id,
+      });
+      throw error;
+    }
   };
 }
 

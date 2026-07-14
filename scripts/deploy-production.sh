@@ -38,7 +38,7 @@ chmod 600 "$RELEASE_DIR/.env"
 cd "$RELEASE_DIR"
 printf '%s\n' "$RELEASE_SHA" > public/DEPLOYMENT
 docker compose -p "$PROJECT_NAME" config --quiet
-docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
+APP_RELEASE="$RELEASE_SHA" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
 
 docker compose -p "$PROJECT_NAME" exec -T web sh -ec '
   test -n "$OSS_REGION"
@@ -74,7 +74,7 @@ if [[ "$healthy" != true ]]; then
   if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" ]]; then
     echo "Rolling back to $PREVIOUS_RELEASE" >&2
     cd "$PREVIOUS_RELEASE"
-    docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
+    APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
   fi
   exit 1
 fi
