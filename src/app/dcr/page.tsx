@@ -186,52 +186,71 @@ export default function DCREntryPage() {
         {!loading && !hasDcrAccess && (
           <>
           {appStatus.status === "PENDING" ? (
-            /* Quiz passed, awaiting admin review */
+            /* Delegate submitted, awaiting admin review */
             <div className="mb-8 rounded-2xl border-2 border-amber-300 bg-amber-50/50 p-6 text-center shadow-md dark:border-amber-700/50 dark:bg-amber-950/20">
               <Clock className="mx-auto mb-3 h-10 w-10 text-amber-600 dark:text-amber-400" />
               <h2 className="mb-2 text-lg font-semibold">等待审核</h2>
               <p className="mb-1 text-sm text-muted-foreground">
-                你的入频考核已通过，准入申请已自动提交。
+                你的委托表已提交，正在等待管理员审核。
               </p>
-              <p className="mb-4 text-sm text-muted-foreground">
-                管理员正在审核你的申请，审核通过后将自动开通 DCR 专区访问权限。
+              <p className="mb-3 text-sm text-muted-foreground">
+                审核通过后将自动开通 DCR 专区访问权限。
               </p>
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <div className="flex gap-1.5">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-green-100 text-xs text-green-700">✓</span>
+                  <span className="self-center">考核</span>
+                </div>
+                <span>→</span>
+                <div className="flex gap-1.5">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-green-100 text-xs text-green-700">✓</span>
+                  <span className="self-center">委托表</span>
+                </div>
+                <span>→</span>
+                <div className="flex gap-1.5">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs text-amber-700 animate-pulse">…</span>
+                  <span className="self-center font-medium text-amber-700">审核中</span>
+                </div>
+              </div>
             </div>
           ) : appStatus.status === "REJECTED" ? (
-            /* Quiz passed but application rejected */
+            /* Application rejected */
             <div className="mb-8 rounded-2xl border-2 border-red-300 bg-red-50/50 p-6 text-center shadow-md dark:border-red-700/50 dark:bg-red-950/20">
               <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-red-600 dark:text-red-400" />
               <h2 className="mb-2 text-lg font-semibold text-red-700 dark:text-red-400">审核被驳回</h2>
-              <p className="mb-1 text-sm text-red-600 dark:text-red-300">
-                你的准入申请已被管理员驳回。
-              </p>
               {appStatus.reviewNote && (
                 <p className="mb-3 text-sm font-medium text-red-700 dark:text-red-300">
                   驳回原因：{appStatus.reviewNote}
                 </p>
               )}
               <p className="mb-4 text-xs text-muted-foreground">
-                如果你认为驳回有误，请联系管理员。如需重新申请，请再次参加入频测试。
+                如有疑问请联系管理员。你可以重新提交委托表。
               </p>
               <Button asChild size="lg">
-                <Link href="/dcr/quiz">
-                  重新参加入频测试
+                <Link href="/dcr/delegate">
+                  重新提交委托表
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
             </div>
           ) : (
-            /* No quiz passed — prompt to start */
+            /* No application yet — prompt to start */
             <div className="mb-8 rounded-2xl border-2 border-blue-300 bg-blue-50/50 p-6 text-center shadow-md dark:border-blue-700/50 dark:bg-blue-950/20">
               <GraduationCap className="mx-auto mb-3 h-10 w-10 text-blue-600 dark:text-blue-400" />
-              <h2 className="mb-2 text-lg font-semibold">入频测试</h2>
+              <h2 className="mb-2 text-lg font-semibold">申请 DCR 访问权限</h2>
               <p className="mb-4 text-sm text-muted-foreground">
-                你需要先阅读教程并完成入频测试，通过后系统将自动提交准入审核申请。
-                测试共 5 题，支持单选和多选题，达到 80% 正确率即为通过。
+                你需要完成以下步骤来申请 DCR 专区的访问权限：
               </p>
+              <div className="mb-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <span className="rounded-full bg-blue-100 px-2 py-1 text-blue-700">① 入频考核</span>
+                <span>→</span>
+                <span className="rounded-full bg-slate-100 px-2 py-1">② 填写委托表</span>
+                <span>→</span>
+                <span className="rounded-full bg-slate-100 px-2 py-1">③ 管理员审核</span>
+              </div>
               <Button asChild size="lg">
                 <Link href="/dcr/quiz">
-                  开始入频测试
+                  开始入频考核
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>

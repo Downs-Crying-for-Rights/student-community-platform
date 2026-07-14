@@ -598,22 +598,11 @@ export default function QuizPage() {
               {result.passed ? (
                 <>
                   <div className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-                    <p>考核通过！入频申请已自动提交。</p>
-                    {appStatusLoading ? (
-                      <p className="mt-1 flex items-center justify-center gap-1 text-xs">
-                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                        查询审核状态中...
-                      </p>
-                    ) : appStatus === "approved" ? (
-                      <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                        管理员已审核通过，你现在可以进入 DCR 互助区了。
-                      </p>
-                    ) : appStatus === "pending" ? (
-                      <p className="mt-1 text-xs">等待管理员审核中，审核通过后即可进入 DCR 互助区。</p>
-                    ) : null}
+                    <p className="font-medium">考核通过！</p>
+                    <p className="mt-1 text-xs">下一步：填写委托表并提交，管理员审核通过后即可开通 DCR 专区访问权限。</p>
                   </div>
-                  <Button onClick={() => router.push("/dcr/requests")} variant="outline">
-                    查看申请状态
+                  <Button onClick={() => router.push("/dcr/delegate")}>
+                    填写委托表
                     <ArrowRight className="ml-1 h-4 w-4" aria-hidden="true" />
                   </Button>
                 </>

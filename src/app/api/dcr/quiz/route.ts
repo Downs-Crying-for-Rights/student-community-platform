@@ -102,21 +102,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     const passed = totalScore > 0 && earnedScore / totalScore >= 0.8;
     
     if (passed) {
-      await prisma.$transaction(async (tx) => {
-        await tx.user.update({ where: { id: userId }, data: { quizPassed: true } });
-        const existing = await tx.accessApplication.findFirst({
-          where: { applicantId: userId, type: "DCR", status: "PENDING" },
-        });
-        if (!existing) {
-          await tx.accessApplication.create({
-            data: {
-              type: "DCR",
-              status: "PENDING",
-              applicantId: userId,
-              pledgeText: "已通过入频考核，申请加入 DCR 互助区",
-            },
-          });
-        }
+      // 仅标记考核通过，不自动创建申请。
+      // 用户需填写委托表后由管理员审核放行。
+      await prisma.user.update({
+        where: { id: userId },
+        data: { quizPassed: true },
       });
     }
     
