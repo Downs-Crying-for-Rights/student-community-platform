@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, hasMinimumRole, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
+import { sendUserMail } from "@/lib/mail";
 
 /**
  * POST /api/moderation/[id]/approve
@@ -50,6 +51,11 @@ export const POST = withAuth(async (
         userId: post.authorId,
         link: `/post/${post.id}`,
       },
+    });
+    await sendUserMail({
+      userId: post.authorId,
+      subject: "帖子审核通过",
+      text: `您的帖子「${post.title}」已通过审核并发布。\n\n查看帖子：${(process.env.NEXTAUTH_URL || "https://forum.dcr2026.com").replace(/\/$/, "")}/post/${post.id}`,
     });
 
     // Record to AuditLog

@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
+import { sendUserMail } from "@/lib/mail";
 import { ApplicationStatus } from "@prisma/client";
 import { z } from "zod";
 
@@ -135,6 +136,11 @@ export const PATCH = withAuth(async (
         "您的 DCR 私密区准入申请已通过审核，现在可以访问 DCR 私密区了",
         "/dcr",
       );
+      await sendUserMail({
+        userId: application.applicantId,
+        subject: "DCR 准入申请已通过",
+        text: `您的 DCR 私密区准入申请已通过审核，现在可以访问 DCR 私密区了。\n\n访问：${(process.env.NEXTAUTH_URL || "https://forum.dcr2026.com").replace(/\/$/, "")}/dcr`,
+      });
 
       // Audit log
       await logAudit(
@@ -170,6 +176,11 @@ export const PATCH = withAuth(async (
       "DCR 准入申请未通过",
       `您的 DCR 私密区准入申请未通过审核${reviewNote ? `，原因：${reviewNote}` : ""}`,
     );
+    await sendUserMail({
+      userId: application.applicantId,
+      subject: "DCR 准入申请审核结果",
+      text: `您的 DCR 私密区准入申请未通过审核${reviewNote ? `，原因：${reviewNote}` : ""}。请登录平台查看详情。`,
+    });
 
     // Audit log
     await logAudit(

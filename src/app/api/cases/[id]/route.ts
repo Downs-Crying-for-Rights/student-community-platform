@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
+import { sendUserMail } from "@/lib/mail";
 import { generateAnonymousId } from "@/lib/utils";
 import { CaseStatus } from "@prisma/client";
 import { z } from "zod";
@@ -191,15 +192,33 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         { oldRequestStatus: caseRecord.requestStatus, newRequestStatus, reviewNote },
       );
 
-      // Create notification for submitter
-      const { createNotification } = await import("@/lib/notification");
+      const reviewStatusLabels: Record<string, string> = {
+        PENDING: "待审核",
+        NEED_MORE_INFO: "需补充信息",
+        MANUAL_REVIEW: "人工审核中",
+        APPROVED: "审核通过",
+        REJECTED: "审核未通过",
+      };
+      const statusLabel = reviewStatusLabels[newRequestStatus] ?? newRequestStatus;
+      const notificationTitle =
+        newRequestStatus === "APPROVED"
+          ? "委托表审核已通过"
+          : "委托表审核结果更新";
+      const notificationContent = `您的委托表${statusLabel}${reviewNote ? `，审核说明：${reviewNote}` : ""}`;
+
+      // Notify the submitter in-app and by email after the review is recorded.
       await createNotification(
         caseRecord.submitterId,
-        "SYSTEM" as any,
-        "委托表审核结果更新",
-        `您的委托表审核状态已更新为: ${newRequestStatus}${reviewNote ? ` - ${reviewNote}` : ""}`,
+        "SYSTEM",
+        notificationTitle,
+        notificationContent,
         `/dcr/tickets/${id}`,
       );
+      await sendUserMail({
+        userId: caseRecord.submitterId,
+        subject: notificationTitle,
+        text: `${notificationContent}。\n\n查看委托：${(process.env.NEXTAUTH_URL || "https://forum.dcr2026.com").replace(/\/$/, "")}/dcr/tickets/${id}`,
+      });
 
       return NextResponse.json({
         case: updated,

@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { sendUserMail } from "@/lib/mail";
 
 const reviewSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
@@ -55,6 +56,16 @@ export const PATCH = withAuth(async (
         },
       }),
     ]);
+
+    const notificationTitle = nextStatus === "APPROVED" ? "群聊审核通过" : "群聊审核未通过";
+    const notificationContent = nextStatus === "APPROVED"
+      ? `您创建的公开群聊「${room.name}」已通过审核`
+      : `您创建的公开群聊「${room.name}」未通过审核，原因：${parsed.data.reason}`;
+    await sendUserMail({
+      userId: room.createdById,
+      subject: notificationTitle,
+      text: `${notificationContent}。\n\n查看群聊：${(process.env.NEXTAUTH_URL || "https://forum.dcr2026.com").replace(/\/$/, "")}/messages?tab=chat`,
+    });
 
     await logAudit(
       req.user.id,

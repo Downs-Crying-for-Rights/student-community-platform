@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
+import { sendUserMail } from "@/lib/mail";
 import { z } from "zod";
 
 const reviewSchema = z.object({
@@ -92,6 +93,11 @@ export const PATCH = withAuth(async (
       notificationContent,
       status === "APPROVED" ? "/apply" : undefined,
     );
+    await sendUserMail({
+      userId: application.applicantId,
+      subject: notificationTitle,
+      text: `${notificationContent}。${status === "APPROVED" ? `\n\n访问：${(process.env.NEXTAUTH_URL || "https://forum.dcr2026.com").replace(/\/$/, "")}/psych` : ""}`,
+    });
 
     // Log to AuditLog
     await logAudit(

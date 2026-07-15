@@ -23,6 +23,12 @@ import {
   Sun,
   Moon,
   MessagesSquare,
+  BookOpen,
+  ClipboardCheck,
+  Activity,
+  RefreshCw,
+  ListTodo,
+  Scale,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
@@ -86,15 +92,28 @@ const moderationNavItems: NavItem[] = [
 /** Admin nav items */
 const adminNavItems: NavItem[] = [
   { href: "/admin/users", label: "用户管理", icon: Users, minRole: "ADMIN" },
+  { href: "/admin/content", label: "内容管理", icon: FileText, minRole: "ADMIN" },
   { href: "/admin/invites", label: "邀请码", icon: Ticket, minRole: "ADMIN" },
-  { href: "/admin/audit", label: "审计日志", icon: FileText, minRole: "ADMIN" },
-  { href: "/admin/logs", label: "系统日志", icon: Terminal, minRole: "SUPER_ADMIN" },
+  { href: "/admin/audit", label: "操作日志", icon: FileText, minRole: "ADMIN" },
   {
     href: "/admin/boards",
     label: "板块管理",
     icon: LayoutDashboard,
     minRole: "ADMIN",
   },
+  { href: "/admin/kb", label: "知识库", icon: BookOpen, minRole: "ADMIN" },
+  { href: "/admin/applications", label: "准入审核", icon: ShieldCheck, minRole: "ADMIN" },
+  { href: "/admin/dcr/reviews", label: "委托表审核", icon: ClipboardCheck, minRole: "ADMIN" },
+  { href: "/admin/dcr/questions", label: "DCR 入频考核题库", icon: BookOpen, minRole: "ADMIN" },
+  { href: "/admin/quiz", label: "平台新手指引题库", icon: BookOpen, minRole: "ADMIN" },
+  { href: "/admin/chat-rooms", label: "群聊审核", icon: MessagesSquare, minRole: "ADMIN" },
+  { href: "/admin/disputes", label: "争议处理", icon: Scale, minRole: "ADMIN" },
+  { href: "/admin/tasks", label: "任务管理", icon: ListTodo, minRole: "ADMIN" },
+  { href: "/admin/logs", label: "系统日志", icon: Terminal, minRole: "ADMIN" },
+  { href: "/admin/telemetry", label: "应用遥测", icon: Activity, minRole: "SUPER_ADMIN" },
+  { href: "/admin/system", label: "系统维护", icon: RefreshCw, minRole: "SUPER_ADMIN" },
+  { href: "/admin/dcr/tutorial", label: "DCR 教程", icon: BookOpen, minRole: "SUPER_ADMIN" },
+  { href: "/admin/site-content", label: "站点内容", icon: FileText, minRole: "SUPER_ADMIN" },
 ];
 
 function hasMinRole(userRole: string, minRole: string): boolean {

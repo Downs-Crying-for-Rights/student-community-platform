@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, hasMinimumRole, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { z } from "zod";
+import { sendUserMail } from "@/lib/mail";
 
 const rejectSchema = z.object({
   reason: z.string().min(1, "拒绝原因不能为空").max(1000, "拒绝原因不能超过 1000 个字符"),
@@ -68,6 +69,11 @@ export const POST = withAuth(async (
         userId: post.authorId,
         link: `/post/${post.id}`,
       },
+    });
+    await sendUserMail({
+      userId: post.authorId,
+      subject: "帖子审核未通过",
+      text: `您的帖子「${post.title}」未通过审核，原因：${reason}。请登录平台查看详情。`,
     });
 
     // Record to AuditLog
