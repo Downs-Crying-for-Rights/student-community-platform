@@ -268,8 +268,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         ...(isAdminLevel ? [] : [{ requestStatus: "APPROVED" }]),
         ...(statusFilter ? [{ status: statusFilter }] : []),
       ];
-    } else if (isAdminLevel) {
-      // Admin / SuperAdmin sees all cases
+    } else if (isAdminLevel || (userRole === "MODERATOR" && requestStatus)) {
+      // Admin / SuperAdmin sees all cases. Moderators can see the complete
+      // review queue only when explicitly filtering by requestStatus.
       if (status && status.length > 0) {
         where.status = status.length === 1 ? status[0] : { in: status };
       }

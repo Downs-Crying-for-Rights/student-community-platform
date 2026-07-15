@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw, Activity } from "lucide-react";
+import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw, Activity, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adminLinks = [

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   FileEdit,
@@ -17,6 +16,7 @@ import {
   Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { hasEffectiveDcrAccess } from "@/lib/dcr-access-status";
 
 /* ========== Types ========== */
 
@@ -114,9 +114,8 @@ function StepStatusBadge({ status }: { status: "done" | "current" | "locked" }) 
 /* ========== Page ========== */
 
 export default function DCREntryPage() {
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus, update } = useSession();
   const hasDcrAccess = (session?.user as any)?.dcrAccess === true;
-  const router = useRouter();
   const [progress, setProgress] = useState<DCRProgress>({
     hasSubmitted: false,
     hasApproved: false,
@@ -126,37 +125,54 @@ export default function DCREntryPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchProgress() {
-      try {
-        const res = await fetch("/api/dcr/progress");
-        if (res.ok) {
-          const data = await res.json();
-          setProgress(data.progress);
-        }
-      } catch { /* ignore */ }
-    }
-    async function fetchAppStatus() {
-      try {
-        const res = await fetch("/api/dcr/application-status");
-        if (res.ok) {
-          const data = await res.json();
-          setAppStatus(data);
-        }
-      } catch { /* ignore */ }
-    }
-    if (session && hasDcrAccess) {
-      fetchProgress();
-      setLoading(false);
-    } else if (session) {
-      // No DCR access — check quiz/application status
-      fetchProgress();
-      fetchAppStatus();
-      setLoading(false);
-    } else {
-      setLoading(false);
-    }
-  }, [session, hasDcrAccess]);
+    let cancelled = false;
 
+    async function loadCurrentStatus() {
+      try {
+        const [progressRes, applicationRes] = await Promise.all([
+          fetch("/api/dcr/progress", { cache: "no-store" }),
+          fetch("/api/dcr/application-status", { cache: "no-store" }),
+        ]);
+
+        let nextProgress: DCRProgress | null = null;
+        if (progressRes.ok) {
+          const data = await progressRes.json();
+          nextProgress = data.progress;
+          if (!cancelled) setProgress(data.progress);
+        }
+        if (applicationRes.ok) {
+          const data = await applicationRes.json();
+          if (!cancelled) setAppStatus(data);
+        }
+
+        // Admin approval updates the database immediately, while the JWT in
+        // the browser may still contain dcrAccess=false. Refresh it once the
+        // real-time progress endpoint confirms access was granted.
+        if (nextProgress?.dcrAccess && !hasDcrAccess) {
+          await update();
+        }
+      } catch {
+        // Keep the last known state and allow a later navigation to retry.
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    if (sessionStatus === "authenticated") {
+      setLoading(true);
+      loadCurrentStatus();
+    } else if (sessionStatus === "unauthenticated") {
+      setLoading(false);
+    }
+
+    return () => { cancelled = true; };
+  }, [sessionStatus, hasDcrAccess, update]);
+
+  const effectiveDcrAccess = hasEffectiveDcrAccess(
+    hasDcrAccess,
+    progress.dcrAccess,
+    appStatus.status,
+  );
   const steps = getSteps(progress);
 
   return (
@@ -179,11 +195,30 @@ export default function DCREntryPage() {
 
         <h1 className="mb-1 text-2xl font-bold text-foreground">DCR 信息互助</h1>
         <p className="mb-8 text-sm text-muted-foreground">
-          合规信息互助服务模块，先通过入频测试获取访问权限
+          {effectiveDcrAccess
+            ? "DCR 入频审核已通过，可以使用信息互助服务"
+            : "合规信息互助服务模块，先通过入频测试获取访问权限"}
         </p>
 
+        {!loading && effectiveDcrAccess && (
+          <div className="mb-8 rounded-2xl border-2 border-green-300 bg-green-50/60 p-6 text-center shadow-md dark:border-green-700/50 dark:bg-green-950/20">
+            <CheckCircle2 className="mx-auto mb-3 h-11 w-11 text-green-600 dark:text-green-400" />
+            <h2 className="mb-2 text-lg font-semibold text-green-800 dark:text-green-300">
+              DCR 入频审核已通过
+            </h2>
+            <p className="text-sm text-green-700/90 dark:text-green-300/90">
+              你已获得 DCR 专区访问权限，可继续查看审核通过的委托、参与信息互助和任务交流。
+            </p>
+            {appStatus.reviewedAt && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                审核时间：{new Date(appStatus.reviewedAt).toLocaleString("zh-CN")}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Gate: no dcrAccess → different states */}
-        {!loading && !hasDcrAccess && (
+        {!loading && !effectiveDcrAccess && (
           <>
           {appStatus.status === "PENDING" ? (
             /* Delegate submitted, awaiting admin review */
@@ -260,7 +295,7 @@ export default function DCREntryPage() {
         )}
 
         {/* 四步流程 — only visible to users with dcrAccess */}
-        {!loading && hasDcrAccess && (
+        {!loading && effectiveDcrAccess && (
         <>
         <div className="space-y-3">
           {steps.map((step, i) => {

@@ -333,6 +333,20 @@ describe("GET /api/cases", () => {
     // Should NOT call user.findUnique for Admin
     expect(mockUserFindUnique).not.toHaveBeenCalled();
   });
+
+  it("Moderator 使用审核状态筛选时可以查看完整委托审核队列", async () => {
+    setSession("moderator1", "MODERATOR");
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: false });
+    mockCaseFindMany.mockResolvedValue([]);
+    mockCaseCount.mockResolvedValue(0);
+
+    const { GET } = await import("../route");
+    const res = await GET(makeGetRequest({ requestStatus: "PENDING" }), { params: {} });
+
+    expect(res.status).toBe(200);
+    const findManyCall = mockCaseFindMany.mock.calls[0][0];
+    expect(findManyCall.where).toEqual({ requestStatus: "PENDING" });
+  });
 });
 
 describe("GET /api/cases - 无 dcrAccess 且无 Case 的用户", () => {

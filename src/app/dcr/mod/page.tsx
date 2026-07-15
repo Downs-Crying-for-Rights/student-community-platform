@@ -91,6 +91,7 @@ export default function DCRModPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          _action: "review",
           requestStatus: newStatus,
           reviewNote: note || undefined,
         }),
