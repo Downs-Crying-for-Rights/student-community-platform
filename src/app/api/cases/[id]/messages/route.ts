@@ -87,7 +87,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
     console.error("GET /api/cases/[id]/messages error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });
 
 /**
  * POST /api/cases/[id]/messages
@@ -209,4 +209,4 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
     console.error("POST /api/cases/[id]/messages error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });

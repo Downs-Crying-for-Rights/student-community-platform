@@ -93,6 +93,7 @@ model User {
   initiatedCycles  MutualAidCycle[] @relation("CycleInitiator")
   linksAsFrom      MutualAidLink[]  @relation("LinkFrom")
   linksAsTo        MutualAidLink[]  @relation("LinkTo")
+  cycleMatchRequest MutualAidMatchRequest?
 
   // 站内私信
   dmThreadsAsP1 DMThread[] @relation("DMThreadP1")
@@ -925,6 +926,13 @@ enum CycleMode {
   THREE_PARTY
 }
 
+enum CycleMatchStatus {
+  WAITING
+  MATCHING
+  MATCHED
+  CANCELLED
+}
+
 enum LinkStatus {
   PENDING_REQUEST
   REJECTED
@@ -945,9 +953,26 @@ model MutualAidCycle {
   initiator   User   @relation("CycleInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
 
   links MutualAidLink[]
+  matchRequests MutualAidMatchRequest[]
 
   @@index([initiatorId, status])
   @@index([status, createdAt])
+}
+
+model MutualAidMatchRequest {
+  id          String           @id @default(cuid())
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  status      CycleMatchStatus @default(WAITING)
+  userId      String           @unique
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  needText    String?
+  offerText   String?
+  matchedCycleId String?
+  matchedCycle   MutualAidCycle? @relation(fields: [matchedCycleId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([matchedCycleId])
 }
 
 model MutualAidLink {

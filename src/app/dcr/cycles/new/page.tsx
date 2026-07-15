@@ -43,18 +43,17 @@ export default function NewCyclePage() {
   const router = useRouter();
   const [mode, setMode] = useState<CycleMode>("TWO_PARTY");
   const [participantB, setB] = useState<UserOption | null>(null);
-  const [participantC, setC] = useState<UserOption | null>(null);
   const [descAB, setDescAB] = useState("");
   const [descBA, setDescBA] = useState("");
-  const [descBC, setDescBC] = useState("");
-  const [descCA, setDescCA] = useState("");
+  const [needText, setNeedText] = useState("");
+  const [offerText, setOfferText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!participantB || (mode === "THREE_PARTY" && !participantC)) {
-      setError(mode === "THREE_PARTY" ? "请选择 B 方和 C 方" : "请选择 B 方");
+    if (mode === "TWO_PARTY" && !participantB) {
+      setError("请选择 B 方");
       return;
     }
     setLoading(true); setError("");
@@ -64,16 +63,16 @@ export default function NewCyclePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
-          participantBId: participantB.id,
-          participantCId: mode === "THREE_PARTY" ? participantC?.id : undefined,
-          descriptions: mode === "THREE_PARTY"
-            ? { AB: descAB, BC: descBC, CA: descCA }
-            : { AB: descAB, BA: descBA },
+          participantBId: mode === "TWO_PARTY" ? participantB?.id : undefined,
+          needText: mode === "THREE_PARTY" ? needText : undefined,
+          offerText: mode === "THREE_PARTY" ? offerText : undefined,
+          descriptions: mode === "TWO_PARTY" ? { AB: descAB, BA: descBA } : undefined,
         }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) { setError(data?.error || "创建失败"); return; }
-      router.push(`/dcr/cycles/${data.cycle.id}`);
+      if (data.cycle?.id) router.push(`/dcr/cycles/${data.cycle.id}`);
+      else router.push("/dcr/cycles?matching=waiting");
     } catch { setError("网络错误"); } finally { setLoading(false); }
   }
 
@@ -83,13 +82,17 @@ export default function NewCyclePage() {
       <form onSubmit={handleSubmit} className="space-y-5">
         {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>}
         <div className="grid grid-cols-2 gap-2">
-          {(["TWO_PARTY", "THREE_PARTY"] as const).map((item) => <button key={item} type="button" onClick={() => { setMode(item); if (item === "TWO_PARTY") setC(null); }} className={cn("rounded-xl border p-3 text-left", mode === item && "border-primary bg-primary/5 ring-1 ring-primary")}><span className="block text-sm font-medium">{item === "TWO_PARTY" ? "双方互助" : "三方互助"}</span><span className="text-xs text-muted-foreground">{item === "TWO_PARTY" ? "A→B→A" : "A→B→C→A"}</span></button>)}
+          {(["TWO_PARTY", "THREE_PARTY"] as const).map((item) => <button key={item} type="button" onClick={() => setMode(item)} className={cn("rounded-xl border p-3 text-left", mode === item && "border-primary bg-primary/5 ring-1 ring-primary")}><span className="block text-sm font-medium">{item === "TWO_PARTY" ? "双方互助" : "三方系统匹配"}</span><span className="text-xs text-muted-foreground">{item === "TWO_PARTY" ? "A→B→A" : "系统匹配 A→B→C→A"}</span></button>)}
         </div>
-        <div className="rounded-lg bg-blue-50 p-4 text-sm dark:bg-blue-950/20"><strong>当前链路：</strong>{mode === "TWO_PARTY" ? `你(A) → ${participantB?.nickname || "B"} → 你(A)` : `你(A) → ${participantB?.nickname || "B"} → ${participantC?.nickname || "C"} → 你(A)`}<p className="mt-1 text-xs text-muted-foreground">参与者接受互助后会自动获得 Helper 工作台权限。</p></div>
-        <ParticipantPicker label="B 方" value={participantB} onChange={setB} />
-        {mode === "THREE_PARTY" && <ParticipantPicker label="C 方" value={participantC} onChange={setC} />}
-        <div className="space-y-2 border-t pt-4"><p className="text-sm font-medium">各段互助说明（选填）</p><Input placeholder="A→B 互助说明" value={descAB} onChange={(e) => setDescAB(e.target.value)} />{mode === "TWO_PARTY" ? <Input placeholder="B→A 互助说明" value={descBA} onChange={(e) => setDescBA(e.target.value)} /> : <><Input placeholder="B→C 互助说明" value={descBC} onChange={(e) => setDescBC(e.target.value)} /><Input placeholder="C→A 互助说明" value={descCA} onChange={(e) => setDescCA(e.target.value)} /></>}</div>
-        <Button type="submit" className="w-full" disabled={loading}>{loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />创建中...</> : `创建${mode === "TWO_PARTY" ? "双方" : "三方"}互助`}</Button>
+        <div className="rounded-lg bg-blue-50 p-4 text-sm dark:bg-blue-950/20"><strong>当前链路：</strong>{mode === "TWO_PARTY" ? `你(A) → ${participantB?.nickname || "B"} → 你(A)` : "系统从已提交意愿的用户中匹配 B、C；人数不足时由可用管理员补位"}<p className="mt-1 text-xs text-muted-foreground">匹配完成并接受互助后，参与者会自动获得 Helper 工作台权限。</p></div>
+        {mode === "TWO_PARTY" ? <>
+          <ParticipantPicker label="B 方" value={participantB} onChange={setB} />
+          <div className="space-y-2 border-t pt-4"><p className="text-sm font-medium">各段互助说明（选填）</p><Input placeholder="A→B 互助说明" value={descAB} onChange={(e) => setDescAB(e.target.value)} /><Input placeholder="B→A 互助说明" value={descBA} onChange={(e) => setDescBA(e.target.value)} /></div>
+        </> : <div className="space-y-3 border-t pt-4">
+          <div className="space-y-2"><Label htmlFor="match-need">希望获得的帮助（选填）</Label><Input id="match-need" placeholder="例如：资料整理、经验答疑" value={needText} onChange={(e) => setNeedText(e.target.value)} /></div>
+          <div className="space-y-2"><Label htmlFor="match-offer">你可以提供的帮助（选填）</Label><Input id="match-offer" placeholder="系统会把它作为互助段说明" value={offerText} onChange={(e) => setOfferText(e.target.value)} /></div>
+        </div>}
+        <Button type="submit" className="w-full" disabled={loading}>{loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />处理中...</> : mode === "TWO_PARTY" ? "创建双方互助" : "提交三方匹配意愿"}</Button>
       </form>
     </CardContent></Card>
   </div>;

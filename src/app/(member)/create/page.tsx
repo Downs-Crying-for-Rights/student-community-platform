@@ -153,6 +153,8 @@ export default function CreatePage() {
   // Data state
   const [boards, setBoards] = useState<Board[]>([]);
   const [caseOptions, setCaseOptions] = useState<CaseOption[]>([]);
+  const [caseOptionsLoading, setCaseOptionsLoading] = useState(false);
+  const [caseOptionsError, setCaseOptionsError] = useState("");
 
   // UI state
   const [submitting, setSubmitting] = useState(false);
@@ -190,12 +192,22 @@ export default function CreatePage() {
   useEffect(() => {
     if (!isDcrBoard) {
       setCaseId("");
+      setCaseOptions([]);
       return;
     }
-    fetch("/api/cases?requestStatus=APPROVED&pageSize=50")
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => setCaseOptions(data?.cases ?? []))
-      .catch(() => setCaseOptions([]));
+    setCaseOptionsLoading(true);
+    setCaseOptionsError("");
+    fetch("/api/cases/eligible-for-post", { cache: "no-store" })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || "工单加载失败");
+        setCaseOptions(data?.cases ?? []);
+      })
+      .catch((error) => {
+        setCaseOptions([]);
+        setCaseOptionsError(error instanceof Error ? error.message : "工单加载失败");
+      })
+      .finally(() => setCaseOptionsLoading(false));
   }, [isDcrBoard]);
 
   // ==================== Image Handling ====================
@@ -684,15 +696,20 @@ export default function CreatePage() {
               id="case-select"
               value={caseId}
               onChange={(e) => setCaseId(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              disabled={caseOptionsLoading}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
             >
-              <option value="">不关联工单</option>
+              <option value="">{caseOptionsLoading ? "正在加载可关联工单..." : "不关联工单"}</option>
               {caseOptions.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.category} · {item.status} · {new Date(item.createdAt).toLocaleDateString("zh-CN")}
                 </option>
               ))}
             </select>
+            {!caseOptionsLoading && caseOptions.length === 0 && !caseOptionsError && (
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">暂无已审核且由你提交或参与处理的工单。</p>
+            )}
+            {caseOptionsError && <p className="mt-2 text-xs text-destructive">{caseOptionsError}</p>}
             <p className="mt-2 text-xs text-muted-foreground">关联后，帖子详情会显示工单入口，方便符合权限的成员进入协作。</p>
           </div>
         )}

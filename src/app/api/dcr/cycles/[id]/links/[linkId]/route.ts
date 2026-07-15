@@ -59,4 +59,4 @@ export const PATCH = withAuth(async (
     const message = error?.message || "服务器内部错误";
     return NextResponse.json({ error: message }, { status: 400 });
   }
-});
+}, undefined, { captureAllTelemetry: true });

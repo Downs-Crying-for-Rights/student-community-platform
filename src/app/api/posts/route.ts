@@ -233,12 +233,14 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         where: { id: caseId },
         select: {
           submitterId: true,
+          handlerId: true,
           requestStatus: true,
           handlers: { select: { userId: true } },
         },
       });
       const isAdmin = req.user.role === "ADMIN" || req.user.role === "SUPER_ADMIN";
       const isParticipant = relatedCase?.submitterId === userId
+        || relatedCase?.handlerId === userId
         || relatedCase?.handlers.some((handler) => handler.userId === userId);
       if (!relatedCase || relatedCase.requestStatus !== "APPROVED") {
         return NextResponse.json({ error: "只能关联已经通过审核的工单" }, { status: 400 });
@@ -369,4 +371,4 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     console.error("POST /api/posts error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });

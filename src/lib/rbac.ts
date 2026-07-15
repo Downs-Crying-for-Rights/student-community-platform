@@ -190,6 +190,7 @@ type AuthenticatedHandler = (
 export function withAuth(
   handler: AuthenticatedHandler,
   requiredRole?: Role,
+  options?: { captureAllTelemetry?: boolean },
 ): RouteHandler {
   return async (req, context) => {
     const startedAt = performance.now();
@@ -197,13 +198,34 @@ export function withAuth(
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "未登录" }, { status: 401 });
+      const response = NextResponse.json({ error: "未登录" }, { status: 401 });
+      trackServerTelemetryLater({
+        type: "error",
+        name: `${req.method} ${new URL(req.url).pathname}`,
+        route: new URL(req.url).pathname,
+        duration: performance.now() - startedAt,
+        status: 401,
+        force: options?.captureAllTelemetry,
+        metadata: { requestId, method: req.method, errorMessage: "未登录" },
+      });
+      return response;
     }
 
     const userRole = (session.user.role ?? "USER") as Role;
 
     if (requiredRole && !hasMinimumRole(userRole, requiredRole)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      const response = NextResponse.json({ error: "权限不足" }, { status: 403 });
+      trackServerTelemetryLater({
+        type: "error",
+        name: `${req.method} ${new URL(req.url).pathname}`,
+        route: new URL(req.url).pathname,
+        duration: performance.now() - startedAt,
+        status: 403,
+        userId: session.user.id,
+        force: options?.captureAllTelemetry,
+        metadata: { requestId, method: req.method, errorMessage: "权限不足" },
+      });
+      return response;
     }
 
     // Attach user info to request for downstream handlers
@@ -233,6 +255,7 @@ export function withAuth(
         duration: performance.now() - startedAt,
         status: response.status,
         userId: session.user.id,
+        force: options?.captureAllTelemetry,
         metadata: {
           requestId,
           method: req.method,
@@ -250,6 +273,7 @@ export function withAuth(
         duration: performance.now() - startedAt,
         status: 500,
         userId: session.user.id,
+        force: options?.captureAllTelemetry,
         metadata: {
           requestId,
           method: req.method,

@@ -35,6 +35,12 @@ export interface TransitionResult {
   newCycleStatus?: CycleStatus;
 }
 
+export interface ThreePartyMatchInput {
+  userId: string;
+  needText?: string;
+  offerText?: string;
+}
+
 export function buildCycleDirections(
   mode: CycleMode,
   initiatorId: string,
@@ -201,12 +207,13 @@ export async function createCycle(input: CycleCreateInput) {
   // 验证参与者真实存在且已通过考核
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
-    select: { id: true, quizPassed: true, dcrAccess: true },
+    select: { id: true, quizPassed: true, dcrAccess: true, role: true },
   });
   if (users.length !== userIds.length) throw new Error("部分参与者不存在");
 
   for (const u of users) {
-    if (!u.quizPassed || !u.dcrAccess) {
+    const isAdministrator = u.role === "ADMIN" || u.role === "SUPER_ADMIN";
+    if (!isAdministrator && (!u.quizPassed || !u.dcrAccess)) {
       throw new Error(`用户 ${u.id} 尚未通过入频考核，无法参与互助循环`);
     }
   }
@@ -259,6 +266,127 @@ export async function createCycle(input: CycleCreateInput) {
   }
 
   return cycle;
+}
+
+/**
+ * Register willingness for a three-party cycle and let the system choose B/C.
+ * Other waiting users are preferred; available administrators fill remaining
+ * seats so no participant IDs are supplied by the requester.
+ */
+export async function enqueueThreePartyMatch(input: ThreePartyMatchInput) {
+  if (await hasActiveCycle(input.userId)) {
+    throw new Error("你已有活跃的互助循环，请先完成或退出");
+  }
+
+  const requester = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { id: true, quizPassed: true, dcrAccess: true, role: true },
+  });
+  if (!requester) throw new Error("用户不存在");
+  const requesterIsAdmin = requester.role === "ADMIN" || requester.role === "SUPER_ADMIN";
+  if (!requesterIsAdmin && (!requester.quizPassed || !requester.dcrAccess)) {
+    throw new Error("尚未通过入频考核，无法参与三方互助匹配");
+  }
+
+  const request = await prisma.mutualAidMatchRequest.upsert({
+    where: { userId: input.userId },
+    create: {
+      userId: input.userId,
+      status: "WAITING",
+      needText: input.needText?.trim() || null,
+      offerText: input.offerText?.trim() || null,
+    },
+    update: {
+      status: "WAITING",
+      matchedCycleId: null,
+      needText: input.needText?.trim() || null,
+      offerText: input.offerText?.trim() || null,
+    },
+  });
+
+  const activeStatuses: CycleStatus[] = ["INITIATING", "ACTIVE"];
+  const waiting = await prisma.mutualAidMatchRequest.findMany({
+    where: {
+      status: "WAITING",
+      userId: { not: input.userId },
+      user: {
+        initiatedCycles: { none: { status: { in: activeStatuses } } },
+        linksAsFrom: { none: { cycle: { status: { in: activeStatuses } } } },
+        linksAsTo: { none: { cycle: { status: { in: activeStatuses } } } },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+    take: 2,
+    select: { id: true, userId: true, offerText: true },
+  });
+
+  const participants: Array<{ userId: string; requestId?: string; offerText?: string | null }> = [
+    { userId: input.userId, requestId: request.id, offerText: request.offerText },
+    ...waiting.map((item) => ({ userId: item.userId, requestId: item.id, offerText: item.offerText })),
+  ];
+
+  if (participants.length < 3) {
+    const administrators = await prisma.user.findMany({
+      where: {
+        id: { notIn: participants.map((item) => item.userId) },
+        role: { in: ["ADMIN", "SUPER_ADMIN"] },
+        isBanned: false,
+        initiatedCycles: { none: { status: { in: activeStatuses } } },
+        linksAsFrom: { none: { cycle: { status: { in: activeStatuses } } } },
+        linksAsTo: { none: { cycle: { status: { in: activeStatuses } } } },
+      },
+      orderBy: [{ role: "desc" }, { createdAt: "asc" }],
+      take: 3 - participants.length,
+      select: { id: true },
+    });
+    participants.push(...administrators.map((admin) => ({
+      userId: admin.id,
+      offerText: "管理员协助",
+    })));
+  }
+
+  if (participants.length < 3) {
+    return { matched: false as const, request, cycle: null };
+  }
+
+  const claimedIds = participants.flatMap((item) => item.requestId ? [item.requestId] : []);
+  const claimed = await prisma.mutualAidMatchRequest.updateMany({
+    where: { id: { in: claimedIds }, status: "WAITING" },
+    data: { status: "MATCHING" },
+  });
+  if (claimed.count !== claimedIds.length) {
+    await prisma.mutualAidMatchRequest.updateMany({
+      where: { id: { in: claimedIds }, status: "MATCHING" },
+      data: { status: "WAITING" },
+    });
+    return { matched: false as const, request, cycle: null };
+  }
+
+  try {
+    const [a, b, c] = participants;
+    const cycle = await createCycle({
+      initiatorId: a.userId,
+      mode: CycleMode.THREE_PARTY,
+      participantBId: b.userId,
+      participantCId: c.userId,
+      descriptions: {
+        AB: a.offerText || undefined,
+        BC: b.offerText || undefined,
+        CA: c.offerText || undefined,
+      },
+    });
+    await prisma.mutualAidMatchRequest.updateMany({
+      where: { id: { in: claimedIds } },
+      data: { status: "MATCHED", matchedCycleId: cycle.id },
+    });
+    return { matched: true as const, request, cycle };
+  } catch (error) {
+    await prisma.mutualAidMatchRequest.updateMany({
+      where: { id: { in: claimedIds }, status: "MATCHING" },
+      data: { status: "WAITING" },
+    });
+    throw error;
+  }
 }
 
 /**

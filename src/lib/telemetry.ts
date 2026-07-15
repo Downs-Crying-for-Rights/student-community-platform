@@ -9,6 +9,8 @@ export interface ServerTelemetryInput {
   status?: number;
   userId?: string;
   metadata?: Record<string, string | number | boolean | null>;
+  /** Persist this event even when normal successful-request sampling is enabled. */
+  force?: boolean;
 }
 
 export function sanitizeTelemetryDetail(value: unknown, maxLength = 8_000): string {
@@ -50,7 +52,7 @@ function shouldSample(status?: number): boolean {
 }
 
 export async function trackServerTelemetry(input: ServerTelemetryInput): Promise<void> {
-  if (!shouldSample(input.status)) return;
+  if (!input.force && !shouldSample(input.status)) return;
   await prisma.telemetryEvent.create({
     data: {
       scope: "SERVER",

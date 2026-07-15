@@ -46,4 +46,4 @@ export const GET = withAuth(async (
     console.error("GET /api/dcr/cycles/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });

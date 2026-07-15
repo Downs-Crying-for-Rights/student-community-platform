@@ -68,4 +68,4 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     console.error("POST /api/upload/case-media error:", error);
     return NextResponse.json({ error: "上传失败，请稍后重试" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });

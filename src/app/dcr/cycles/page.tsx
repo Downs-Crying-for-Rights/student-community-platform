@@ -67,6 +67,7 @@ export default function CyclesPage() {
   const router = useRouter();
   const [cycles, setCycles] = useState<CycleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [matchRequest, setMatchRequest] = useState<{ status: string; matchedCycleId: string | null } | null>(null);
 
   const fetchCycles = useCallback(async () => {
     setLoading(true);
@@ -74,7 +75,8 @@ export default function CyclesPage() {
       const res = await fetch("/api/dcr/cycles");
       if (res.ok) {
         const data = await res.json();
-        setCycles(data.cycles);
+        setCycles(data.cycles ?? []);
+        setMatchRequest(data.matchRequest ?? null);
       }
     } catch {
       // silent fail
@@ -104,7 +106,10 @@ export default function CyclesPage() {
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin" /></div>
       ) : cycles.length === 0 ? (
-        <EmptyState icon={Repeat as any} title="暂无互助循环" description="创建双方或三方互助闭环，开始互助" actionLabel="创建互助循环" actionHref="/dcr/cycles/new" />
+        <>
+          {matchRequest?.status === "WAITING" && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><strong>三方互助匹配中</strong><p className="mt-1 text-xs">系统正在匹配其他愿意参与的用户；必要时会由可用管理员补位。</p></div>}
+          <EmptyState icon={<Repeat className="h-16 w-16 stroke-1" />} title="暂无互助循环" description="创建双方互助，或提交三方系统匹配意愿" actionLabel="开始互助" actionHref="/dcr/cycles/new" />
+        </>
       ) : (
         <div className="space-y-3">
           {cycles.map((c) => {
