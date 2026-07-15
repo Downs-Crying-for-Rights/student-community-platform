@@ -91,6 +91,7 @@ export const createPostSchema = z.object({
   images: z.array(z.string()).max(9, "最多上传 9 张图片").optional(),
   visibility: postVisibilitySchema.optional(),
   dcrCategory: dcrCategorySchema.optional(),
+  caseId: z.string().cuid("无效的工单 ID").optional(),
   isAnonymous: z.boolean().optional(),
 });
 

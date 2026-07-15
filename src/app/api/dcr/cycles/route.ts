@@ -5,13 +5,19 @@ import { createCycle } from "@/lib/mutual-aid-cycle";
 import { z } from "zod";
 
 const createCycleSchema = z.object({
+  mode: z.enum(["TWO_PARTY", "THREE_PARTY"]).default("THREE_PARTY"),
   participantBId: z.string().min(1, "请选择B方"),
-  participantCId: z.string().min(1, "请选择C方"),
+  participantCId: z.string().optional(),
   descriptions: z.object({
     AB: z.string().max(500).optional(),
+    BA: z.string().max(500).optional(),
     BC: z.string().max(500).optional(),
     CA: z.string().max(500).optional(),
   }).optional(),
+}).superRefine((data, ctx) => {
+  if (data.mode === "THREE_PARTY" && !data.participantCId?.trim()) {
+    ctx.addIssue({ code: "custom", path: ["participantCId"], message: "三方互助请选择 C 方" });
+  }
 });
 
 /**
@@ -31,6 +37,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     const cycle = await createCycle({
       initiatorId: req.user.id,
+      mode: parsed.data.mode,
       participantBId: parsed.data.participantBId,
       participantCId: parsed.data.participantCId,
       descriptions: parsed.data.descriptions,

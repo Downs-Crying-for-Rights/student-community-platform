@@ -25,6 +25,7 @@ export const GET = withOptionalAuth(async (
         author: { select: { id: true, nickname: true, avatar: true, isShadowBanned: true } },
         board: { select: { id: true, name: true, zone: true } },
         tags: { include: { tag: true } },
+        case_: { select: { id: true, category: true, status: true, requestStatus: true } },
       },
     });
 
@@ -47,6 +48,19 @@ export const GET = withOptionalAuth(async (
     const userId = req.user.id;
     const isAuthor = post.authorId === userId;
     const isModerator = hasMinimumRole(req.user.role, "MODERATOR");
+
+    if (post.board.zone === "DCR") {
+      const access = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { dcrAccess: true },
+      });
+      if (!access?.dcrAccess && !hasMinimumRole(req.user.role, "ADMIN")) {
+        return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
+      }
+      if (post.case_ && post.case_.requestStatus !== "APPROVED" && !isAuthor && !isModerator) {
+        return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
+      }
+    }
 
     // Don't show DELETED posts unless moderator
     if (post.status === "DELETED" && !isModerator) {

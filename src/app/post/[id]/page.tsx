@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
-import { Heart, Bookmark, MessageCircle, Share2, User, Trash2, Loader2, Clock } from "lucide-react";
+import { Heart, Bookmark, MessageCircle, Share2, User, Trash2, Loader2, Clock, HandHelping } from "lucide-react";
 import { ImageCarousel } from "@/components/post/ImageCarousel";
 import { CommentDrawer } from "@/components/comment/CommentDrawer";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
@@ -49,6 +49,7 @@ interface PostData {
   author: PostAuthor;
   board: PostBoard;
   tags: PostTag[];
+  case_: { id: string; category: string; status: string; requestStatus: string } | null;
 }
 
 function PostDetailSkeleton() {
@@ -230,6 +231,20 @@ export default function PostDetailPage() {
               <div className="mt-4 whitespace-pre-wrap text-base leading-relaxed text-foreground/90">
                 {post.content}
               </div>
+
+              {post.case_?.requestStatus === "APPROVED" && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/dcr/tickets/${post.case_!.id}`)}
+                  className="mt-4 flex w-full items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-left transition-colors hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/30"
+                >
+                  <HandHelping className="h-5 w-5 text-blue-600" />
+                  <span className="flex-1">
+                    <span className="block text-sm font-medium">进入关联工单参与互助</span>
+                    <span className="block text-xs text-muted-foreground">{post.case_.category} · {post.case_.status}</span>
+                  </span>
+                </button>
+              )}
 
               {/* Tags */}
               {post.tags.length > 0 && (

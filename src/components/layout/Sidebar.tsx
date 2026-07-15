@@ -29,6 +29,7 @@ import {
   RefreshCw,
   ListTodo,
   Scale,
+  Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
@@ -38,6 +39,7 @@ import { useEffect, useState } from "react";
 export interface SidebarAccessFlags {
   psychAccess?: boolean;
   dcrAccess?: boolean;
+  dcrHelperAccess?: boolean;
 }
 
 export interface SidebarProps {
@@ -55,6 +57,7 @@ interface NavItem {
   requirePsychAccess?: boolean;
   /** Show only when user has dcrAccess */
   requireDcrAccess?: boolean;
+  requireHelperAccess?: boolean;
 }
 
 const ROLE_HIERARCHY: Record<string, number> = {
@@ -80,8 +83,9 @@ const coreNavItems: NavItem[] = [
 const zoneNavItems: NavItem[] = [
   { href: "/psych", label: "心理区", icon: Heart, requirePsychAccess: true },
   { href: "/dcr/tickets", label: "工单列表", icon: Lock, requireDcrAccess: true },
-  { href: "/dcr/helper", label: "Helper 工作台", icon: ShieldCheck, requireDcrAccess: true, minRole: "DCR_HELPER" },
+  { href: "/dcr/helper", label: "Helper 工作台", icon: ShieldCheck, requireDcrAccess: true, requireHelperAccess: true },
   { href: "/dcr/posts", label: "DCR 帖子", icon: FileText, requireDcrAccess: true },
+  { href: "/dcr/cycles", label: "互助闭环", icon: Repeat, requireDcrAccess: true },
 ];
 
 /** Moderation nav items */
@@ -128,6 +132,7 @@ function isVisible(
   if (item.minRole && !hasMinRole(role, item.minRole)) return false;
   if (item.requirePsychAccess && !flags.psychAccess) return false;
   if (item.requireDcrAccess && !flags.dcrAccess) return false;
+  if (item.requireHelperAccess && role !== "DCR_HELPER" && !hasMinRole(role, "ADMIN") && !flags.dcrHelperAccess) return false;
   return true;
 }
 
@@ -156,6 +161,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
           setFetchedFlags({
             psychAccess: data.user.psychAccess ?? false,
             dcrAccess: data.user.dcrAccess ?? false,
+            dcrHelperAccess: data.user.dcrHelperAccess ?? false,
           });
         }
       })
@@ -167,6 +173,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
   const accessFlags: SidebarAccessFlags = {
     psychAccess: propAccessFlags?.psychAccess ?? fetchedFlags.psychAccess,
     dcrAccess: propAccessFlags?.dcrAccess ?? fetchedFlags.dcrAccess,
+    dcrHelperAccess: propAccessFlags?.dcrHelperAccess ?? fetchedFlags.dcrHelperAccess,
   };
 
   const role = (session?.user?.role as string) ?? "USER";

@@ -3,7 +3,7 @@ import { getPrivateOSSObject, verifyMediaSignature } from "@/lib/oss";
 
 export const runtime = "nodejs";
 
-const ALLOWED_KEY = /^uploads\/\d{4}\/\d{2}\/[a-f0-9]{32}\.(webp|gif)$/;
+const ALLOWED_KEY = /^uploads\/\d{4}\/\d{2}\/[a-f0-9]{32}\.(webp|gif|jpg|png|webm|ogg|mp3|m4a|wav|pdf|txt|doc|docx|xls|xlsx|zip)$/;
 
 /**
  * GET /api/media?key=uploads/...&sig=...

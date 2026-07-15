@@ -38,6 +38,7 @@ model User {
   onboardingDone  Boolean  @default(false)
   psychAccess     Boolean  @default(false)
   dcrAccess       Boolean  @default(false)
+  dcrHelperAccess Boolean  @default(false)
   dcrPledgeSigned Boolean  @default(false)
   quizPassed      Boolean  @default(false)
   phone           String?  @unique // 手机号
@@ -404,6 +405,12 @@ model CaseHandler {
 model Message {
   id          String   @id @default(cuid())
   content     String
+  messageType CaseMessageType @default(TEXT)
+  mediaUrl    String?
+  mediaName   String?
+  mediaMimeType String?
+  mediaSize   Int?
+  durationSeconds Int?
   isAnonymous Boolean  @default(false)
   createdAt   DateTime @default(now())
 
@@ -415,6 +422,13 @@ model Message {
   sender   User  @relation("MessageSender", fields: [senderId], references: [id])
   receiver User  @relation("MessageReceiver", fields: [receiverId], references: [id])
   case_    Case? @relation(fields: [caseId], references: [id])
+}
+
+enum CaseMessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  FILE
 }
 
 // ==================== 心理区 ====================
@@ -906,6 +920,11 @@ enum CycleStatus {
   BROKEN
 }
 
+enum CycleMode {
+  TWO_PARTY
+  THREE_PARTY
+}
+
 enum LinkStatus {
   PENDING_REQUEST
   REJECTED
@@ -920,6 +939,7 @@ model MutualAidCycle {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   status    CycleStatus @default(INITIATING)
+  mode      CycleMode   @default(THREE_PARTY)
 
   initiatorId String
   initiator   User   @relation("CycleInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)

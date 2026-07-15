@@ -104,6 +104,11 @@ export const POST = withAuth(async (
           },
         });
 
+        await tx.user.updateMany({
+          where: { id: { in: [userId, task.requesterId] } },
+          data: { dcrHelperAccess: true },
+        });
+
         return {
           sessionId: session.id,
           chatId: chat.id,

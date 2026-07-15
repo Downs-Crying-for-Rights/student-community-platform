@@ -23,6 +23,13 @@ interface Board {
   name: string;
   zone: string;
 }
+interface CaseOption {
+  id: string;
+  category: string;
+  status: string;
+  requestStatus: string;
+  createdAt: string;
+}
 interface SensitiveMatch {
   word: string;
   category: string;
@@ -141,9 +148,11 @@ export default function CreatePage() {
   const [customTags, setCustomTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [visibility, setVisibility] = useState("PUBLIC");
+  const [caseId, setCaseId] = useState("");
 
   // Data state
   const [boards, setBoards] = useState<Board[]>([]);
+  const [caseOptions, setCaseOptions] = useState<CaseOption[]>([]);
 
   // UI state
   const [submitting, setSubmitting] = useState(false);
@@ -159,6 +168,7 @@ export default function CreatePage() {
   // Derived state
   const selectedBoard = boards.find((b) => b.id === boardId);
   const showVisibility = selectedBoard ? isPrivateZone(selectedBoard.zone) : false;
+  const isDcrBoard = selectedBoard?.zone === "DCR";
 
   // ==================== Data Fetching ====================
 
@@ -176,6 +186,17 @@ export default function CreatePage() {
     }
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!isDcrBoard) {
+      setCaseId("");
+      return;
+    }
+    fetch("/api/cases?requestStatus=APPROVED&pageSize=50")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setCaseOptions(data?.cases ?? []))
+      .catch(() => setCaseOptions([]));
+  }, [isDcrBoard]);
 
   // ==================== Image Handling ====================
 
@@ -391,6 +412,7 @@ export default function CreatePage() {
       if (showVisibility) {
         body.visibility = visibility;
       }
+      if (isDcrBoard && caseId) body.caseId = caseId;
 
       const res = await fetch("/api/posts", {
         method: "POST",
@@ -426,6 +448,8 @@ export default function CreatePage() {
     images,
     showVisibility,
     visibility,
+    isDcrBoard,
+    caseId,
     router,
   ]);
 
@@ -632,6 +656,7 @@ export default function CreatePage() {
             value={boardId}
             onChange={(e) => {
               setBoardId(e.target.value);
+              setCaseId("");
               setSensitiveMatches([]);
             }}
             className={cn(
@@ -651,6 +676,26 @@ export default function CreatePage() {
             <p className="mt-1 text-sm text-destructive">{errors.board}</p>
           )}
         </div>
+
+        {isDcrBoard && (
+          <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-900 dark:bg-blue-950/20">
+            <Label htmlFor="case-select" className="mb-2 block">关联工单进行互助（可选）</Label>
+            <select
+              id="case-select"
+              value={caseId}
+              onChange={(e) => setCaseId(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">不关联工单</option>
+              {caseOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.category} · {item.status} · {new Date(item.createdAt).toLocaleDateString("zh-CN")}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-muted-foreground">关联后，帖子详情会显示工单入口，方便符合权限的成员进入协作。</p>
+          </div>
+        )}
 
         {/* Visibility Selector (private zones only) */}
         {showVisibility && (

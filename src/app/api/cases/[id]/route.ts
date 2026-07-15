@@ -267,8 +267,15 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     const isHandler = caseRecord.handlerId === userId;
     const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
-    // Helper: DCR_HELPER role, ADMIN, or SUPER_ADMIN can handle cases
-    const isDCRHelper = userRole === "DCR_HELPER" || isAdmin;
+    const helperProfile = userRole === "DCR_HELPER" || isAdmin
+      ? null
+      : await prisma.user.findUnique({
+          where: { id: userId },
+          select: { dcrHelperAccess: true, dcrAccess: true },
+        });
+    const helperAccess = userRole === "DCR_HELPER" || isAdmin
+      || !!helperProfile?.dcrHelperAccess || !!helperProfile?.dcrAccess;
+    const isDCRHelper = helperAccess;
 
     // OPENED → IN_PROGRESS: DCRHelper accepts case
     if (oldStatus === "OPENED" && newStatus === "IN_PROGRESS") {
@@ -367,6 +374,11 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
           data: { caseId: id, userId },
         });
 
+        await tx.user.update({
+          where: { id: userId },
+          data: { dcrHelperAccess: true },
+        });
+
         const anonymousId = generateAnonymousId();
         await tx.message.create({
           data: {
@@ -435,9 +447,9 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
   // Check if user is a DCR_HELPER or has dcrAccess
   const userRecord = await prisma.user.findUnique({
     where: { id: userId },
-    select: { dcrAccess: true },
+    select: { dcrAccess: true, dcrHelperAccess: true },
   });
-  const isDCRHelper = userRole === "DCR_HELPER" || isAdmin;
+  const isDCRHelper = userRole === "DCR_HELPER" || !!userRecord?.dcrHelperAccess || !!userRecord?.dcrAccess || isAdmin;
 
   if (!isDCRHelper) {
     return NextResponse.json({ error: "仅 DCRHelper 或 Admin 可加入工单" }, { status: 403 });
@@ -511,6 +523,11 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
     // Create CaseHandler record
     await tx.caseHandler.create({
       data: { caseId, userId },
+    });
+
+    await tx.user.update({
+      where: { id: userId },
+      data: { dcrHelperAccess: true },
     });
 
     // If OPENED, transition to IN_PROGRESS and set handlerId (primary handler)

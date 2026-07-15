@@ -266,6 +266,7 @@ describe("PATCH /api/cases/[id]", () => {
         case: { update: vi.fn().mockResolvedValue(updatedCase) },
         caseHandler: { create: vi.fn() },
         timelineEvent: { create: vi.fn() },
+        user: { update: vi.fn() },
         message: { create: vi.fn() },
       };
       return fn(tx);
@@ -363,6 +364,7 @@ describe("PATCH /api/cases/[id]", () => {
         case: { update: vi.fn().mockResolvedValue(updatedCase) },
         caseHandler: { create: vi.fn() },
         timelineEvent: { create: vi.fn() },
+        user: { update: vi.fn() },
         message: { create: vi.fn() },
       };
       return fn(tx);
@@ -408,6 +410,7 @@ describe("PATCH /api/cases/[id] - JOIN action", () => {
         case: { update: vi.fn().mockResolvedValue(updatedCase) },
         caseHandler: { create: vi.fn() },
         timelineEvent: { create: vi.fn() },
+        user: { update: vi.fn() },
         message: { create: vi.fn() },
       };
       return fn(tx);
@@ -450,6 +453,7 @@ describe("PATCH /api/cases/[id] - JOIN action", () => {
         case: { update: vi.fn().mockResolvedValue(updatedCase) },
         caseHandler: { create: vi.fn() },
         timelineEvent: { create: vi.fn() },
+        user: { update: vi.fn() },
         message: { create: vi.fn() },
       };
       return fn(tx);

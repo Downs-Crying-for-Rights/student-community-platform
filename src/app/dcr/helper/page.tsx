@@ -88,6 +88,7 @@ export default function HelperDashboardPage() {
   const [userId, setUserId] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("");
   const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [helperAccess, setHelperAccess] = useState(false);
 
   const [openCases, setOpenCases] = useState<CaseSummary[]>([]);
   const [myCases, setMyCases] = useState<CaseSummary[]>([]);
@@ -103,6 +104,13 @@ export default function HelperDashboardPage() {
           const session = await res.json();
           setUserRole(session?.user?.role ?? "");
           setUserId(session?.user?.id ?? "");
+          if (session?.user?.id) {
+            const profileRes = await fetch("/api/users/me");
+            if (profileRes.ok) {
+              const profile = await profileRes.json();
+              setHelperAccess(profile?.user?.dcrHelperAccess ?? false);
+            }
+          }
         }
       } catch {
         // Ignore session errors
@@ -113,7 +121,7 @@ export default function HelperDashboardPage() {
     fetchSession();
   }, []);
 
-  const hasPermission = userRole === "DCR_HELPER" || userRole === "ADMIN" || userRole === "SUPER_ADMIN";
+  const hasPermission = helperAccess || userRole === "DCR_HELPER" || userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
   // Fetch cases once session is loaded and user has permission
   const fetchCases = useCallback(async () => {
@@ -167,7 +175,7 @@ export default function HelperDashboardPage() {
             <ShieldAlert className="h-16 w-16 text-muted-foreground mb-4" aria-hidden="true" />
             <h2 className="text-lg font-medium text-foreground">无权限访问</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              此页面仅对 DCR_HELPER 和管理员开放
+              参与互助后即可获得 Helper 工作台权限
             </p>
           </div>
         ) : (

@@ -58,6 +58,21 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
     const userId = req.user?.id;
     const isModerator = req.user ? hasMinimumRole(req.user.role, "MODERATOR") : false;
 
+    if (zone === "DCR" || zone === "PSYCHOLOGY") {
+      if (!userId) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+      const access = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { dcrAccess: true, psychAccess: true },
+      });
+      const isAdmin = req.user ? hasMinimumRole(req.user.role, "ADMIN") : false;
+      if (zone === "DCR" && !access?.dcrAccess && !isAdmin) {
+        return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
+      }
+      if (zone === "PSYCHOLOGY" && !access?.psychAccess && !isModerator) {
+        return NextResponse.json({ error: "无心理区访问权限" }, { status: 403 });
+      }
+    }
+
     // Parse caseIds if provided (comma-separated)
     const caseIds = caseIdsParam ? caseIdsParam.split(",").filter(Boolean) : undefined;
 
@@ -173,7 +188,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { title, content, summary, boardId, tagIds, tagNames, images, visibility, dcrCategory, isAnonymous } = parsed.data;
+    const { title, content, summary, boardId, tagIds, tagNames, images, visibility, dcrCategory, caseId, isAnonymous } = parsed.data;
     const userId = req.user.id;
 
     // Fetch user attributes for ABAC check
@@ -207,6 +222,30 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     if (!board || !board.isActive) {
       return NextResponse.json({ error: "板块不存在或已停用" }, { status: 404 });
+    }
+
+    if (caseId && board.zone !== BoardZone.DCR) {
+      return NextResponse.json({ error: "只有 DCR 区帖子可以关联工单" }, { status: 400 });
+    }
+
+    if (caseId) {
+      const relatedCase = await prisma.case.findUnique({
+        where: { id: caseId },
+        select: {
+          submitterId: true,
+          requestStatus: true,
+          handlers: { select: { userId: true } },
+        },
+      });
+      const isAdmin = req.user.role === "ADMIN" || req.user.role === "SUPER_ADMIN";
+      const isParticipant = relatedCase?.submitterId === userId
+        || relatedCase?.handlers.some((handler) => handler.userId === userId);
+      if (!relatedCase || relatedCase.requestStatus !== "APPROVED") {
+        return NextResponse.json({ error: "只能关联已经通过审核的工单" }, { status: 400 });
+      }
+      if (!isParticipant && !isAdmin) {
+        return NextResponse.json({ error: "只能关联自己参与的工单" }, { status: 403 });
+      }
     }
 
     // Check zone access
@@ -302,6 +341,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         isAnonymous: finalIsAnonymous,
         anonymousId,
         dcrCategory: board.zone === BoardZone.DCR ? dcrCategory : null,
+        caseId: board.zone === BoardZone.DCR ? caseId ?? null : null,
         authorId: userId,
         boardId,
         tags: resolvedTagIds && resolvedTagIds.length > 0
@@ -321,7 +361,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       "CREATE_POST",
       AuditTargetType.POST,
       post.id,
-      { title, boardZone: board.zone, status },
+      { title, boardZone: board.zone, status, caseId: caseId ?? null },
     );
 
     return NextResponse.json({ post }, { status: 201 });

@@ -33,6 +33,7 @@ interface CycleItem {
   createdAt: string;
   initiator: { id: string; nickname: string };
   links: CycleLink[];
+  mode: "TWO_PARTY" | "THREE_PARTY";
 }
 
 /* ========== Config ========== */
@@ -57,6 +58,7 @@ const DIRECTION_LABELS: Record<string, string> = {
   AB: "A→B",
   BC: "B→C",
   CA: "C→A",
+  BA: "B→A",
 };
 
 /* ========== Page ========== */
@@ -89,7 +91,7 @@ export default function CyclesPage() {
         <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold">互助循环</h1>
-          <p className="text-sm text-muted-foreground mt-1">三方互助：A→B、B→C、C→A 闭环链路</p>
+          <p className="text-sm text-muted-foreground mt-1">支持双方 A→B→A 或三方 A→B→C→A 闭环互助</p>
         </div>
         <Button asChild size="sm">
           <Link href="/dcr/cycles/new">
@@ -102,7 +104,7 @@ export default function CyclesPage() {
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin" /></div>
       ) : cycles.length === 0 ? (
-        <EmptyState icon={Repeat as any} title="暂无互助循环" description="创建一个三方互助循环，开始互助" actionLabel="创建互助循环" actionHref="/dcr/cycles/new" />
+        <EmptyState icon={Repeat as any} title="暂无互助循环" description="创建双方或三方互助闭环，开始互助" actionLabel="创建互助循环" actionHref="/dcr/cycles/new" />
       ) : (
         <div className="space-y-3">
           {cycles.map((c) => {
@@ -113,7 +115,7 @@ export default function CyclesPage() {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium">
-                      发起者: {c.initiator.nickname}
+                      {c.mode === "TWO_PARTY" ? "双方互助" : "三方互助"} · 发起者: {c.initiator.nickname}
                     </span>
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${config.className}`}>
                       <Icon className="h-3 w-3" />{config.label}

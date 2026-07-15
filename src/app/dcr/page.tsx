@@ -371,6 +371,12 @@ export default function DCREntryPage() {
           <Button asChild variant="outline" size="sm" className="w-full">
             <Link href="/kb">浏览知识库与政策模板</Link>
           </Button>
+          <Button asChild variant="outline" size="sm" className="w-full">
+            <Link href="/dcr/posts">查看并发布关联工单的 DCR 帖子</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="w-full">
+            <Link href="/dcr/cycles">创建双方或三方互助闭环</Link>
+          </Button>
         </div>
         </>
         )}

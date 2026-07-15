@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import {
   Home, Compass, Plus, MessageCircle, Ellipsis,
   User, MessagesSquare, Shield, ShieldCheck,
-  FileText, Lock, Heart,
+  FileText, Lock, Heart, Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -40,6 +40,7 @@ const moreItems: MoreItem[] = [
   { href: "/dcr", label: "DCR 互助", icon: ShieldCheck, requireDcrAccess: true },
   { href: "/dcr/tasks", label: "互助任务", icon: FileText, requireDcrAccess: true },
   { href: "/dcr/tickets", label: "我的工单", icon: Lock, requireDcrAccess: true },
+  { href: "/dcr/cycles", label: "互助闭环", icon: Repeat, requireDcrAccess: true },
   { href: "/psych", label: "心理区", icon: Heart, requirePsychAccess: true },
   { href: "/moderation", label: "审核管理", icon: Shield, minRole: "MODERATOR" },
 ];

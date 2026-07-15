@@ -35,6 +35,7 @@ interface Cycle {
   createdAt: string;
   initiator: { id: string; nickname: string };
   links: CycleLink[];
+  mode: "TWO_PARTY" | "THREE_PARTY";
 }
 
 /* ========== Constants ========== */
@@ -50,6 +51,7 @@ const LINK_META: Record<string, { label: string; fromLabel: string; toLabel: str
   AB: { label: "A→B", fromLabel: "你(A)", toLabel: "B" },
   BC: { label: "B→C", fromLabel: "B", toLabel: "C" },
   CA: { label: "C→A", fromLabel: "C", toLabel: "你(A)" },
+  BA: { label: "B→A", fromLabel: "B", toLabel: "你(A)" },
 };
 
 const STATUS_ICON: Record<string, typeof CheckCircle2> = {
@@ -116,7 +118,7 @@ export default function CycleDetailPage() {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold">互助循环详情</h1>
+          <h1 className="text-xl font-bold">{cycle.mode === "TWO_PARTY" ? "双方" : "三方"}互助详情</h1>
           <p className={`text-sm font-medium ${statusInfo.color}`}>{statusInfo.label}</p>
         </div>
       </div>
@@ -131,8 +133,7 @@ export default function CycleDetailPage() {
           <span className="rounded-full bg-blue-100 px-3 py-1 dark:bg-blue-950/40">A</span>
           <ArrowLeft className="h-4 w-4 rotate-180" />
           <span className="rounded-full bg-green-100 px-3 py-1 dark:bg-green-950/40">B</span>
-          <ArrowLeft className="h-4 w-4 rotate-180" />
-          <span className="rounded-full bg-purple-100 px-3 py-1 dark:bg-purple-950/40">C</span>
+          {cycle.mode === "THREE_PARTY" && <><ArrowLeft className="h-4 w-4 rotate-180" /><span className="rounded-full bg-purple-100 px-3 py-1 dark:bg-purple-950/40">C</span></>}
           <ArrowLeft className="h-4 w-4 rotate-180" />
           <span className="rounded-full bg-blue-100 px-3 py-1 dark:bg-blue-950/40">A</span>
         </div>

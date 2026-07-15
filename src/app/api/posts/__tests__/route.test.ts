@@ -8,6 +8,7 @@ const mockBoardFindUnique = vi.fn();
 const mockPostFindMany = vi.fn();
 const mockPostCount = vi.fn();
 const mockPostCreate = vi.fn();
+const mockCaseFindUnique = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -18,6 +19,7 @@ vi.mock("@/lib/prisma", () => ({
       count: (...args: unknown[]) => mockPostCount(...args),
       create: (...args: unknown[]) => mockPostCreate(...args),
     },
+    case: { findUnique: (...args: unknown[]) => mockCaseFindUnique(...args) },
   },
 }));
 
@@ -364,6 +366,29 @@ describe("POST /api/posts", () => {
         }),
       }),
     );
+  });
+
+  it("DCR 帖子可关联本人参与且已过审的工单", async () => {
+    setSession("user1", "TRUSTED_USER");
+    mockUserFindUnique.mockResolvedValue({ ...defaultUserAttrs, dcrAccess: true, dcrPledgeSigned: true });
+    mockBoardFindUnique.mockResolvedValue({ id: "b2", zone: "DCR", isActive: true });
+    mockCaseFindUnique.mockResolvedValue({ submitterId: "user1", requestStatus: "APPROVED", handlers: [] });
+    mockPostCount.mockResolvedValue(0);
+    mockScanContent.mockResolvedValue([]);
+    mockPostCreate.mockResolvedValue({ id: "p-case", caseId: "clxxxxxxxxxxxxxxxxxx009" });
+
+    const { POST } = await import("../route");
+    const res = await POST(makeRequest("POST", undefined, {
+      title: "关联工单互助",
+      content: "邀请 DCR 成员参与这张工单的信息互助",
+      boardId: "clxxxxxxxxxxxxxxxxxx002",
+      caseId: "clxxxxxxxxxxxxxxxxxx009",
+    }), { params: {} });
+
+    expect(res.status).toBe(201);
+    expect(mockPostCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ caseId: "clxxxxxxxxxxxxxxxxxx009" }),
+    }));
   });
 
   it("应在心理区强制匿名发帖", async () => {

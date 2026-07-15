@@ -3,11 +3,24 @@ import {
   validateParticipants,
   canTransitionLink,
   canTransitionCycle,
+  buildCycleDirections,
 } from "../mutual-aid-cycle";
 
 // ==================== Pure Function Tests ====================
 
 describe("互助循环 — 纯函数测试", () => {
+  describe("双方/三方链路", () => {
+    it("双方模式生成 A→B 与 B→A", () => {
+      expect(buildCycleDirections("TWO_PARTY", "a", "b")).toEqual([
+        { dir: "AB", from: "a", to: "b", desc: undefined },
+        { dir: "BA", from: "b", to: "a", desc: undefined },
+      ]);
+    });
+
+    it("三方模式生成 A→B、B→C 与 C→A", () => {
+      expect(buildCycleDirections("THREE_PARTY", "a", "b", "c").map((item) => item.dir)).toEqual(["AB", "BC", "CA"]);
+    });
+  });
   describe("validateParticipants", () => {
     it("A/B/C 互异时通过", () => {
       expect(validateParticipants("a", "b", "c")).toBeNull();

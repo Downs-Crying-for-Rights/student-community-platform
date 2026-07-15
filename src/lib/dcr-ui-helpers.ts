@@ -46,12 +46,13 @@ export function getAvailableActions(
   role: string,
   isSubmitter: boolean,
   isHandler: boolean,
+  hasHelperAccess = false,
 ): ActionConfig[] {
   const actions: ActionConfig[] = [];
 
   switch (status) {
     case "OPENED": {
-      if (role === "DCR_HELPER" || role === "ADMIN" || role === "SUPER_ADMIN") {
+      if (hasHelperAccess || role === "DCR_HELPER" || role === "ADMIN" || role === "SUPER_ADMIN") {
         actions.push({
           label: "接单",
           targetStatus: "IN_PROGRESS",

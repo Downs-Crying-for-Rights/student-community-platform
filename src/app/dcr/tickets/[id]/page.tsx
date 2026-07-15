@@ -132,6 +132,8 @@ export default function TicketDetailPage() {
   const [caseData, setCaseData] = useState<CaseDetail | null>(null);
   const [userRole, setUserRole] = useState<string | undefined>(undefined);
   const [userId, setUserId] = useState<string>("");
+  const [helperAccess, setHelperAccess] = useState(false);
+  const [dcrAccess, setDcrAccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -174,6 +176,14 @@ export default function TicketDetailPage() {
           const session = await res.json();
           setUserRole(session?.user?.role);
           setUserId(session?.user?.id ?? "");
+          if (session?.user?.id) {
+            const profileRes = await fetch("/api/users/me");
+            if (profileRes.ok) {
+              const profile = await profileRes.json();
+              setHelperAccess(profile?.user?.dcrHelperAccess ?? false);
+              setDcrAccess(profile?.user?.dcrAccess ?? false);
+            }
+          }
         }
       } catch {
         // Ignore session fetch errors
@@ -344,6 +354,7 @@ export default function TicketDetailPage() {
               currentUserRole={userRole}
               submitterId={caseData.submitter?.id ?? ""}
               handlerId={caseData.handler?.id ?? null}
+              hasHelperAccess={helperAccess || dcrAccess}
               onStatusChange={refreshData}
             />
           </div>

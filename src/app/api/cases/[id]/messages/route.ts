@@ -4,7 +4,23 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
 
 const createMessageSchema = z.object({
-  content: z.string().min(1, "消息内容不能为空").max(2000, "消息内容不能超过 2000 个字符"),
+  content: z.string().max(2000, "消息内容不能超过 2000 个字符").optional().default(""),
+  messageType: z.enum(["TEXT", "IMAGE", "AUDIO", "FILE"]).default("TEXT"),
+  mediaUrl: z.string().url().refine((value) => {
+    const url = new URL(value);
+    return url.pathname === "/api/media" && url.searchParams.has("key") && url.searchParams.has("sig");
+  }, "媒体地址无效").optional(),
+  mediaName: z.string().max(255).optional(),
+  mediaMimeType: z.string().max(100).optional(),
+  mediaSize: z.number().int().positive().max(20 * 1024 * 1024).optional(),
+  durationSeconds: z.number().int().min(0).max(3600).optional(),
+}).superRefine((data, ctx) => {
+  if (data.messageType === "TEXT" && !data.content.trim()) {
+    ctx.addIssue({ code: "custom", path: ["content"], message: "消息内容不能为空" });
+  }
+  if (data.messageType !== "TEXT" && !data.mediaUrl) {
+    ctx.addIssue({ code: "custom", path: ["mediaUrl"], message: "媒体文件不能为空" });
+  }
 });
 
 /** Helper type for CaseHandler entries returned from queries */
@@ -54,6 +70,12 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
       select: {
         id: true,
         content: true,
+        messageType: true,
+        mediaUrl: true,
+        mediaName: true,
+        mediaMimeType: true,
+        mediaSize: true,
+        durationSeconds: true,
         isAnonymous: true,
         senderId: true,
         createdAt: true,
@@ -95,7 +117,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
       );
     }
 
-    const { content } = parsed.data;
+    const { content, messageType, mediaUrl, mediaName, mediaMimeType, mediaSize, durationSeconds } = parsed.data;
 
     const caseRecord = await (prisma.case.findUnique as Function)({
       where: { id },
@@ -155,7 +177,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
 
     const message = await prisma.message.create({
       data: {
-        content,
+        content: content.trim() || (messageType === "IMAGE" ? "[图片]" : messageType === "AUDIO" ? "[录音]" : "[附件]"),
+        messageType,
+        mediaUrl: mediaUrl ?? null,
+        mediaName: mediaName ?? null,
+        mediaMimeType: mediaMimeType ?? null,
+        mediaSize: mediaSize ?? null,
+        durationSeconds: durationSeconds ?? null,
         isAnonymous: true,
         senderId: userId,
         receiverId,
@@ -164,6 +192,12 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
       select: {
         id: true,
         content: true,
+        messageType: true,
+        mediaUrl: true,
+        mediaName: true,
+        mediaMimeType: true,
+        mediaSize: true,
+        durationSeconds: true,
         isAnonymous: true,
         senderId: true,
         createdAt: true,

@@ -17,6 +17,7 @@ export interface CaseActionButtonsProps {
   currentUserRole: string;
   submitterId: string;
   handlerId: string | null;
+  hasHelperAccess?: boolean;
   onStatusChange: () => void;
 }
 
@@ -29,6 +30,7 @@ export function CaseActionButtons({
   currentUserRole,
   submitterId,
   handlerId,
+  hasHelperAccess = false,
   onStatusChange,
 }: CaseActionButtonsProps) {
   const [loading, setLoading] = useState(false);
@@ -41,6 +43,7 @@ export function CaseActionButtons({
     currentUserRole,
     isSubmitter,
     isHandler,
+    hasHelperAccess,
   );
 
   if (actions.length === 0) return null;

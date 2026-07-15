@@ -28,6 +28,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
         onboardingDone: true,
         psychAccess: true,
         dcrAccess: true,
+        dcrHelperAccess: true,
         quizPassed: true,
         passwordHash: true,
         _count: {

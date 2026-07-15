@@ -6,7 +6,8 @@
  */
 
 import prisma from "@/lib/prisma";
-import { CycleStatus, LinkStatus } from "@prisma/client";
+import { CycleMode, CycleStatus, LinkStatus } from "@prisma/client";
+import { createNotification } from "@/lib/notification";
 
 /* ========== Types ========== */
 
@@ -16,10 +17,13 @@ export interface CycleCreateInput {
   /** B (A 帮助 B) */
   participantBId: string;
   /** C (B 帮助 C) */
-  participantCId: string;
+  participantCId?: string;
+  /** 双方闭环 A→B→A 或三方闭环 A→B→C→A */
+  mode?: CycleMode;
   /** 每段互助的说明 */
   descriptions?: {
     AB?: string;
+    BA?: string;
     BC?: string;
     CA?: string;
   };
@@ -29,6 +33,27 @@ export interface TransitionResult {
   allowed: boolean;
   reason?: string;
   newCycleStatus?: CycleStatus;
+}
+
+export function buildCycleDirections(
+  mode: CycleMode,
+  initiatorId: string,
+  participantBId: string,
+  participantCId?: string,
+  descriptions?: CycleCreateInput["descriptions"],
+) {
+  if (mode === CycleMode.THREE_PARTY) {
+    if (!participantCId) throw new Error("三方互助需要选择 C 方");
+    return [
+      { dir: "AB", from: initiatorId, to: participantBId, desc: descriptions?.AB },
+      { dir: "BC", from: participantBId, to: participantCId, desc: descriptions?.BC },
+      { dir: "CA", from: participantCId, to: initiatorId, desc: descriptions?.CA },
+    ];
+  }
+  return [
+    { dir: "AB", from: initiatorId, to: participantBId, desc: descriptions?.AB },
+    { dir: "BA", from: participantBId, to: initiatorId, desc: descriptions?.BA },
+  ];
 }
 
 /* ========== Constants ========== */
@@ -122,14 +147,22 @@ export function canTransitionCycle(from: CycleStatus, to: CycleStatus): Transiti
  */
 export async function createCycle(input: CycleCreateInput) {
   const { initiatorId, participantBId, participantCId, descriptions } = input;
+  const mode = input.mode ?? CycleMode.THREE_PARTY;
 
-  // 验证参与者互异
-  const error = validateParticipants(initiatorId, participantBId, participantCId);
+  const error = mode === CycleMode.THREE_PARTY
+    ? participantCId
+      ? validateParticipants(initiatorId, participantBId, participantCId)
+      : "三方互助需要选择 C 方"
+    : initiatorId === participantBId
+      ? "双方互助需要两个不同的参与者"
+      : null;
   if (error) throw new Error(error);
 
   // 批量检查所有参与者是否有活跃循环（一次查询替代三次串行查询）
   const activeStatuses: CycleStatus[] = ["INITIATING", "ACTIVE"];
-  const userIds = [initiatorId, participantBId, participantCId];
+  const userIds = mode === CycleMode.THREE_PARTY
+    ? [initiatorId, participantBId, participantCId!]
+    : [initiatorId, participantBId];
   const conflicting = await prisma.mutualAidCycle.findFirst({
     where: {
       status: { in: activeStatuses },
@@ -167,10 +200,10 @@ export async function createCycle(input: CycleCreateInput) {
 
   // 验证参与者真实存在且已通过考核
   const users = await prisma.user.findMany({
-    where: { id: { in: [initiatorId, participantBId, participantCId] } },
+    where: { id: { in: userIds } },
     select: { id: true, quizPassed: true, dcrAccess: true },
   });
-  if (users.length !== 3) throw new Error("部分参与者不存在");
+  if (users.length !== userIds.length) throw new Error("部分参与者不存在");
 
   for (const u of users) {
     if (!u.quizPassed || !u.dcrAccess) {
@@ -184,15 +217,11 @@ export async function createCycle(input: CycleCreateInput) {
       data: {
         initiatorId,
         status: "INITIATING",
+        mode,
       },
     });
 
-    // 三段方向: A(initiator)→B, B→C, C→A
-    const directions: { dir: string; from: string; to: string; desc?: string }[] = [
-      { dir: "AB", from: initiatorId, to: participantBId, desc: descriptions?.AB },
-      { dir: "BC", from: participantBId, to: participantCId, desc: descriptions?.BC },
-      { dir: "CA", from: participantCId, to: initiatorId, desc: descriptions?.CA },
-    ];
+    const directions = buildCycleDirections(mode, initiatorId, participantBId, participantCId, descriptions);
 
     for (const { dir, from, to, desc } of directions) {
       await tx.mutualAidLink.create({
@@ -207,8 +236,27 @@ export async function createCycle(input: CycleCreateInput) {
       });
     }
 
+    await tx.user.update({
+      where: { id: initiatorId },
+      data: { dcrHelperAccess: true },
+    });
+
     return c;
   });
+
+  const invitedUserIds = userIds.filter((id) => id !== initiatorId);
+  const notificationResults = await Promise.allSettled(invitedUserIds.map((userId) =>
+    createNotification(
+      userId,
+      "SYSTEM",
+      mode === CycleMode.THREE_PARTY ? "收到三方互助邀请" : "收到双方互助邀请",
+      mode === CycleMode.THREE_PARTY ? "有人邀请您加入 A→B→C→A 互助闭环" : "有人邀请您加入 A→B→A 双方互助闭环",
+      `/dcr/cycles/${cycle.id}`,
+    ),
+  ));
+  if (notificationResults.some((result) => result.status === "rejected")) {
+    console.error("Failed to create one or more mutual aid invitations", { cycleId: cycle.id });
+  }
 
   return cycle;
 }
@@ -249,10 +297,16 @@ export async function respondToLink(
   const result = canTransitionLink(link.status, "ACCEPTED");
   if (!result.allowed) throw new Error(result.reason);
 
-  await prisma.mutualAidLink.update({
-    where: { id: linkId },
-    data: { status: "ACCEPTED", acceptedAt: new Date() },
-  });
+  await prisma.$transaction([
+    prisma.mutualAidLink.update({
+      where: { id: linkId },
+      data: { status: "ACCEPTED", acceptedAt: new Date() },
+    }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { dcrHelperAccess: true },
+    }),
+  ]);
 
   // 检查是否所有 3 段都已 ACCEPTED → ACTIVE
   await maybeActivateCycle(link.cycleId);
@@ -385,7 +439,7 @@ async function maybeActivateCycle(cycleId: string) {
     where: { cycleId },
   });
 
-  const allAccepted = links.length === 3 && links.every((l) => l.status === "ACCEPTED");
+  const allAccepted = links.length >= 2 && links.every((l) => l.status === "ACCEPTED");
   if (allAccepted) {
     await prisma.mutualAidCycle.update({
       where: { id: cycleId },
@@ -402,7 +456,7 @@ async function maybeCompleteCycle(cycleId: string) {
     where: { cycleId },
   });
 
-  const allCompleted = links.length === 3 && links.every((l) => l.status === "COMPLETED");
+  const allCompleted = links.length >= 2 && links.every((l) => l.status === "COMPLETED");
   if (allCompleted) {
     await prisma.mutualAidCycle.update({
       where: { id: cycleId },

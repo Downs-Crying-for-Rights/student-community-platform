@@ -217,6 +217,25 @@ describe("POST /api/cases/[id]/messages", () => {
     );
   });
 
+  it("allows a private image attachment with optional text", async () => {
+    setSession("user1", "USER");
+    mockCaseFindUnique.mockResolvedValue(base);
+    mockMessageCreate.mockResolvedValue({ id: "m-media", messageType: "IMAGE" });
+    const { POST } = await import("../[id]/messages/route");
+    const res = await POST(makePost("case1", {
+      content: "现场截图",
+      messageType: "IMAGE",
+      mediaUrl: "https://forum.dcr2026.com/api/media?key=uploads%2F2026%2F07%2Fa.webp&sig=test",
+      mediaName: "screen.webp",
+      mediaMimeType: "image/webp",
+      mediaSize: 1024,
+    }), ctx("case1"));
+    expect(res.status).toBe(201);
+    expect(mockMessageCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ messageType: "IMAGE", mediaName: "screen.webp", mediaSize: 1024 }),
+    }));
+  });
+
   it("additional handler via CaseHandler can send", async () => {
     setSession("helper2", "DCR_HELPER");
     mockCaseFindUnique.mockResolvedValue({ ...base, handlers: [{ userId: "helper1" }, { userId: "helper2" }] });

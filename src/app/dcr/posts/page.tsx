@@ -74,45 +74,16 @@ export default function DCRPostsPage() {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [caseIds, setCaseIds] = useState<string[] | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // Fetch user's participating case IDs first
-  useEffect(() => {
-    async function fetchCaseIds() {
-      try {
-        const res = await fetch("/api/cases?pageSize=200");
-        if (!res.ok) {
-          setCaseIds([]);
-          return;
-        }
-        const data = await res.json();
-        const ids: string[] = (data.cases ?? []).map((c: { id: string }) => c.id);
-        setCaseIds(ids);
-      } catch {
-        setCaseIds([]);
-      }
-    }
-    fetchCaseIds();
-  }, []);
-
   const fetchPosts = useCallback(
-    async (pageNum: number, currentSort: SortMode, append: boolean, ids: string[]) => {
-      if (ids.length === 0) {
-        // No cases → no posts to show
-        setPosts([]);
-        setHasMore(false);
-        setLoading(false);
-        setLoadingMore(false);
-        return;
-      }
-
+    async (pageNum: number, currentSort: SortMode, append: boolean) => {
       if (pageNum === 1) setLoading(true);
       else setLoadingMore(true);
 
       try {
         const params = new URLSearchParams({
-          caseIds: ids.join(","),
+          zone: "DCR",
           sort: currentSort,
           page: String(pageNum),
           pageSize: String(PAGE_SIZE),
@@ -136,24 +107,21 @@ export default function DCRPostsPage() {
   );
 
   useEffect(() => {
-    if (caseIds === null) return; // still loading case IDs
     setPosts([]);
     setPage(1);
     setHasMore(true);
-    fetchPosts(1, sort, false, caseIds);
-  }, [sort, fetchPosts, caseIds]);
+    fetchPosts(1, sort, false);
+  }, [sort, fetchPosts]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel || caseIds === null) return;
-
-    const currentCaseIds = caseIds;
+    if (!sentinel) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
           setPage((prev) => {
             const next = prev + 1;
-            fetchPosts(next, sort, true, currentCaseIds);
+            fetchPosts(next, sort, true);
             return next;
           });
         }
@@ -163,7 +131,7 @@ export default function DCRPostsPage() {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loading, loadingMore, sort, fetchPosts, caseIds]);
+  }, [hasMore, loading, loadingMore, sort, fetchPosts]);
 
   return (
     <div className="min-h-screen bg-background">

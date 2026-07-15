@@ -219,12 +219,14 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     // Fetch dcrAccess for non-ADMIN users (used to determine query scope)
     const isAdminLevel = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
     let hasDcrAccess = isAdminLevel;
+    let hasHelperAccess = isAdminLevel;
     if (!isAdminLevel) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { dcrAccess: true },
+        select: { dcrAccess: true, dcrHelperAccess: true },
       });
       hasDcrAccess = !!user?.dcrAccess;
+      hasHelperAccess = !!user?.dcrHelperAccess;
     }
 
     const { searchParams } = new URL(req.url);
@@ -274,7 +276,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       if (status && status.length > 0) {
         where.status = status.length === 1 ? status[0] : { in: status };
       }
-    } else if (userRole === "DCR_HELPER") {
+    } else if (userRole === "DCR_HELPER" || hasHelperAccess) {
       // DCR_HELPER sees their own submissions in every review state. Other
       // users' cases are visible only after admin approval.
       const orClauses: Record<string, unknown>[] = [
