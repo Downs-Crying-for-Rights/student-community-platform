@@ -147,9 +147,26 @@ function LoginContent() {
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
   const [regCountdown, setRegCountdown] = useState(0);
   const regCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [agreed, setAgreed] = useState(false);
-  const [showAgreement, setShowAgreement] = useState(false);
+  const [agreedKeys, setAgreedKeys] = useState<Record<string, boolean>>({});
+  const [showAgreement, setShowAgreement] = useState("");
   const [agreementContent, setAgreementContent] = useState("");
+  const [allKeys, setAllKeys] = useState<{ key: string; title: string }[]>([]);
+
+  // Load site content keys when entering register view
+  useEffect(() => {
+    if (view === "register" && allKeys.length === 0) {
+      fetch("/api/site-content")
+        .then(r => r.json())
+        .then(d => {
+          setAllKeys(d.items ?? []);
+          // Initialize all as unchecked
+          const init: Record<string, boolean> = {};
+          (d.items ?? []).forEach((k: { key: string }) => { init[k.key] = false; });
+          setAgreedKeys(init);
+        })
+        .catch(() => {});
+    }
+  }, [view, allKeys.length]);
 
   // Handle URL params (verify, error)
   useEffect(() => {
@@ -864,35 +881,37 @@ function LoginContent() {
               </div>
 
               {/* 用户协议 */}
-              <div className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  id="reg-agreement"
-                  checked={agreed}
-                  onChange={(e) => setAgreed(e.target.checked)}
-                  className="mt-1 h-4 w-4 accent-primary"
-                />
-                <label htmlFor="reg-agreement" className="text-xs text-muted-foreground leading-relaxed">
-                  我已阅读并同意
-                  <button type="button" className="ml-1 underline text-primary hover:text-primary/80" onClick={async () => {
-                    if (!agreementContent) {
-                      try {
-                        const r = await fetch("/api/site-content/user_agreement");
-                        const d = await r.json();
-                        setAgreementContent(d.content || "暂无协议内容");
-                      } catch { setAgreementContent("加载协议失败"); }
-                    }
-                    setShowAgreement(true);
-                  }}>
-                    《用户注册协议》
-                  </button>
-                </label>
+              <div className="space-y-2">
+                {allKeys.map(({ key, title }) => (
+                  <div key={key} className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id={`reg-${key}`}
+                      checked={agreedKeys[key] ?? false}
+                      onChange={(e) => setAgreedKeys(prev => ({ ...prev, [key]: e.target.checked }))}
+                      className="mt-1 h-4 w-4 accent-primary"
+                    />
+                    <label htmlFor={`reg-${key}`} className="text-xs text-muted-foreground leading-relaxed">
+                      我已阅读并同意
+                      <button type="button" className="ml-1 underline text-primary hover:text-primary/80" onClick={async () => {
+                        try {
+                          const r = await fetch(`/api/site-content/${key}`);
+                          const d = await r.json();
+                          setAgreementContent(d.content || "暂无内容");
+                        } catch { setAgreementContent("加载失败"); }
+                        setShowAgreement(key);
+                      }}>
+                        《{title}》
+                      </button>
+                    </label>
+                  </div>
+                ))}
               </div>
 
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading || !agreed}
+                disabled={loading || allKeys.some(k => !agreedKeys[k])}
               >
                 {loading ? (
                   <span className="flex items-center">
@@ -1144,13 +1163,13 @@ function LoginContent() {
         </Card>
 
         {/* 用户协议弹窗 */}
-        <Dialog open={showAgreement} onOpenChange={setShowAgreement}>
+        <Dialog open={!!showAgreement} onOpenChange={(v) => { if (!v) setShowAgreement(""); }}>
           <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>用户注册协议</DialogTitle>
+              <DialogTitle>{allKeys.find(k => k.key === showAgreement)?.title ?? "协议"}</DialogTitle>
             </DialogHeader>
             <div className="prose prose-sm dark:prose-invert max-w-none text-sm whitespace-pre-wrap">
-              {agreementContent || "暂无协议内容"}
+              {agreementContent || "暂无内容"}
             </div>
           </DialogContent>
         </Dialog>
