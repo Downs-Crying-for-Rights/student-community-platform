@@ -115,7 +115,12 @@ export default function AdminQuizPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">入频测试题库管理</h1>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">平台新手指引题库</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          用于新注册用户的新手指引测验；没有启用题目时，系统会使用内置兜底题目。
+        </p>
+      </div>
 
       {/* Form */}
       <Card className="mb-6">

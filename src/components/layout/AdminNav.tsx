@@ -14,8 +14,8 @@ const adminLinks = [
   { href: "/admin/boards", label: "板块管理", icon: LayoutGrid },
   { href: "/admin/kb", label: "知识库", icon: BookOpen },
   { href: "/admin/applications", label: "准入审核", icon: ShieldCheck },
-  { href: "/admin/dcr/questions", label: "DCR题库", icon: BookOpen },
-  { href: "/admin/quiz", label: "入频题库", icon: BookOpen },
+  { href: "/admin/dcr/questions", label: "DCR 入频考核题库", icon: BookOpen },
+  { href: "/admin/quiz", label: "平台新手指引题库", icon: BookOpen },
   { href: "/admin/chat-rooms", label: "群聊审核", icon: MessagesSquare },
   { href: "/admin/logs", label: "系统日志", icon: Terminal },
 ];

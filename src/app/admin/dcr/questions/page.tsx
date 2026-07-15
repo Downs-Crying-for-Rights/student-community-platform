@@ -219,7 +219,12 @@ export default function AdminDcrQuestionsPage() {
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">DCR 专区题库管理</h1>
+        <div>
+          <h1 className="text-2xl font-bold">DCR 入频考核题库</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            供用户端 /dcr/quiz 使用；系统会从已启用题目中随机抽取最多 5 题，至少启用 1 题即可开始考核。
+          </p>
+        </div>
         <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4 mr-1" />
           新增题目

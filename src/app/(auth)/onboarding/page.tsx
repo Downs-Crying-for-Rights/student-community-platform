@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -183,11 +183,13 @@ function BasicOperationsStep() {
 }
 
 function QuizStep({
+  questions,
   answers,
   onAnswer,
   showResults,
   result,
 }: {
+  questions: QuizQuestion[];
   answers: Record<number, number>;
   onAnswer: (questionId: number, optionIndex: number) => void;
   showResults: boolean;
@@ -215,7 +217,7 @@ function QuizStep({
       )}
 
       <div className="space-y-6">
-        {QUIZ_QUESTIONS.map((q, qi) => {
+        {questions.map((q, qi) => {
           const isAnswered = answers[q.id] !== undefined;
           const isCorrect = showResults && answers[q.id] === q.correctIndex;
           const isWrong = showResults && isAnswered && answers[q.id] !== q.correctIndex;
@@ -276,6 +278,7 @@ export default function OnboardingPage() {
   const router = useRouter();
   const { data: session, update } = useSession();
   const [step, setStep] = useState(0);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>(QUIZ_QUESTIONS);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [showResults, setShowResults] = useState(false);
   const [quizResult, setQuizResult] = useState<{
@@ -285,6 +288,29 @@ export default function OnboardingPage() {
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadQuestions() {
+      try {
+        const res = await fetch("/api/onboarding/questions", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.questions) && data.questions.length > 0) {
+          setQuizQuestions(data.questions);
+          setAnswers({});
+          setShowResults(false);
+          setQuizResult(null);
+        }
+      } catch {
+        // 内置题库是网络或数据库异常时的安全兜底。
+      }
+    }
+
+    loadQuestions();
+    return () => { cancelled = true; };
+  }, []);
 
   function handleAnswer(questionId: number, optionIndex: number) {
     setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
@@ -305,7 +331,7 @@ export default function OnboardingPage() {
   }
 
   async function handleSubmitQuiz() {
-    const result = validateQuizAnswers(answers, QUIZ_QUESTIONS);
+    const result = validateQuizAnswers(answers, quizQuestions);
     setQuizResult(result);
     setShowResults(true);
 
@@ -322,7 +348,7 @@ export default function OnboardingPage() {
         setError(data.error || "提交失败，请重试");
         return;
       }
-      // 刷新 JWT 以同步 onboardingDone/quizPassed
+      // 刷新 JWT 以同步 onboardingDone
       // wait for update to complete, then hard-refresh so cookie is sent to server
       await update();
       window.location.href = "/";
@@ -339,7 +365,7 @@ export default function OnboardingPage() {
     setQuizResult(null);
   }
 
-  const allAnswered = isAllQuestionsAnswered(answers, QUIZ_QUESTIONS);
+  const allAnswered = isAllQuestionsAnswered(answers, quizQuestions);
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-8">
@@ -359,6 +385,7 @@ export default function OnboardingPage() {
           {step === 2 && <BasicOperationsStep />}
           {step === 3 && (
             <QuizStep
+              questions={quizQuestions}
               answers={answers}
               onAnswer={handleAnswer}
               showResults={showResults}

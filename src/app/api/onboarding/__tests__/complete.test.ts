@@ -6,7 +6,7 @@ import { POST } from "../complete/route";
  *
  * 验证 POST /api/onboarding/complete 端点：
  * - 未登录返回 401
- * - 登录用户成功设置 quizPassed 和 onboardingDone
+ * - 登录用户仅完成新手指引，不会同时通过 DCR 入频考核
  * - 数据库错误返回 500
  *
  * Validates: Requirements 15.3, 7.3
@@ -65,7 +65,7 @@ describe("POST /api/onboarding/complete", () => {
 
     const updatedUser = {
       id: "user-123",
-      quizPassed: true,
+      quizPassed: false,
       onboardingDone: true,
     };
     mockUserUpdate.mockResolvedValue(updatedUser);
@@ -80,7 +80,6 @@ describe("POST /api/onboarding/complete", () => {
     expect(mockUserUpdate).toHaveBeenCalledWith({
       where: { id: "user-123" },
       data: {
-        quizPassed: true,
         onboardingDone: true,
       },
       select: {

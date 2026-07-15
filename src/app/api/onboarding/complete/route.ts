@@ -16,7 +16,6 @@ export async function POST() {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
-        quizPassed: true,
         onboardingDone: true,
       },
       select: {
