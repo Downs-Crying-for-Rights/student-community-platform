@@ -214,10 +214,14 @@ export function withAuth(
       const response = await handler(authenticatedReq, context);
       response.headers.set("X-Request-Id", requestId);
       let responseError: string | undefined;
+      let validationDetails: string | undefined;
       if (response.status >= 400) {
         try {
-          const body = await response.clone().json() as { error?: unknown; message?: unknown };
+          const body = await response.clone().json() as { error?: unknown; message?: unknown; details?: unknown };
           responseError = sanitizeTelemetryDetail(body.error ?? body.message ?? response.statusText, 2_000);
+          if (body.details != null) {
+            validationDetails = sanitizeTelemetryDetail(JSON.stringify(body.details), 8_000);
+          }
         } catch {
           responseError = sanitizeTelemetryDetail(response.statusText, 2_000);
         }
@@ -234,6 +238,7 @@ export function withAuth(
           method: req.method,
           statusText: response.statusText,
           ...(responseError ? { errorMessage: responseError } : {}),
+          ...(validationDetails ? { validationDetails } : {}),
         },
       });
       return response;

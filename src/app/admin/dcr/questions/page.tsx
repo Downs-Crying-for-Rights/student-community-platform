@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatApiError } from "@/lib/api-error";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,10 @@ export default function AdminDcrQuestionsPage() {
       if (res.ok) {
         const data = await res.json();
         setQuestions(data.questions);
+        setError("");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(formatApiError(data, "题库加载失败"));
       }
     } catch {
       /* */
@@ -163,7 +168,7 @@ export default function AdminDcrQuestionsPage() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || "操作失败");
+        setError(formatApiError(data, "操作失败"));
         return;
       }
 
@@ -179,7 +184,11 @@ export default function AdminDcrQuestionsPage() {
   async function handleDelete(id: string) {
     if (!confirm("确定删除此题目？此操作不可撤销。")) return;
     try {
-      await fetch(`/api/admin/dcr/questions/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/dcr/questions/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setError(formatApiError(await res.json().catch(() => ({})), "删除失败"));
+        return;
+      }
       fetchQuestions();
     } catch {
       /* */
@@ -188,11 +197,15 @@ export default function AdminDcrQuestionsPage() {
 
   async function handleToggle(q: DcrQuestion) {
     try {
-      await fetch(`/api/admin/dcr/questions/${q.id}`, {
+      const res = await fetch(`/api/admin/dcr/questions/${q.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ active: !q.active }),
       });
+      if (!res.ok) {
+        setError(formatApiError(await res.json().catch(() => ({})), "状态更新失败"));
+        return;
+      }
       fetchQuestions();
     } catch {
       /* */
@@ -212,6 +225,12 @@ export default function AdminDcrQuestionsPage() {
           新增题目
         </Button>
       </div>
+
+      {error && !dialogOpen && (
+        <div role="alert" className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Question List */}
       {loading ? (

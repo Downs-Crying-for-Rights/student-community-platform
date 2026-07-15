@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatApiError } from "@/lib/api-error";
 
 interface QuizQuestion {
   id: string;
@@ -19,6 +20,7 @@ export default function AdminQuizPage() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ text: "", opt1: "", opt2: "", opt3: "", opt4: "", answer: 0 });
+  const [error, setError] = useState("");
 
   const fetchQuestions = useCallback(async () => {
     setLoading(true);
@@ -54,36 +56,61 @@ export default function AdminQuizPage() {
     const options = [form.opt1, form.opt2, form.opt3, form.opt4];
     const body = { text: form.text, options, answer: form.answer };
 
-    if (editingId) {
-      await fetch(`/api/admin/quiz/${editingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    } else {
-      await fetch("/api/admin/quiz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+    if (form.text.trim().length < 5 || options.some((option) => !option.trim())) {
+      setError("题目至少需要 5 个字符，且四个选项均不能为空");
+      return;
     }
-    resetForm();
-    fetchQuestions();
+
+    try {
+      let res: Response;
+      if (editingId) {
+        res = await fetch(`/api/admin/quiz/${editingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } else {
+        res = await fetch("/api/admin/quiz", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
+      if (!res.ok) {
+        setError(formatApiError(await res.json().catch(() => ({})), "保存失败"));
+        return;
+      }
+      setError("");
+      resetForm();
+      await fetchQuestions();
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    }
   }
 
   async function handleDelete(id: string) {
     if (!confirm("确定删除此题？")) return;
-    await fetch(`/api/admin/quiz/${id}`, { method: "DELETE" });
-    fetchQuestions();
+    try {
+      const res = await fetch(`/api/admin/quiz/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setError(formatApiError(await res.json().catch(() => ({})), "删除失败"));
+        return;
+      }
+      await fetchQuestions();
+    } catch { setError("网络错误，请检查连接后重试"); }
   }
 
   async function handleToggle(q: QuizQuestion) {
-    await fetch(`/api/admin/quiz/${q.id}`, {
+    const res = await fetch(`/api/admin/quiz/${q.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !q.active }),
     });
-    fetchQuestions();
+    if (!res.ok) {
+      setError(formatApiError(await res.json().catch(() => ({})), "状态更新失败"));
+      return;
+    }
+    await fetchQuestions();
   }
 
   return (
@@ -96,6 +123,7 @@ export default function AdminQuizPage() {
           <CardTitle className="text-base">{editingId ? "编辑题目" : "新增题目"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {error && <div role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
           <Input placeholder="题目文本" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} />
           {[0,1,2,3].map((i) => (
             <div key={i} className="flex items-center gap-2">

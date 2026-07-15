@@ -40,9 +40,13 @@ function EventDetails({ event }: { event: TelemetryEvent }) {
   const message = typeof metadata.errorMessage === "string"
     ? metadata.errorMessage
     : typeof metadata.message === "string" ? metadata.message : null;
+  const validationDetails = typeof metadata.validationDetails === "string"
+    ? metadata.validationDetails
+    : null;
   return (
     <div className="space-y-3 border-t bg-muted/30 p-4 text-xs">
       {message && <div><p className="mb-1 font-semibold text-destructive">错误信息</p><pre className="overflow-auto whitespace-pre-wrap rounded border bg-background p-3 font-mono">{message}</pre></div>}
+      {validationDetails && <div><p className="mb-1 font-semibold text-amber-700">字段校验详情</p><pre className="overflow-auto whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 p-3 font-mono text-amber-900">{validationDetails}</pre></div>}
       {stack && <div><p className="mb-1 font-semibold">调用堆栈</p><pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded border bg-slate-950 p-3 font-mono text-slate-200">{stack}</pre></div>}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <p><span className="text-muted-foreground">事件 ID：</span><span className="font-mono">{event.id}</span></p>

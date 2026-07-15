@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatApiError } from "@/lib/api-error";
 
 /* ========== Fallback Tutorial Data ========== */
 
@@ -196,7 +197,7 @@ export default function QuizPage() {
       const res = await fetch("/api/dcr/quiz");
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "获取题目失败，请稍后重试");
+        setError(formatApiError(data, "获取题目失败，请稍后重试"));
         return;
       }
       const data = await res.json();
@@ -269,7 +270,7 @@ export default function QuizPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "提交失败，请稍后重试");
+        setError(formatApiError(data, "提交失败，请稍后重试"));
         return;
       }
       const data: QuizResult = await res.json();

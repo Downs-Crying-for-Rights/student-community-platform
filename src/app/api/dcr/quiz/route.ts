@@ -37,15 +37,15 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       where: { active: true },
       select: { id: true, text: true, options: true, type: true, score: true },
     });
-    if (all.length < 5) {
-      return NextResponse.json({ error: "题库题目不足，请联系管理员" }, { status: 503 });
+    if (all.length === 0) {
+      return NextResponse.json({ error: "DCR 题库暂无可用题目，请联系管理员在 DCR 题库中启用题目" }, { status: 503 });
     }
     // Fisher-Yates shuffle
     for (let i = all.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [all[i], all[j]] = [all[j], all[i]];
     }
-    const questions = all.slice(0, 5);
+    const questions = all.slice(0, Math.min(5, all.length));
     return NextResponse.json({ questions });
   } catch (error) {
     console.error("GET /api/dcr/quiz error:", error);

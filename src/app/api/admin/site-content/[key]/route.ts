@@ -17,6 +17,16 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context: { params:
   return NextResponse.json({ content: item });
 }, "ADMIN");
 
+/**
+ * DELETE /api/admin/site-content/[key]
+ * 删除指定 key 的站点内容（ADMIN+）
+ */
+export const DELETE = withAuth(async (req: AuthenticatedRequest, context: { params: Record<string, string> }) => {
+  const { key } = context.params;
+  await prisma.siteContent.deleteMany({ where: { key } });
+  return NextResponse.json({ success: true });
+}, "ADMIN");
+
 export const PATCH = withAuth(async (req: AuthenticatedRequest, context: { params: Record<string, string> }) => {
   const { key } = context.params;
   const body = await req.json();
