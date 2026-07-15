@@ -61,6 +61,7 @@ export function mapPostToCardProps(post: ProfilePost): PostCardProps {
     anonymousId: post.anonymousId,
     likeCount: post.likeCount,
     author: {
+      id: post.author.id,
       nickname: post.author.nickname,
       avatar: post.author.avatar,
     },

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Heart, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface PostCardAuthor {
+  id: string;
   nickname: string | null;
   avatar: string | null;
 }
@@ -45,6 +47,7 @@ export function PostCard({
   board,
   tags,
 }: PostCardProps) {
+  const router = useRouter();
   const coverImage = images.length > 0 ? images[0] : null;
   const displayName = isAnonymous
     ? anonymousId ?? "匿名用户"
@@ -53,12 +56,15 @@ export function PostCard({
     summary && summary.length > 60 ? summary.slice(0, 60) + "…" : summary;
 
   return (
-    <Link
-      href={`/post/${id}`}
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={() => router.push(`/post/${id}`)}
+      onKeyDown={(event) => { if (event.key === "Enter") router.push(`/post/${id}`); }}
       className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-2xl"
       aria-label={`查看帖子：${title}`}
     >
-      <article
+      <div
         className={cn(
           "overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm",
           "transition-shadow duration-200 group-hover:shadow-md"
@@ -99,7 +105,8 @@ export function PostCard({
 
           {/* Author row */}
           <div className="mt-3 flex items-center gap-2">
-            {isAnonymous || !author.avatar ? (
+            {!isAnonymous ? <Link href={`/u/${author.id}`} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} className="flex min-w-0 items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`查看 ${displayName} 的主页`}>
+            {!author.avatar ? (
               <div
                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted"
                 aria-hidden="true"
@@ -118,6 +125,10 @@ export function PostCard({
             <span className="truncate text-xs text-muted-foreground">
               {displayName}
             </span>
+            </Link> : <>
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted" aria-hidden="true"><User className="h-3 w-3 text-muted-foreground" /></div>
+              <span className="truncate text-xs text-muted-foreground">{displayName}</span>
+            </>}
 
             {/* Like count */}
             <div className="ml-auto flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
@@ -143,7 +154,7 @@ export function PostCard({
             </div>
           )}
         </div>
-      </article>
-    </Link>
+      </div>
+    </article>
   );
 }

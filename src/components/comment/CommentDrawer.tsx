@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { MessageCircle, Send, User } from "lucide-react";
 import {
   Sheet,
@@ -62,23 +63,22 @@ export function flattenComments(comments: CommentData[]): CommentData[] {
 
 function CommentAvatar({ comment }: { comment: CommentData }) {
   const name = getDisplayName(comment);
-  if (comment.isAnonymous || !comment.author.avatar) {
-    return (
+  const avatar = !comment.author.avatar ? (
       <div
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted"
         aria-hidden="true"
       >
         <User className="h-4 w-4 text-muted-foreground" />
       </div>
-    );
-  }
-  return (
+  ) : (
     <img
       src={comment.author.avatar}
       alt={`${name} 头像`}
       className="h-8 w-8 shrink-0 rounded-full object-cover"
     />
   );
+  if (comment.isAnonymous) return avatar;
+  return <Link href={`/u/${comment.author.id}`} aria-label={`查看 ${name} 的主页`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{avatar}</Link>;
 }
 
 function CommentItem({

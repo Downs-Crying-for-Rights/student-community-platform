@@ -61,7 +61,7 @@ function mapToCardProps(post: APIPost): PostCardProps {
     isAnonymous: post.isAnonymous,
     anonymousId: post.anonymousId,
     likeCount: post.likeCount,
-    author: { nickname: post.author.nickname, avatar: post.author.avatar },
+    author: { id: post.author.id, nickname: post.author.nickname, avatar: post.author.avatar },
     board: { name: post.board.name, zone: post.board.zone },
     tags: post.tags.map((t) => ({ id: t.tag.id, name: t.tag.name })),
   };

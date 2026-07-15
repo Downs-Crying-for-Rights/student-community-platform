@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import { Heart, Bookmark, MessageCircle, Share2, User, Trash2, Loader2, Clock, HandHelping } from "lucide-react";
@@ -262,7 +263,7 @@ export default function PostDetailPage() {
 
               {/* Author info card */}
               <div className="mt-6 flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm">
-                {post.isAnonymous || !post.author.avatar ? (
+                {post.isAnonymous ? (
                   <div
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted"
                     aria-hidden="true"
@@ -270,13 +271,15 @@ export default function PostDetailPage() {
                     <User className="h-5 w-5 text-muted-foreground" />
                   </div>
                 ) : (
-                  <Image
+                  <Link href={`/u/${post.author.id}`} aria-label={`查看 ${displayName} 的主页`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {post.author.avatar ? <Image
                     src={post.author.avatar}
                     alt={`${displayName} 头像`}
                     width={40}
                     height={40}
                     className="h-10 w-10 shrink-0 rounded-full object-cover"
-                  />
+                  /> : <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted" aria-hidden="true"><User className="h-5 w-5 text-muted-foreground" /></div>}
+                  </Link>
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">

@@ -139,8 +139,8 @@ export function TopBar({ unreadCount = 0 }: TopBarProps) {
 
               {/* Avatar with notification dot */}
               <Link
-                href="/settings/profile"
-                aria-label="个人中心"
+                href={`/u/${session.user.id}`}
+                aria-label="查看我的主页"
                 className="relative ml-1 min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 {session.user.image ? (
