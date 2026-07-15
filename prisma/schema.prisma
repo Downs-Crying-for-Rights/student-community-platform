@@ -1010,3 +1010,14 @@ model DcrTutorialChapter {
 
   @@index([order])
 }
+
+// ==================== 站点内容管理 ====================
+
+model SiteContent {
+  id        String   @id @default(cuid())
+  key       String   @unique              // e.g., "user_agreement"
+  title     String                        // 显示标题
+  content   String   @db.Text             // Markdown 内容
+  updatedAt DateTime @updatedAt
+  updatedBy String?                       // 最后修改者 ID
+}

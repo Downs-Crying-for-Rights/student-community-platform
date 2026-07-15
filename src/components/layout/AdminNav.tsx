@@ -24,6 +24,7 @@ const superAdminLinks = [
   { href: "/admin/telemetry", label: "应用遥测", icon: Activity },
   { href: "/admin/system", label: "系统维护", icon: RefreshCw },
   { href: "/admin/dcr/tutorial", label: "DCR教程", icon: BookOpen },
+  { href: "/admin/site-content", label: "站点内容", icon: FileText },
 ];
 
 export function AdminNav({ isSuperAdmin = false }: { isSuperAdmin?: boolean }) {

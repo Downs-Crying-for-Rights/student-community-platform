@@ -1,0 +1,36 @@
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { z } from "zod";
+
+const updateSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().min(1).max(50000).optional(),
+});
+
+export const GET = withAuth(async (req: AuthenticatedRequest, context: { params: Record<string, string> }) => {
+  const { key } = context.params;
+  const item = await prisma.siteContent.findUnique({ where: { key } });
+  if (!item) {
+    return NextResponse.json({ content: null });
+  }
+  return NextResponse.json({ content: item });
+}, "ADMIN");
+
+export const PATCH = withAuth(async (req: AuthenticatedRequest, context: { params: Record<string, string> }) => {
+  const { key } = context.params;
+  const body = await req.json();
+  const parsed = updateSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "参数校验失败" }, { status: 400 });
+  }
+  if (Object.keys(parsed.data).length === 0) {
+    return NextResponse.json({ error: "无有效修改字段" }, { status: 400 });
+  }
+  const item = await prisma.siteContent.upsert({
+    where: { key },
+    update: { ...parsed.data, updatedBy: req.user.id },
+    create: { key, title: parsed.data.title ?? key, content: parsed.data.content ?? "", updatedBy: req.user.id },
+  });
+  return NextResponse.json({ content: item });
+}, "ADMIN");
