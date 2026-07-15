@@ -84,6 +84,7 @@ const baseCaseRecord = {
   category: "TUTORING",
   formData: {},
   status: "OPENED",
+  requestStatus: "APPROVED",
   pledgeText: "声明",
   submitterId: "user1",
   handlerId: null,
@@ -132,6 +133,19 @@ describe("GET /api/cases/[id]", () => {
     const { GET } = await import("../[id]/route");
     const res = await GET(makeGetRequest("case1"), { params: Promise.resolve({ id: "case1" }) } as never);
     expect(res.status).toBe(200);
+  });
+
+  it("DCR_HELPER 无法查看仍在管理员审核中的 OPENED 工单", async () => {
+    setSession("helper1", "DCR_HELPER");
+    mockCaseFindUnique.mockResolvedValue({
+      ...baseCaseRecord,
+      status: "OPENED",
+      requestStatus: "PENDING",
+    });
+
+    const { GET } = await import("../[id]/route");
+    const res = await GET(makeGetRequest("case1"), { params: Promise.resolve({ id: "case1" }) } as never);
+    expect(res.status).toBe(403);
   });
 
   it("有 dcrAccess 的用户可以查看 OPENED 状态的工单", async () => {
@@ -266,6 +280,26 @@ describe("PATCH /api/cases/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(data.case.status).toBe("IN_PROGRESS");
+  });
+
+  it("DCRHelper 不能接取仍在管理员审核中的工单", async () => {
+    setSession("helper1", "DCR_HELPER");
+    mockCaseFindUnique.mockResolvedValue({
+      ...baseCaseRecord,
+      status: "OPENED",
+      requestStatus: "PENDING",
+      submitter: { id: "user1" },
+      handler: null,
+    });
+
+    const { PATCH } = await import("../[id]/route");
+    const res = await PATCH(
+      makePatchRequest("case1", { status: "IN_PROGRESS" }),
+      { params: Promise.resolve({ id: "case1" }) } as never,
+    );
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain("管理员审核中");
   });
 
   it("应返回 400 当 DCRHelper 已达到并发上限 5 个", async () => {

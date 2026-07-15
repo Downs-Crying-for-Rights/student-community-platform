@@ -104,6 +104,7 @@ describe("GET /api/posts with caseIds filter", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           caseId: { in: ["case1", "case2", "case3"] },
+          case_: { requestStatus: "APPROVED" },
         }),
       }),
     );

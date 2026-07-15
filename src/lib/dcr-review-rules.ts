@@ -8,7 +8,7 @@
  */
 
 import type { ExtractionResult } from "./dcr-field-extractor";
-import { hasAttitudePhrases, hasMultipleSchools, isOnlyLinkOrTooShort } from "./dcr-field-extractor";
+import { hasAttitudePhrases, isOnlyLinkOrTooShort } from "./dcr-field-extractor";
 
 /* ========== Types ========== */
 
@@ -85,7 +85,7 @@ export function reviewDelegation(
   }
 
   // ---- 规则2: 多校 → REJECTED ----
-  if (hasMultipleSchools(rawText)) {
+  if (missingFields.includes("多校检测")) {
     warnings.push("检测到多个学校名称，一次仅限一所学校");
     return {
       decision: "REJECTED",

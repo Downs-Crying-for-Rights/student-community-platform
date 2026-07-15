@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { z } from "zod";
-import { Loader2, ChevronDown, ChevronUp, ShieldAlert, CheckCircle2 } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, ShieldAlert, CheckCircle2, Clock3 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,12 +43,12 @@ const textareaClass =
   "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export default function DelegatePage() {
-  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sensitiveMatches, setSensitiveMatches] = useState<SensitiveMatch[]>([]);
   const [sensitiveText, setSensitiveText] = useState("");
   const [showTemplate, setShowTemplate] = useState(false);
+  const [submittedCaseId, setSubmittedCaseId] = useState<string | null>(null);
 
   const {
     register,
@@ -181,27 +181,8 @@ export default function DelegatePage() {
       });
 
       const resData = await res.json().catch(() => ({}));
-      const review = resData.review;
-
       if (res.ok || res.status === 201) {
-        if (review) {
-          // 根据审核结果展示不同信息并跳转
-          if (review.decision === "APPROVED") {
-            router.push("/dcr/requests?status=APPROVED");
-          } else if (review.missingFields?.length > 0) {
-            // 有缺项 — 提示用户补充
-            setError(`提交成功，但需要补充：${review.missingFields.join("、")}。请到"我的委托表"查看详情。`);
-            setSubmitting(false);
-            // 3秒后自动跳转
-            setTimeout(() => router.push("/dcr/requests"), 3000);
-            return;
-          } else {
-            // 其他状态 — 引导到委托表列表查看
-            router.push(`/dcr/requests`);
-          }
-        } else {
-          router.push("/dcr/requests");
-        }
+        setSubmittedCaseId(resData.case?.id ?? "submitted");
       } else {
         setError(resData.error ?? "提交失败，请稍后重试");
       }
@@ -232,6 +213,33 @@ export default function DelegatePage() {
       shouldValidate: true,
     });
   };
+
+  if (submittedCaseId) {
+    return (
+      <div className="mx-auto flex min-h-[70vh] max-w-2xl items-center px-4 py-8">
+        <Card className="w-full border-amber-200 bg-amber-50/40 dark:border-amber-900 dark:bg-amber-950/20">
+          <CardContent className="p-8 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50">
+              <Clock3 className="h-7 w-7 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+            </div>
+            <h1 className="text-xl font-bold text-foreground">委托已提交，管理员正在审核</h1>
+            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+              审核完成前，该委托仅您本人和管理员可见，不会出现在 Helper
+              工作台或其他用户的工单列表中。管理员审核通过后，委托才会进入可见和接单范围。
+            </p>
+            <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+              <Button asChild>
+                <Link href="/dcr/requests?status=PENDING">查看审核状态</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/dcr">返回 DCR 首页</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">

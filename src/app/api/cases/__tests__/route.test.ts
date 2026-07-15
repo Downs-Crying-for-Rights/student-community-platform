@@ -168,6 +168,12 @@ describe("POST /api/cases", () => {
     expect(res.status).toBe(201);
     expect(data.case.status).toBe("OPENED");
     expect(data.case.category).toBe("TUTORING");
+    expect(mockCaseCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        requestStatus: "PENDING",
+        reviewNote: "委托已提交，正在等待管理员审核",
+      }),
+    }));
   });
 
   it("应自动创建 AccessApplication 当用户无 dcrAccess 且无 PENDING 申请", async () => {
@@ -377,7 +383,7 @@ describe("GET /api/cases - 保持性测试：有 dcrAccess 用户返回结果不
     expect(data.pageSize).toBeDefined();
   });
 
-  it("有 dcrAccess 用户查询时 where 条件包含 AND/OR 条件（可看到 OPENED 案件）", async () => {
+  it("有 dcrAccess 用户只能看到自己的委托和已审核通过的已分配委托", async () => {
     setSession("dcr-user2", "USER");
     mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
     mockCaseFindMany.mockResolvedValue([]);
@@ -392,9 +398,11 @@ describe("GET /api/cases - 保持性测试：有 dcrAccess 用户返回结果不
     expect(findManyCall.where.AND).toEqual([
       {
         OR: [
-          { handlers: { some: { userId: "dcr-user2" } } },
           { submitterId: "dcr-user2" },
-          { status: "OPENED" },
+          { AND: [
+            { handlers: { some: { userId: "dcr-user2" } } },
+            { requestStatus: "APPROVED" },
+          ] },
         ],
       },
     ]);
@@ -415,20 +423,20 @@ describe("GET /api/cases - 保持性测试：有 dcrAccess 用户返回结果不
     expect(res.status).toBe(200);
     expect(data.cases).toHaveLength(1);
     expect(data.cases[0].status).toBe("OPENED");
-    // Verify status filter is embedded in AND structure alongside OR conditions
+    // Verify ownership/approval constraints remain in AND and status is also applied.
     const findManyCall = mockCaseFindMany.mock.calls[0][0];
     expect(findManyCall.where.AND).toEqual([
       {
         OR: [
-          { handlers: { some: { userId: "dcr-user3" } } },
           { submitterId: "dcr-user3" },
-          { status: "OPENED" },
+          { AND: [
+            { handlers: { some: { userId: "dcr-user3" } } },
+            { requestStatus: "APPROVED" },
+          ] },
         ],
       },
-      { status: "OPENED" },
     ]);
-    // status should NOT be at top level (that was the bug)
-    expect(findManyCall.where.status).toBeUndefined();
+    expect(findManyCall.where.status).toBe("OPENED");
   });
 });
 

@@ -911,7 +911,7 @@ function LoginContent() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading || allKeys.some(k => !agreedKeys[k])}
+                disabled={loading || allKeys.some(({ key }) => !agreedKeys[key])}
               >
                 {loading ? (
                   <span className="flex items-center">

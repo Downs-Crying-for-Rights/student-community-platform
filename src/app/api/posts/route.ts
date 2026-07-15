@@ -94,8 +94,10 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
     if (boardId) {
       where.boardId = boardId;
     } else if (caseIds && caseIds.length > 0) {
-      // Filter posts by associated case IDs (for DCR post visibility)
+      // DCR content is visible to other users only after the associated
+      // delegation has passed explicit admin review.
       where.caseId = { in: caseIds };
+      where.case_ = { requestStatus: "APPROVED" };
     } else if (zone) {
       // Filter by zone when explicitly specified
       where.board = { zone: BoardZone[zone] };

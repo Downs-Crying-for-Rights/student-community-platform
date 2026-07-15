@@ -48,7 +48,7 @@ const listQuerySchema = paginationSchema.extend({
  * - Requires auth
  * - Runs field extraction + review rules engine
  * - Stores extractedFields, missingFields, requestStatus
- * - Creates Case with requestStatus determined by review engine
+ * - New cases always enter PENDING for explicit admin review
  * - Auto-creates AccessApplication (type=DCR) if user has no dcrAccess and no PENDING application
  * - Generates initial TimelineEvent
  * - Logs audit
@@ -113,7 +113,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     const extraction = extractFields(input);
 
-    // ---- 审核规则判定 ----
+    // ---- 自动规则仅生成管理员审核建议，不直接批准或驳回 ----
     const rawText = formText + " " + pledgeText;
     const reviewResult = reviewDelegation(extraction, rawText);
 
@@ -124,10 +124,10 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         formData: formData as unknown as import("@prisma/client").Prisma.InputJsonValue,
         pledgeText,
         status: "OPENED",
-        requestStatus: reviewResult.decision,
-        reviewNote: reviewResult.reason,
+        requestStatus: "PENDING",
+        reviewNote: "委托已提交，正在等待管理员审核",
         extractedFields: extraction.extractedFields as unknown as import("@prisma/client").Prisma.InputJsonValue,
-        missingFields: reviewResult.missingFields,
+        missingFields: extraction.missingFields,
         sensitiveHitCount,
         grade,
         timeRange,
@@ -140,9 +140,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
           create: {
             action: "委托创建",
             newStatus: "OPENED",
-            details: reviewResult.decision === "APPROVED"
-              ? "委托表审核通过，进入可匹配池"
-              : `审核结果: ${reviewResult.decision} - ${reviewResult.reason}`,
+            details: "委托已提交，正在等待管理员审核；审核通过前仅提交者和管理员可见",
           },
         },
       },
@@ -179,7 +177,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       caseRecord.id,
       {
         category,
-        requestStatus: reviewResult.decision,
+        requestStatus: "PENDING",
+        automatedSuggestion: reviewResult.decision,
+        automatedReason: reviewResult.reason,
         missingFields: reviewResult.missingFields,
         sensitiveHitCount,
       },
@@ -188,9 +188,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return NextResponse.json({
       case: caseRecord,
       review: {
-        decision: reviewResult.decision,
-        reason: reviewResult.reason,
-        missingFields: reviewResult.missingFields,
+        decision: "PENDING",
+        reason: "委托已提交，正在等待管理员审核",
+        missingFields: extraction.missingFields,
       },
     }, { status: 201 });
   } catch (error) {
@@ -256,12 +256,16 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
     // If handlerId is specified, filter by handler
     if (handlerId) {
+      if (!isAdminLevel && handlerId !== userId) {
+        return NextResponse.json({ error: "无权查看其他用户处理的委托" }, { status: 403 });
+      }
       const statusFilter = status && status.length > 0
         ? (status.length === 1 ? status[0] : { in: status })
         : undefined;
 
       where.AND = [
         { handlers: { some: { userId: handlerId } } },
+        ...(isAdminLevel ? [] : [{ requestStatus: "APPROVED" }]),
         ...(statusFilter ? [{ status: statusFilter }] : []),
       ];
     } else if (isAdminLevel) {
@@ -270,24 +274,36 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         where.status = status.length === 1 ? status[0] : { in: status };
       }
     } else if (userRole === "DCR_HELPER") {
-      // DCR_HELPER sees: cases they handle + OPENED cases in queue
+      // DCR_HELPER sees their own submissions in every review state. Other
+      // users' cases are visible only after admin approval.
       const orClauses: Record<string, unknown>[] = [
-        { handlers: { some: { userId } } },
+        { submitterId: userId },
+        { AND: [
+          { handlers: { some: { userId } } },
+          { requestStatus: "APPROVED" },
+        ] },
       ];
       const statusValues = status && status.length > 0 ? status : null;
       if (!statusValues || statusValues.includes("OPENED")) {
-        orClauses.push({ status: "OPENED" as const });
+        orClauses.push({ AND: [
+          { status: "OPENED" as const },
+          { requestStatus: "APPROVED" },
+        ] });
       }
       where.AND = [
         { OR: orClauses },
         ...(statusValues ? [{ status: statusValues.length === 1 ? statusValues[0] : { in: statusValues } }] : []),
       ];
     } else if (hasDcrAccess) {
-      // Regular user with dcrAccess sees only: cases they handle + cases they submitted
+      // Regular users always see their own submissions. Cases belonging to
+      // others remain hidden until approved and assigned to the current user.
       where.AND = [
         { OR: [
-          { handlers: { some: { userId } } },
           { submitterId: userId },
+          { AND: [
+            { handlers: { some: { userId } } },
+            { requestStatus: "APPROVED" },
+          ] },
         ]},
       ];
       if (status && status.length > 0) {

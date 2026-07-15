@@ -15,9 +15,11 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   NEED_MORE_INFO: ["IN_PROGRESS"],
 };
 
-const updateStatusSchema = z.discriminatedUnion("_action", [
+const updateStatusSchema = z.union([
   z.object({
-    _action: z.literal("updateStatus"),
+    // Keep accepting the legacy body without _action; existing clients send
+    // { status, details } for normal workflow transitions.
+    _action: z.literal("updateStatus").optional(),
     status: z.enum(["OPENED", "IN_PROGRESS", "NEED_MORE_INFO", "CLOSED"]),
     details: z.string().max(500).optional(),
   }),
@@ -67,9 +69,12 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
       (caseRecord as any).handlers?.some((h: { userId: string }) => h.userId === userId);
     const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
-    // DCR helpers can view OPENED cases (needed to decide whether to accept)
+    // DCR helpers can view OPENED cases only after admin approval.
     let isDCRHelperViewingOpen = false;
-    if (!isSubmitter && !isHandler && !isAdmin && caseRecord.status === "OPENED") {
+    if (
+      !isSubmitter && !isHandler && !isAdmin &&
+      caseRecord.status === "OPENED" && caseRecord.requestStatus === "APPROVED"
+    ) {
       if (userRole === "DCR_HELPER") {
         isDCRHelperViewingOpen = true;
       } else {
@@ -167,6 +172,16 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         },
       });
 
+      await prisma.timelineEvent.create({
+        data: {
+          caseId: id,
+          action: "委托审核",
+          oldStatus: String(caseRecord.requestStatus),
+          newStatus: newRequestStatus,
+          details: reviewNote ?? `管理员将审核状态更新为 ${newRequestStatus}`,
+        },
+      });
+
       // Log audit
       await logAudit(
         userId,
@@ -208,6 +223,16 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     }
 
     const oldStatus = caseRecord.status;
+
+    if (
+      oldStatus === "OPENED" && newStatus === "IN_PROGRESS" &&
+      caseRecord.requestStatus !== "APPROVED"
+    ) {
+      return NextResponse.json(
+        { error: "该委托仍在管理员审核中，审核通过后才能接单" },
+        { status: 409 },
+      );
+    }
 
     // Validate status transition
     const allowedTransitions = VALID_TRANSITIONS[oldStatus];
@@ -410,6 +435,13 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
 
   if (!caseRecord) {
     return NextResponse.json({ error: "委托不存在" }, { status: 404 });
+  }
+
+  if (caseRecord.requestStatus !== "APPROVED") {
+    return NextResponse.json(
+      { error: "该委托仍在管理员审核中，审核通过后才能加入" },
+      { status: 409 },
+    );
   }
 
   // Type assertion for handlers field from CaseHandler relation

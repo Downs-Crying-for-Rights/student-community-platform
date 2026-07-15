@@ -87,14 +87,18 @@ export function hasAttitudePhrases(text: string): boolean {
 }
 
 /**
- * 检测文本中是否包含多所学校 (简易启发式: 学校名+"、"或"和"连用)
+ * 检测“学校名称”输入框中是否明确填写了多所学校。
+ *
+ * 不能统计整份表单里“学校”一词的出现次数：格式化后的表单本身会重复
+ * 出现“学校名称 / 学校性质 / 学校地址”等标签，曾因此把单校委托误判为多校。
  */
-export function hasMultipleSchools(text: string): boolean {
-  const schoolPattern = /(?:学校|中学|小学|大学|学院)/g;
-  const matches = text.match(schoolPattern);
-  // 阈值 5: 正常表单自身含"学校名称""学校地址""学校性质"等字段标签
-  // 单校描述不会超过4次命中，多校内容会轻松超过5次
-  return matches !== null && matches.length >= 5;
+export function hasMultipleSchools(schoolName: string): boolean {
+  const value = schoolName.trim();
+  if (!value) return false;
+
+  // 只有在两个疑似校名之间存在明确的列表连接符时才判为多校。
+  // 这样“某大学附属中学”不会因为同时包含“大学”和“中学”而误判。
+  return /(?:学校|中学|小学|大学|学院|培训机构)\s*(?:、|，|,|；|;|\/|和|与|及)\s*[^\n]{1,40}(?:学校|中学|小学|大学|学院|培训机构)/.test(value);
 }
 
 /**
@@ -270,7 +274,7 @@ export function extractFields(input: DelegationInput): ExtractionResult {
   }
 
   // --- 多校检测 ---
-  if (hasMultipleSchools(allText)) {
+  if (hasMultipleSchools(input.schoolName || "")) {
     log.push("检测到多个学校名称，一次仅限一所学校");
     if (!missing.includes("多校检测")) missing.push("多校检测");
   }
