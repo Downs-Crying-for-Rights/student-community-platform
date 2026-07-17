@@ -21,30 +21,30 @@ enum Role {
 }
 
 model User {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   name            String?
-  email           String?  @unique
+  email           String?   @unique
   emailVerified   DateTime?
   image           String?
   nickname        String?
   avatar          String?
   bio             String?
-  role            Role     @default(USER)
-  isBanned        Boolean  @default(false)
-  isShadowBanned  Boolean  @default(false)
-  isAnonymous     Boolean  @default(false)
-  reputationScore Int      @default(100)
-  violationCount  Int      @default(0)
-  onboardingDone  Boolean  @default(false)
-  psychAccess     Boolean  @default(false)
-  dcrAccess       Boolean  @default(false)
-  dcrHelperAccess Boolean  @default(false)
-  dcrPledgeSigned Boolean  @default(false)
-  quizPassed      Boolean  @default(false)
-  phone           String?  @unique // 手机号
+  role            Role      @default(USER)
+  isBanned        Boolean   @default(false)
+  isShadowBanned  Boolean   @default(false)
+  isAnonymous     Boolean   @default(false)
+  reputationScore Int       @default(100)
+  violationCount  Int       @default(0)
+  onboardingDone  Boolean   @default(false)
+  psychAccess     Boolean   @default(false)
+  dcrAccess       Boolean   @default(false)
+  dcrHelperAccess Boolean   @default(false)
+  dcrPledgeSigned Boolean   @default(false)
+  quizPassed      Boolean   @default(false)
+  phone           String?   @unique // 手机号
   passwordHash    String? // bcrypt 哈希密码
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   // NextAuth 关联
   accounts Account[]
@@ -61,8 +61,8 @@ model User {
   reportsReceived Report[] @relation("ReportTarget")
 
   // DCR
-  casesSubmitted Case[] @relation("CaseSubmitter")
-  casesHandled   Case[] @relation("CaseHandler")
+  casesSubmitted Case[]        @relation("CaseSubmitter")
+  casesHandled   Case[]        @relation("CaseHandler")
   caseHandlers   CaseHandler[]
 
   // 心理区
@@ -90,9 +90,9 @@ model User {
   tasksRequested MutualAidTask[] @relation("TaskRequester")
 
   // 互助循环
-  initiatedCycles  MutualAidCycle[] @relation("CycleInitiator")
-  linksAsFrom      MutualAidLink[]  @relation("LinkFrom")
-  linksAsTo        MutualAidLink[]  @relation("LinkTo")
+  initiatedCycles   MutualAidCycle[]       @relation("CycleInitiator")
+  linksAsFrom       MutualAidLink[]        @relation("LinkFrom")
+  linksAsTo         MutualAidLink[]        @relation("LinkTo")
   cycleMatchRequest MutualAidMatchRequest?
 
   // 站内私信
@@ -100,9 +100,12 @@ model User {
   dmThreadsAsP2 DMThread[] @relation("DMThreadP2")
 
   // 群聊
-  chatRooms      ChatRoom[]       @relation("ChatRoomCreator")
-  chatMemberships ChatRoomMember[]
+  chatRooms        ChatRoom[]            @relation("ChatRoomCreator")
+  chatMemberships  ChatRoomMember[]
   chatJoinRequests ChatRoomJoinRequest[]
+  chatRoomBans     ChatRoomBan[]         @relation("ChatRoomBanUser")
+  chatBansImposed  ChatRoomBan[]         @relation("ChatRoomBanImposedBy")
+  chatBansRevoked  ChatRoomBan[]         @relation("ChatRoomBanRevokedBy")
 }
 
 // NextAuth 模型
@@ -198,12 +201,12 @@ enum PostVisibility {
 }
 
 enum DCRCategory {
-  TUTORING          // 补课
-  FEES              // 收费
-  WEEKENDS          // 双休
-  OTHER             // 其他
-  EARLY_START       // 提前开学
-  NO_WEEKENDS       // 不双休
+  TUTORING // 补课
+  FEES // 收费
+  WEEKENDS // 双休
+  OTHER // 其他
+  EARLY_START // 提前开学
+  NO_WEEKENDS // 不双休
   EXTERNAL_TRAINING // 校外培训
 }
 
@@ -226,7 +229,7 @@ model Post {
   authorId String
   boardId  String
 
-  caseId   String?
+  caseId String?
 
   author      User              @relation(fields: [authorId], references: [id])
   board       Board             @relation(fields: [boardId], references: [id])
@@ -313,11 +316,15 @@ model Report {
   targetUserId    String?
   targetPostId    String?
   targetCommentId String?
+  targetTaskId    String?
 
-  reporter      User     @relation("ReportFiler", fields: [reporterId], references: [id])
-  targetUser    User?    @relation("ReportTarget", fields: [targetUserId], references: [id])
-  targetPost    Post?    @relation("ReportedPost", fields: [targetPostId], references: [id])
-  targetComment Comment? @relation("ReportedComment", fields: [targetCommentId], references: [id])
+  reporter      User           @relation("ReportFiler", fields: [reporterId], references: [id])
+  targetUser    User?          @relation("ReportTarget", fields: [targetUserId], references: [id])
+  targetPost    Post?          @relation("ReportedPost", fields: [targetPostId], references: [id])
+  targetComment Comment?       @relation("ReportedComment", fields: [targetCommentId], references: [id])
+  targetTask    MutualAidTask? @relation("ReportedTask", fields: [targetTaskId], references: [id], onDelete: SetNull)
+
+  @@index([targetTaskId])
 }
 
 // ==================== DCR 工单 ====================
@@ -340,42 +347,43 @@ enum RequestStatus {
 }
 
 model Case {
-  id         String      @id @default(cuid())
-  category   DCRCategory
-  formData   Json // 委托表结构化数据 (前端 DelegatePage 提交的原始表单)
-  status     CaseStatus  @default(OPENED)
-  pledgeText String // 强制声明内容
+  id                     String        @id @default(cuid())
+  category               DCRCategory
+  formData               Json // 委托表结构化数据 (前端 DelegatePage 提交的原始表单)
+  status                 CaseStatus    @default(OPENED)
+  pledgeText             String // 强制声明内容
   // ====== 委托表审核字段 ======
-  requestStatus  RequestStatus @default(PENDING) // 委托表审核状态
-  reviewNote     String?       // 审核备注/驳回理由
+  requestStatus          RequestStatus @default(PENDING) // 委托表审核状态
+  reviewNote             String? // 审核备注/驳回理由
   /// 字段抽取结果 (如 schoolName/city/grade/timeRange 等)
-  extractedFields Json?
+  extractedFields        Json?
   /// 缺项清单 (如 ["缺少年级", "缺少区号电话"])
-  missingFields   String[]     @default([])
+  missingFields          String[]      @default([])
   /// 敏感检测命中数
-  sensitiveHitCount Int        @default(0)
+  sensitiveHitCount      Int           @default(0)
   // ====== 委托表结构化字段 ======
-  grade            String?     // 年级 (如 "高一"/"高二"/"高三")
-  timeRange        String?     // 补课时间范围 (如 "周六 8:30-17:30" 或日期范围)
-  province         String?     // 省份
-  city             String?     // 城市
+  grade                  String? // 年级 (如 "高一"/"高二"/"高三")
+  timeRange              String? // 补课时间范围 (如 "周六 8:30-17:30" 或日期范围)
+  province               String? // 省份
+  city                   String? // 城市
   // ====== 可选字段 ======
   expectedHelperProvince String? // 期望互助人省份 (避免同省)
-  riskPreference           String? // 风险偏好: 仅站内/可电话/仅模板
-  evidenceChecklist        String[] @default([]) // 证据类型清单
+  riskPreference         String? // 风险偏好: 仅站内/可电话/仅模板
+  evidenceChecklist      String[]      @default([]) // 证据类型清单
 
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   submitterId String
   handlerId   String?
 
-  submitter User            @relation("CaseSubmitter", fields: [submitterId], references: [id])
-  handler   User?           @relation("CaseHandler", fields: [handlerId], references: [id])
-  handlers  CaseHandler[]
-  posts     Post[]
-  timeline  TimelineEvent[]
-  messages  Message[]
+  submitter         User               @relation("CaseSubmitter", fields: [submitterId], references: [id])
+  handler           User?              @relation("CaseHandler", fields: [handlerId], references: [id])
+  accessApplication AccessApplication?
+  handlers          CaseHandler[]
+  posts             Post[]
+  timeline          TimelineEvent[]
+  messages          Message[]
 }
 
 model TimelineEvent {
@@ -404,16 +412,16 @@ model CaseHandler {
 // ==================== 消息 ====================
 
 model Message {
-  id          String   @id @default(cuid())
-  content     String
-  messageType CaseMessageType @default(TEXT)
-  mediaUrl    String?
-  mediaName   String?
-  mediaMimeType String?
-  mediaSize   Int?
+  id              String          @id @default(cuid())
+  content         String
+  messageType     CaseMessageType @default(TEXT)
+  mediaUrl        String?
+  mediaName       String?
+  mediaMimeType   String?
+  mediaSize       Int?
   durationSeconds Int?
-  isAnonymous Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  isAnonymous     Boolean         @default(false)
+  createdAt       DateTime        @default(now())
 
   senderId   String
   receiverId String
@@ -561,6 +569,11 @@ model AccessApplication {
 
   applicantId String
   applicant   User   @relation(fields: [applicantId], references: [id])
+
+  caseId String? @unique
+  case_  Case?   @relation(fields: [caseId], references: [id], onDelete: Restrict)
+
+  @@index([applicantId, type, status])
 }
 
 // ==================== 敏感词 ====================
@@ -625,29 +638,30 @@ enum EvidenceItemType {
 // ==================== 互助任务 ====================
 
 model MutualAidTask {
-  id                String       @id @default(cuid())
-  title             String
-  category          DCRCategory
-  summary           String
-  expectedHelpType  String
-  urgencyLevel      UrgencyLevel @default(MEDIUM)
-  structuredFields  Json
-  attachments       String[]
-  riskFlags         Json?
-  status            TaskStatus   @default(DRAFT)
-  rejectionReason   String?
-  closureReason     String?
-  completionReport  Json?
-  requesterConfirmed Boolean     @default(false)
-  helperConfirmed    Boolean     @default(false)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id                 String       @id @default(cuid())
+  title              String
+  category           DCRCategory
+  summary            String
+  expectedHelpType   String
+  urgencyLevel       UrgencyLevel @default(MEDIUM)
+  structuredFields   Json
+  attachments        String[]
+  riskFlags          Json?
+  status             TaskStatus   @default(DRAFT)
+  rejectionReason    String?
+  closureReason      String?
+  completionReport   Json?
+  requesterConfirmed Boolean      @default(false)
+  helperConfirmed    Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  requesterId       String
-  requester         User         @relation("TaskRequester", fields: [requesterId], references: [id])
+  requesterId String
+  requester   User   @relation("TaskRequester", fields: [requesterId], references: [id])
 
-  helpSession       HelpSession?
-  timeline          TaskTimelineEvent[]
+  helpSession HelpSession?
+  timeline    TaskTimelineEvent[]
+  reports     Report[]            @relation("ReportedTask")
 
   @@index([status])
   @@index([requesterId])
@@ -656,15 +670,15 @@ model MutualAidTask {
 }
 
 model TaskTimelineEvent {
-  id        String     @id @default(cuid())
+  id        String   @id @default(cuid())
   action    String
   oldStatus String?
   newStatus String?
   details   String?
-  createdAt DateTime   @default(now())
+  createdAt DateTime @default(now())
 
-  taskId    String
-  task      MutualAidTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId     String
+  task       MutualAidTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
   operatorId String?
 
   @@index([taskId])
@@ -673,12 +687,12 @@ model TaskTimelineEvent {
 // ==================== 互助会话 ====================
 
 model HelpSession {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-  closedAt    DateTime?
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  closedAt  DateTime?
 
-  taskId      String   @unique
-  task        MutualAidTask @relation(fields: [taskId], references: [id])
+  taskId String        @unique
+  task   MutualAidTask @relation(fields: [taskId], references: [id])
 
   helperId    String
   requesterId String
@@ -693,10 +707,10 @@ model HelpChat {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
 
-  sessionId String   @unique
+  sessionId String      @unique
   session   HelpSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
-  messages  HelpChatMessage[]
+  messages HelpChatMessage[]
 }
 
 model HelpChatMessage {
@@ -721,10 +735,10 @@ model EvidenceRoom {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
 
-  sessionId String   @unique
+  sessionId String      @unique
   session   HelpSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
-  items     EvidenceItem[]
+  items EvidenceItem[]
 }
 
 model EvidenceItem {
@@ -736,9 +750,9 @@ model EvidenceItem {
   fileSize    Int?
   createdAt   DateTime         @default(now())
 
-  roomId      String
-  room        EvidenceRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  uploaderId  String
+  roomId     String
+  room       EvidenceRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  uploaderId String
 
   @@index([roomId, type])
 }
@@ -746,15 +760,15 @@ model EvidenceItem {
 // ==================== 管理处置 ====================
 
 model ModerationAction {
-  id          String   @id @default(cuid())
-  actionType  String
-  targetType  String
-  targetId    String
-  reason      String
-  details     Json?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  actionType String
+  targetType String
+  targetId   String
+  reason     String
+  details    Json?
+  createdAt  DateTime @default(now())
 
-  operatorId  String
+  operatorId String
 
   @@index([targetType, targetId])
   @@index([operatorId])
@@ -862,22 +876,23 @@ model ChatRoom {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  members  ChatRoomMember[]
+  members      ChatRoomMember[]
   joinRequests ChatRoomJoinRequest[]
-  messages ChatMessage[]
+  bans         ChatRoomBan[]
+  messages     ChatMessage[]
 
   @@index([type, updatedAt])
   @@index([updatedAt])
 }
 
 model ChatRoomMember {
-  id        String   @id @default(cuid())
-  roomId    String
-  room      ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      String   @default("MEMBER") // OWNER | ADMIN | MEMBER
-  joinedAt  DateTime @default(now())
+  id       String   @id @default(cuid())
+  roomId   String
+  room     ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     String   @default("MEMBER") // OWNER | ADMIN | MEMBER
+  joinedAt DateTime @default(now())
 
   @@unique([roomId, userId])
   @@index([userId])
@@ -885,18 +900,39 @@ model ChatRoomMember {
 }
 
 model ChatRoomJoinRequest {
-  id        String   @id @default(cuid())
-  roomId    String
-  room      ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  id         String   @id @default(cuid())
+  roomId     String
+  room       ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status     String   @default("PENDING") // PENDING | APPROVED | REJECTED
   reviewedBy String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@unique([roomId, userId]) // Only one join request per room per user (reapply updates status)
   @@index([roomId, status])
+  @@index([userId])
+}
+
+model ChatRoomBan {
+  id           String    @id @default(cuid())
+  roomId       String
+  room         ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User      @relation("ChatRoomBanUser", fields: [userId], references: [id], onDelete: Cascade)
+  imposedById  String
+  imposedBy    User      @relation("ChatRoomBanImposedBy", fields: [imposedById], references: [id], onDelete: Restrict)
+  reason       String?
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  revokedById  String?
+  revokedBy    User?     @relation("ChatRoomBanRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  revokeReason String?
+
+  @@unique([roomId, userId])
+  @@index([roomId, revokedAt, expiresAt])
   @@index([userId])
 }
 
@@ -952,7 +988,7 @@ model MutualAidCycle {
   initiatorId String
   initiator   User   @relation("CycleInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
 
-  links MutualAidLink[]
+  links         MutualAidLink[]
   matchRequests MutualAidMatchRequest[]
 
   @@index([initiatorId, status])
@@ -960,16 +996,16 @@ model MutualAidCycle {
 }
 
 model MutualAidMatchRequest {
-  id          String           @id @default(cuid())
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  status      CycleMatchStatus @default(WAITING)
-  userId      String           @unique
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  needText    String?
-  offerText   String?
+  id             String           @id @default(cuid())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  status         CycleMatchStatus @default(WAITING)
+  userId         String           @unique
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  needText       String?
+  offerText      String?
   matchedCycleId String?
-  matchedCycle   MutualAidCycle? @relation(fields: [matchedCycleId], references: [id], onDelete: SetNull)
+  matchedCycle   MutualAidCycle?  @relation(fields: [matchedCycleId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
   @@index([matchedCycleId])
@@ -992,7 +1028,7 @@ model MutualAidLink {
   toUser   User @relation("LinkTo", fields: [toUserId], references: [id], onDelete: Cascade)
 
   status      LinkStatus @default(PENDING_REQUEST)
-  description String?    // from 方对此段互助的描述
+  description String? // from 方对此段互助的描述
 
   acceptedAt  DateTime?
   completedAt DateTime?
@@ -1012,9 +1048,9 @@ model QuizQuestion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  text    String   // 题目
+  text    String // 题目
   options String[] // 4个选项
-  answer  Int      // 正确答案索引 (0-3)
+  answer  Int // 正确答案索引 (0-3)
   active  Boolean  @default(true)
 }
 
@@ -1026,16 +1062,16 @@ enum DcrQuestionType {
 }
 
 model DcrQuizQuestion {
-  id          String          @id @default(cuid())
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  text        String          @db.Text      // 题目
-  options     String[]                      // 选项列表
+  text        String          @db.Text // 题目
+  options     String[] // 选项列表
   type        DcrQuestionType @default(SINGLE_CHOICE) // 单选/多选
-  answer      Int[]                         // 正确答案索引数组 (单选[0], 多选[0,2])
-  score       Int             @default(1)   // 分值
-  explanation String?         @db.Text      // 答案解析
+  answer      Int[] // 正确答案索引数组 (单选[0], 多选[0,2])
+  score       Int             @default(1) // 分值
+  explanation String?         @db.Text // 答案解析
   active      Boolean         @default(true)
 
   @@index([active])
@@ -1048,10 +1084,10 @@ model DcrTutorialChapter {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  title     String                       // 章节标题
-  content   String   @db.Text            // 章节内容（支持 HTML/Markdown）
-  order     Int      @default(0)         // 排序
-  active    Boolean  @default(true)      // 是否显示
+  title   String // 章节标题
+  content String  @db.Text // 章节内容（支持 HTML/Markdown）
+  order   Int     @default(0) // 排序
+  active  Boolean @default(true) // 是否显示
 
   @@index([order])
 }
@@ -1060,9 +1096,9 @@ model DcrTutorialChapter {
 
 model SiteContent {
   id        String   @id @default(cuid())
-  key       String   @unique              // e.g., "user_agreement"
-  title     String                        // 显示标题
-  content   String   @db.Text             // Markdown 内容
+  key       String   @unique // e.g., "user_agreement"
+  title     String // 显示标题
+  content   String   @db.Text // Markdown 内容
   updatedAt DateTime @updatedAt
-  updatedBy String?                       // 最后修改者 ID
+  updatedBy String? // 最后修改者 ID
 }

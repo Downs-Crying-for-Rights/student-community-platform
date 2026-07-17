@@ -4,35 +4,68 @@ import { NextRequest } from "next/server";
 // ==================== Mocks ====================
 
 const mockAccessApplicationFindUnique = vi.fn();
+const mockAccessApplicationFindUniqueAfterUpdate = vi.fn();
 const mockAccessApplicationUpdate = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockUserUpdate = vi.fn();
 const mockUserCount = vi.fn();
+const mockCaseFindFirst = vi.fn();
+const mockAuditLogCreate = vi.fn();
 
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  const transactionClient = {
     accessApplication: {
-      findUnique: (...args: unknown[]) => mockAccessApplicationFindUnique(...args),
-      update: (...args: unknown[]) => mockAccessApplicationUpdate(...args),
+      findUnique: async (...args: unknown[]) => {
+        const query = args[0] as { include?: unknown } | undefined;
+        if (!query?.include) return mockAccessApplicationFindUniqueAfterUpdate(...args);
+        const application = await mockAccessApplicationFindUnique(...args);
+        if (!application) return application;
+        return {
+          ...application,
+          applicant: await mockUserFindUnique({ where: { id: application.applicantId } }),
+          case_: await mockCaseFindFirst({ where: { id: application.caseId } }),
+        };
+      },
+      updateMany: async (...args: unknown[]) => {
+        const updated = await mockAccessApplicationUpdate(...args);
+        return updated && typeof updated.count === "number" ? updated : { count: 1 };
+      },
     },
     user: {
-      findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
       count: (...args: unknown[]) => mockUserCount(...args),
     },
-  },
-}));
+    auditLog: {
+      create: (...args: unknown[]) => mockAuditLogCreate(...args),
+    },
+  };
 
-const mockLogAudit = vi.fn();
+  return {
+    default: {
+      ...transactionClient,
+      $transaction: vi.fn((operation: (tx: typeof transactionClient) => unknown) =>
+        operation(transactionClient),
+      ),
+    },
+  };
+});
+
 vi.mock("@/lib/audit", () => ({
-  logAudit: (...args: unknown[]) => mockLogAudit(...args),
-  AuditAction: { DCR_ACCESS_GRANT: "DCR_ACCESS_GRANT" },
+  AuditAction: {
+    DCR_ACCESS_GRANT: "DCR_ACCESS_GRANT",
+    DCR_ACCESS_REVOKE: "DCR_ACCESS_REVOKE",
+  },
   AuditTargetType: { APPLICATION: "APPLICATION" },
 }));
 
 const mockCreateNotification = vi.fn();
 vi.mock("@/lib/notification", () => ({
   createNotification: (...args: unknown[]) => mockCreateNotification(...args),
+}));
+
+const mockSendUserMail = vi.fn();
+vi.mock("@/lib/mail", () => ({
+  sendUserMail: (...args: unknown[]) => mockSendUserMail(...args),
 }));
 
 vi.mock("next-auth/next", () => ({
@@ -68,14 +101,21 @@ const pendingApplication = {
   type: "DCR",
   status: "PENDING",
   applicantId: "user1",
+  caseId: "case1",
   pledgeText: "已移除可识别信息，了解平台不组织不指挥不实施",
   createdAt: new Date(),
 };
 
 const eligibleApplicant = {
+  id: "user1",
+  role: "USER",
   createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
   violationCount: 0,
   reputationScore: 100,
+  phone: "13800138000",
+  quizPassed: true,
+  dcrAccess: false,
+  dcrPledgeSigned: false,
 };
 
 // ==================== PATCH /api/dcr/apply/[id] Tests ====================
@@ -83,6 +123,15 @@ const eligibleApplicant = {
 describe("PATCH /api/dcr/apply/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCaseFindFirst.mockResolvedValue({
+      id: "case1",
+      submitterId: "user1",
+      requestStatus: "APPROVED",
+    });
+    mockUserFindUnique.mockResolvedValue(eligibleApplicant);
+    mockAuditLogCreate.mockResolvedValue({});
+    mockAccessApplicationFindUniqueAfterUpdate.mockResolvedValue(pendingApplication);
+    mockSendUserMail.mockResolvedValue(undefined);
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -154,21 +203,18 @@ describe("PATCH /api/dcr/apply/[id]", () => {
     expect(data.error).toBe("该申请已被审核");
   });
 
-  it("应成功批准申请并设置 dcrAccess、dcrPledgeSigned 和 DCR_HELPER 角色", async () => {
+  it("应成功批准申请并设置 dcrAccess 和 dcrPledgeSigned", async () => {
     setSession("admin1", "ADMIN");
     mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
     mockUserCount.mockResolvedValue(10); // under limit
-    mockUserFindUnique
-      .mockResolvedValueOnce(eligibleApplicant) // eligibility check
-      .mockResolvedValueOnce({ role: "USER" }); // role check for promotion
-    mockAccessApplicationUpdate.mockResolvedValue({
+    mockAccessApplicationUpdate.mockResolvedValueOnce({ count: 1 });
+    mockAccessApplicationFindUniqueAfterUpdate.mockResolvedValue({
       ...pendingApplication,
       status: "APPROVED",
       reviewedAt: new Date(),
     });
     mockUserUpdate.mockResolvedValue({});
     mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../apply/[id]/route");
     const res = await PATCH(
@@ -182,7 +228,7 @@ describe("PATCH /api/dcr/apply/[id]", () => {
 
     expect(mockUserUpdate).toHaveBeenCalledWith({
       where: { id: "user1" },
-      data: { dcrAccess: true, dcrPledgeSigned: true, role: "DCR_HELPER" },
+      data: { dcrAccess: true, dcrPledgeSigned: true },
     });
   });
 
@@ -190,17 +236,15 @@ describe("PATCH /api/dcr/apply/[id]", () => {
     setSession("admin1", "ADMIN");
     mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
     mockUserCount.mockResolvedValue(10);
-    mockUserFindUnique
-      .mockResolvedValueOnce(eligibleApplicant) // eligibility check
-      .mockResolvedValueOnce({ role: "MODERATOR" }); // role check — should NOT promote
-    mockAccessApplicationUpdate.mockResolvedValue({
+    mockUserFindUnique.mockResolvedValue({ ...eligibleApplicant, role: "MODERATOR" });
+    mockAccessApplicationUpdate.mockResolvedValueOnce({ count: 1 });
+    mockAccessApplicationFindUniqueAfterUpdate.mockResolvedValue({
       ...pendingApplication,
       status: "APPROVED",
       reviewedAt: new Date(),
     });
     mockUserUpdate.mockResolvedValue({});
     mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../apply/[id]/route");
     const res = await PATCH(
@@ -300,14 +344,14 @@ describe("PATCH /api/dcr/apply/[id]", () => {
   it("应成功拒绝申请", async () => {
     setSession("admin1", "ADMIN");
     mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
-    mockAccessApplicationUpdate.mockResolvedValue({
+    mockAccessApplicationUpdate.mockResolvedValueOnce({ count: 1 });
+    mockAccessApplicationFindUniqueAfterUpdate.mockResolvedValue({
       ...pendingApplication,
       status: "REJECTED",
       reviewNote: "不符合条件",
       reviewedAt: new Date(),
     });
     mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../apply/[id]/route");
     const res = await PATCH(
@@ -325,16 +369,13 @@ describe("PATCH /api/dcr/apply/[id]", () => {
     setSession("admin1", "ADMIN");
     mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
     mockUserCount.mockResolvedValue(10);
-    mockUserFindUnique
-      .mockResolvedValueOnce(eligibleApplicant)
-      .mockResolvedValueOnce({ role: "USER" });
-    mockAccessApplicationUpdate.mockResolvedValue({
+    mockAccessApplicationUpdate.mockResolvedValueOnce({ count: 1 });
+    mockAccessApplicationFindUniqueAfterUpdate.mockResolvedValue({
       ...pendingApplication,
       status: "APPROVED",
     });
     mockUserUpdate.mockResolvedValue({});
     mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../apply/[id]/route");
     await PATCH(
@@ -354,13 +395,13 @@ describe("PATCH /api/dcr/apply/[id]", () => {
   it("应为申请人创建通知（拒绝）", async () => {
     setSession("admin1", "ADMIN");
     mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
-    mockAccessApplicationUpdate.mockResolvedValue({
+    mockAccessApplicationUpdate.mockResolvedValueOnce({ count: 1 });
+    mockAccessApplicationFindUniqueAfterUpdate.mockResolvedValue({
       ...pendingApplication,
       status: "REJECTED",
       reviewNote: "不符合条件",
     });
     mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../apply/[id]/route");
     await PATCH(
@@ -373,6 +414,7 @@ describe("PATCH /api/dcr/apply/[id]", () => {
       "DCR_ACCESS",
       "DCR 准入申请未通过",
       expect.stringContaining("不符合条件"),
+      undefined,
     );
   });
 
@@ -380,16 +422,13 @@ describe("PATCH /api/dcr/apply/[id]", () => {
     setSession("admin1", "ADMIN");
     mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
     mockUserCount.mockResolvedValue(10);
-    mockUserFindUnique
-      .mockResolvedValueOnce(eligibleApplicant)
-      .mockResolvedValueOnce({ role: "USER" });
-    mockAccessApplicationUpdate.mockResolvedValue({
+    mockAccessApplicationUpdate.mockResolvedValueOnce({ count: 1 });
+    mockAccessApplicationFindUniqueAfterUpdate.mockResolvedValue({
       ...pendingApplication,
       status: "APPROVED",
     });
     mockUserUpdate.mockResolvedValue({});
     mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../apply/[id]/route");
     await PATCH(
@@ -397,16 +436,18 @@ describe("PATCH /api/dcr/apply/[id]", () => {
       { params: { id: "app1" } },
     );
 
-    expect(mockLogAudit).toHaveBeenCalledWith(
-      "admin1",
-      "DCR_ACCESS_GRANT",
-      "APPLICATION",
-      "app1",
-      expect.objectContaining({
-        applicantId: "user1",
-        decision: "APPROVED",
-        rolePromoted: "DCR_HELPER",
+    expect(mockAuditLogCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        operatorId: "admin1",
+        action: "DCR_ACCESS_GRANT",
+        targetType: "APPLICATION",
+        targetId: "app1",
+        details: expect.objectContaining({
+          applicantId: "user1",
+          caseId: "case1",
+          decision: "APPROVED",
+        }),
       }),
-    );
+    });
   });
 });

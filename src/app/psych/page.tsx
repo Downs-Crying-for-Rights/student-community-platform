@@ -39,9 +39,9 @@ export function getPsychSections(): PsychSection[] {
     },
     {
       id: "confide",
-      title: "倾诉匹配",
-      description: "提交倾诉请求，匹配一位倾听者进行一对一匿名对话",
-      href: "/psych/confide",
+      title: "倾诉匹配（暂停）",
+      description: "该功能正在进行安全与隐私流程完善，暂不接收新的匹配请求",
+      href: "#confide-paused",
       iconName: "Headphones",
     },
     {
@@ -137,6 +137,12 @@ export default function PsychMainPage() {
             );
           })}
         </div>
+
+        <Card id="confide-paused" className="mb-8 border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            倾诉匹配暂时关闭。平台不会创建新的匿名匹配或聊天；如有紧急情况，请优先联系监护人、学校专业人员或下方专业求助资源。
+          </CardContent>
+        </Card>
 
         {/* Crisis Resources Section */}
         <div id="resources">

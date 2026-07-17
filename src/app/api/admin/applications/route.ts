@@ -31,49 +31,25 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       where,
       include: {
         applicant: { select: { id: true, nickname: true } },
+        case_: {
+          select: {
+            id: true,
+            formData: true,
+            pledgeText: true,
+            category: true,
+            status: true,
+            requestStatus: true,
+            reviewNote: true,
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    // For DCR-type applications, look up the most recent Case by applicantId
-    const dcrApps = applications.filter((app) => app.type === "DCR");
-    const applicantIds = [...new Set(dcrApps.map((app) => app.applicantId))];
-
-    const caseMap = new Map<
-      string,
-      { formData: unknown; pledgeText: string; category: string; status: string }
-    >();
-
-    if (applicantIds.length > 0) {
-      const cases = await prisma.case.findMany({
-        where: { submitterId: { in: applicantIds } },
-        select: {
-          submitterId: true,
-          formData: true,
-          pledgeText: true,
-          category: true,
-          status: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: "desc" },
-      });
-
-      // Keep only the most recent Case per submitterId
-      for (const c of cases) {
-        if (!caseMap.has(c.submitterId)) {
-          caseMap.set(c.submitterId, {
-            formData: c.formData,
-            pledgeText: c.pledgeText,
-            category: c.category,
-            status: c.status,
-          });
-        }
-      }
-    }
-
-    const enrichedApplications = applications.map((app) => ({
+    const enrichedApplications = applications.map(({ case_: relatedCase, ...app }) => ({
       ...app,
-      relatedCase: app.type === "DCR" ? (caseMap.get(app.applicantId) ?? null) : null,
+      relatedCase: app.type === "DCR" ? relatedCase : null,
+      caseLinkMissing: app.type === "DCR" && relatedCase === null,
     }));
 
     return NextResponse.json({ applications: enrichedApplications });

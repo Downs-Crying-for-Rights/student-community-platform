@@ -4,7 +4,7 @@ import type { SensitiveWordCategory } from "@prisma/client";
 
 // ==================== Mocks ====================
 
-const redisStore = vi.hoisted(() => new Map<string, string>());
+const redisStore = vi.hoisted(() => new Map<string, Record<string, string>>());
 
 vi.mock("../prisma", () => ({
   default: {
@@ -28,14 +28,29 @@ vi.mock("../prisma", () => ({
 
 vi.mock("../redis", () => ({
   default: {
-    get: vi.fn(async (key: string) => redisStore.get(key) ?? null),
-    set: vi.fn(async (key: string, value: string) => {
-      redisStore.set(key, value);
-      return "OK";
-    }),
+    hgetall: vi.fn(async (key: string) => redisStore.get(key) ?? {}),
     del: vi.fn(async (key: string) => {
       redisStore.delete(key);
       return 1;
+    }),
+    pipeline: vi.fn(() => {
+      const operations: Array<() => void> = [];
+      const pipeline = {
+        del: vi.fn((key: string) => {
+          operations.push(() => redisStore.delete(key));
+          return pipeline;
+        }),
+        hset: vi.fn((key: string, entries: Record<string, string>) => {
+          operations.push(() => redisStore.set(key, { ...entries }));
+          return pipeline;
+        }),
+        expire: vi.fn(() => pipeline),
+        exec: vi.fn(async () => {
+          operations.forEach((operation) => operation());
+          return [];
+        }),
+      };
+      return pipeline;
     }),
   },
 }));
@@ -80,7 +95,10 @@ describe("属性 3: 敏感词检测完整性", () => {
 
           // Seed the cache with this single sensitive word
           const entries = [{ word, category }];
-          redisStore.set("sensitive-words:all", JSON.stringify(entries));
+          redisStore.set(
+            "sensitive-words:entries",
+            Object.fromEntries(entries.map((entry) => [entry.word, entry.category])),
+          );
 
           const text = prefix + word + suffix;
           const matches = await scanContent(text);
@@ -110,7 +128,10 @@ describe("属性 3: 敏感词检测完整性", () => {
           const suffix = "好";
 
           const entries = [{ word, category }];
-          redisStore.set("sensitive-words:all", JSON.stringify(entries));
+          redisStore.set(
+            "sensitive-words:entries",
+            Object.fromEntries(entries.map((entry) => [entry.word, entry.category])),
+          );
 
           const text = prefix + word + suffix;
           const matches = await scanContent(text);
@@ -150,7 +171,10 @@ describe("属性 3: 敏感词检测完整性", () => {
             word: w,
             category: c,
           }));
-          redisStore.set("sensitive-words:all", JSON.stringify(entries));
+          redisStore.set(
+            "sensitive-words:entries",
+            Object.fromEntries(entries.map((entry) => [entry.word, entry.category])),
+          );
 
           // Build text with separator to avoid overlapping
           const separator = "。";

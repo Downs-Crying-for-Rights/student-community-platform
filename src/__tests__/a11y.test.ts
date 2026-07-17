@@ -225,7 +225,9 @@ describe("component a11y audit: BottomNav", () => {
   });
 
   it("should have aria-label on each nav item", () => {
+    expect(src).toContain("aria-label={badgeLabel ?");
     expect(src).toContain("aria-label={item.label}");
+    expect(src).toContain("aria-label={centerItem.label}");
   });
 
   it("should have aria-current for active page", () => {
@@ -237,8 +239,9 @@ describe("component a11y audit: BottomNav", () => {
     expect(src).toContain("min-w-[44px]");
   });
 
-  it("should have unread count aria-label", () => {
-    expect(src).toContain("条未读消息");
+  it("should expose the unread count to assistive technology", () => {
+    expect(src).toContain('className="sr-only"');
+    expect(src).toContain("getUnreadAccessibleLabel");
   });
 });
 
@@ -382,6 +385,7 @@ describe("global a11y CSS", () => {
 
 describe("root layout a11y", () => {
   const src = readComponentSource("src/app/layout.tsx");
+  const shellSrc = readComponentSource("src/components/layout/MemberShell.tsx");
 
   it("should have lang attribute on html element", () => {
     expect(src).toContain('lang="zh-CN"');
@@ -397,6 +401,6 @@ describe("root layout a11y", () => {
   });
 
   it("should have main-content landmark target", () => {
-    expect(src).toContain('id="main-content"');
+    expect(shellSrc).toContain('id="main-content"');
   });
 });

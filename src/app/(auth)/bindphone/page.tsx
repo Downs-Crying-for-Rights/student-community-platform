@@ -195,7 +195,7 @@ function BindPhoneContent() {
           </div>
           <CardTitle className="text-2xl">绑定手机号</CardTitle>
           <CardDescription>
-            为了账户安全，请绑定您的手机号
+            申请 DCR 权益互助前需要完成手机号验证。手机号仅用于账户安全、准入审核与风险控制，不会向其他用户公开。
           </CardDescription>
         </CardHeader>
 

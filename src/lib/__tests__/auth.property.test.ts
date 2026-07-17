@@ -334,29 +334,18 @@ describe("属性 11: 手机号登录隐含已绑定", () => {
     );
   }, 30000);
 
-  it("新用户手机号登录自动创建后 phone 字段等于登录手机号", async () => {
+  it("未注册手机号不能通过登录隐式创建账户", async () => {
     const authorize = await getSmsAuthorize();
 
     await fc.assert(
       fc.asyncProperty(arbChinesePhone, async (phone) => {
         vi.mocked(verifyCode).mockResolvedValue(true);
-
-        // User does not exist yet
         vi.mocked(prisma.user.findFirst).mockResolvedValue(null);
 
-        // Mock create to return a new user with the phone
-        vi.mocked(prisma.user.create).mockResolvedValue({
-          id: "new-user-1",
-          email: null,
-          nickname: null,
-          role: "USER",
-          phone,
-        } as any);
-
-        const user = await authorize({ phone, code: "888888" });
-
-        expect(user).not.toBeNull();
-        expect(user.phone).toBe(phone);
+        await expect(authorize({ phone, code: "888888" })).rejects.toThrow(
+          "手机号未注册，请通过注册页完成注册",
+        );
+        expect(prisma.user.create).not.toHaveBeenCalled();
       }),
       { numRuns: 100 },
     );

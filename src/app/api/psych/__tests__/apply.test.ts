@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 const mockUserFindUnique = vi.fn();
 const mockAccessApplicationFindFirst = vi.fn();
 const mockAccessApplicationCreate = vi.fn();
+const mockAuditLogCreate = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -15,6 +16,9 @@ vi.mock("@/lib/prisma", () => ({
     accessApplication: {
       findFirst: (...args: unknown[]) => mockAccessApplicationFindFirst(...args),
       create: (...args: unknown[]) => mockAccessApplicationCreate(...args),
+    },
+    auditLog: {
+      create: (...args: unknown[]) => mockAuditLogCreate(...args),
     },
   },
 }));

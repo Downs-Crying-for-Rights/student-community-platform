@@ -10,9 +10,8 @@ const mockCaseCount = vi.fn();
 const mockAppFindFirst = vi.fn();
 const mockAppCreate = vi.fn();
 
-vi.mock("@/lib/prisma", () => ({
-  default: {
-    user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
+vi.mock("@/lib/prisma", () => {
+  const transactionClient = {
     case: {
       create: (...args: unknown[]) => mockCaseCreate(...args),
       findMany: (...args: unknown[]) => mockCaseFindMany(...args),
@@ -22,8 +21,15 @@ vi.mock("@/lib/prisma", () => ({
       findFirst: (...args: unknown[]) => mockAppFindFirst(...args),
       create: (...args: unknown[]) => mockAppCreate(...args),
     },
-  },
-}));
+  };
+  return {
+    default: {
+      user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
+      ...transactionClient,
+      $transaction: vi.fn((operation: (tx: typeof transactionClient) => unknown) => operation(transactionClient)),
+    },
+  };
+});
 
 vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
@@ -100,7 +106,7 @@ describe("POST /api/cases", () => {
 
   it("应返回 201 即使用户无 DCR 访问权限（委托表提交不需要 dcrAccess）", async () => {
     setSession("user1", "USER");
-    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: false });
+    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: false, phone: "13800138000", quizPassed: true });
     mockAppFindFirst.mockResolvedValue(null);
     mockAppCreate.mockResolvedValue({ id: "app1" });
 
@@ -126,7 +132,7 @@ describe("POST /api/cases", () => {
 
   it("应返回 400 当参数校验失败", async () => {
     setSession("user1", "USER");
-    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: false });
+    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: false, phone: "13800138000", quizPassed: true });
 
     const { POST } = await import("../route");
     const res = await POST(makePostRequest({ category: "INVALID" }), { params: {} });
@@ -135,7 +141,7 @@ describe("POST /api/cases", () => {
 
   it("应成功创建委托", async () => {
     setSession("user1", "USER");
-    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: false });
+    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: false, phone: "13800138000", quizPassed: true });
     mockAppFindFirst.mockResolvedValue(null);
     mockAppCreate.mockResolvedValue({ id: "app1" });
 
@@ -178,7 +184,7 @@ describe("POST /api/cases", () => {
 
   it("应自动创建 AccessApplication 当用户无 dcrAccess 且无 PENDING 申请", async () => {
     setSession("user2", "USER");
-    mockUserFindUnique.mockResolvedValue({ id: "user2", dcrAccess: false });
+    mockUserFindUnique.mockResolvedValue({ id: "user2", dcrAccess: false, phone: "13800138000", quizPassed: true });
     mockAppFindFirst.mockResolvedValue(null); // no pending application
     mockAppCreate.mockResolvedValue({ id: "app-auto" });
 
@@ -210,13 +216,14 @@ describe("POST /api/cases", () => {
         status: "PENDING",
         pledgeText: "声明",
         applicantId: "user2",
+        caseId: "case2",
       },
     });
   });
 
-  it("不应重复创建 AccessApplication 当已有 PENDING 申请", async () => {
+  it("已有 PENDING 申请时应拒绝创建新的首次准入委托", async () => {
     setSession("user3", "USER");
-    mockUserFindUnique.mockResolvedValue({ id: "user3", dcrAccess: false });
+    mockUserFindUnique.mockResolvedValue({ id: "user3", dcrAccess: false, phone: "13800138000", quizPassed: true });
     mockAppFindFirst.mockResolvedValue({ id: "existing-app" }); // already has pending
 
     const now = new Date();
@@ -240,7 +247,9 @@ describe("POST /api/cases", () => {
       { params: {} },
     );
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("APPLICATION_ALREADY_PENDING");
+    expect(mockCaseCreate).not.toHaveBeenCalled();
     expect(mockAppCreate).not.toHaveBeenCalled();
   });
 

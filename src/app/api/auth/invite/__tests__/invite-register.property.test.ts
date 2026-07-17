@@ -66,12 +66,14 @@ const validPhone = fc
   .map(([second, rest]) => `1${second}${rest}`);
 // code: matches /^\d{6}$/
 const validSmsCode = fc.stringMatching(/^\d{6}$/);
+const validNickname = fc.stringMatching(/^[A-Za-z][A-Za-z0-9_-]{1,15}$/);
 
 const validBodyArb = fc.record({
   inviteCode: validInviteCode,
   email: validEmail,
   password: validPassword,
   phone: validPhone,
+  nickname: validNickname,
   code: validSmsCode,
 });
 
@@ -80,6 +82,7 @@ const requiredFields = [
   "email",
   "password",
   "phone",
+  "nickname",
   "code",
 ] as const;
 
@@ -114,10 +117,9 @@ describe("邀请码注册属性测试", () => {
   });
 
   /**
-   * **Validates: Requirements 3.1, 3.2**
-   * Property: valid invite code + complete identity → user created with dcrAccess=true and isAnonymous=false
+   * 邀请码只授予注册资格，不能旁路 DCR 安全准入。
    */
-  it("属性：有效邀请码 + 完整身份信息 → 用户 dcrAccess=true 且 isAnonymous=false", async () => {
+  it("属性：有效邀请码 + 完整身份信息 → 创建实名账号但不直接授予 DCR 权限", async () => {
     await fc.assert(
       fc.asyncProperty(validBodyArb, async (body) => {
         // Reset mocks for each property run
@@ -158,7 +160,8 @@ describe("邀请码注册属性测试", () => {
 
         expect(res.status).toBe(201);
         expect(capturedUserData).not.toBeNull();
-        expect(capturedUserData!.dcrAccess).toBe(true);
+        expect(capturedUserData).not.toHaveProperty("dcrAccess");
+        expect(capturedUserData).not.toHaveProperty("dcrPledgeSigned");
         expect(capturedUserData!.isAnonymous).toBe(false);
       }),
       { numRuns: 30 }

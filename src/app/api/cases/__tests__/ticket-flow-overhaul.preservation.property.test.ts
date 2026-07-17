@@ -58,6 +58,10 @@ vi.mock("@/lib/notification", () => ({
   createNotification: vi.fn(),
 }));
 
+vi.mock("@/lib/mail", () => ({
+  sendUserMail: vi.fn(),
+}));
+
 vi.mock("@/lib/utils", () => ({
   generateAnonymousId: () => "anon-test-id",
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
@@ -189,6 +193,7 @@ describe("Observation 2: 状态机转换规则不变", () => {
             status: transition.from,
             submitterId: "submitter-1",
             handlerId: transition.from === "OPENED" ? null : "handler-1",
+            requestStatus: "APPROVED",
             submitter: { id: "submitter-1" },
             handler: transition.from === "OPENED" ? null : { id: "handler-1" },
           });
@@ -208,6 +213,7 @@ describe("Observation 2: 状态机转换规则不变", () => {
                 }),
               },
               caseHandler: { create: vi.fn().mockResolvedValue({}) },
+              user: { update: vi.fn().mockResolvedValue({}) },
               timelineEvent: { create: vi.fn().mockResolvedValue({}) },
               message: { create: vi.fn().mockResolvedValue({}) },
             };
@@ -377,6 +383,7 @@ describe("Observation 5: DCR_HELPER 并发处理上限 5 个活跃工单", () =>
             status: "OPENED",
             submitterId: "submitter-1",
             handlerId: null,
+            requestStatus: "APPROVED",
             submitter: { id: "submitter-1" },
             handler: null,
           });
@@ -413,6 +420,7 @@ describe("Observation 5: DCR_HELPER 并发处理上限 5 个活跃工单", () =>
             status: "OPENED",
             submitterId: "submitter-1",
             handlerId: null,
+            requestStatus: "APPROVED",
             submitter: { id: "submitter-1" },
             handler: null,
           });
@@ -431,6 +439,7 @@ describe("Observation 5: DCR_HELPER 并发处理上限 5 个活跃工单", () =>
                 }),
               },
               caseHandler: { create: vi.fn().mockResolvedValue({}) },
+              user: { update: vi.fn().mockResolvedValue({}) },
               timelineEvent: { create: vi.fn().mockResolvedValue({}) },
               message: { create: vi.fn().mockResolvedValue({}) },
             };
@@ -451,14 +460,14 @@ describe("Observation 5: DCR_HELPER 并发处理上限 5 个活跃工单", () =>
 });
 
 
-// ==================== Observation 6: computeFlowStep 函数输出不变 ====================
+// ==================== Observation 6: computeFlowStep 四步准入契约 ====================
 // **Validates: Requirements 3.9**
 //
-// Preservation: computeFlowStep 函数逻辑保持不变
-// - null/CLOSED → step 1
-// - OPENED/NEED_MORE_INFO → step 2
-// - IN_PROGRESS + !quizPassed → step 3
-// - quizPassed=true → step 4
+// Current four-step contract:
+// - dcrAccess=true → step 4
+// - dcrAccess=false + quizPassed=false → step 1
+// - dcrAccess=false + quizPassed=true + null/CLOSED → step 2
+// - dcrAccess=false + quizPassed=true + active case → step 3
 
 describe("Observation 6: computeFlowStep 函数输出不变", () => {
   it("对于任意输入组合，computeFlowStep 返回正确的步骤", async () => {
@@ -473,17 +482,15 @@ describe("Observation 6: computeFlowStep 函数输出不变", () => {
           const { computeFlowStep } = await import("@/lib/dcr-flow-helpers");
           const result = computeFlowStep(caseStatus, quizPassed, dcrAccess);
 
-          // Verify the expected mapping:
-          if (quizPassed) {
+          // Verify the current four-step admission mapping.
+          if (dcrAccess) {
             expect(result).toBe(4);
-          } else if (caseStatus === null || caseStatus === "CLOSED") {
+          } else if (!quizPassed) {
             expect(result).toBe(1);
-          } else if (caseStatus === "OPENED" || caseStatus === "NEED_MORE_INFO") {
+          } else if (caseStatus === null || caseStatus === "CLOSED") {
             expect(result).toBe(2);
-          } else if (caseStatus === "IN_PROGRESS") {
-            expect(result).toBe(3);
           } else {
-            expect(result).toBe(1); // fallback
+            expect(result).toBe(3);
           }
         },
       ),

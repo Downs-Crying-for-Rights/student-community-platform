@@ -30,13 +30,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { reason, details, targetUserId, targetPostId, targetCommentId } = parsed.data;
+    const { reason, details, targetUserId, targetPostId, targetCommentId, targetTaskId } = parsed.data;
     const reporterId = req.user.id;
 
-    // Must specify at least one target
-    if (!targetUserId && !targetPostId && !targetCommentId) {
+    const targets = [targetUserId, targetPostId, targetCommentId, targetTaskId].filter(Boolean);
+    if (targets.length !== 1) {
       return NextResponse.json(
-        { error: "必须指定举报目标（用户、帖子或评论）" },
+        { error: "必须且只能指定一个举报目标（用户、帖子、评论或互助任务）" },
         { status: 400 },
       );
     }
@@ -49,6 +49,27 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
+    if (targetTaskId) {
+      const task = await prisma.mutualAidTask.findUnique({
+        where: { id: targetTaskId },
+        select: {
+          status: true,
+          requesterId: true,
+          helpSession: { select: { helperId: true } },
+        },
+      });
+
+      if (!task) {
+        return NextResponse.json({ error: "互助任务不存在" }, { status: 404 });
+      }
+
+      const isPrivileged = hasMinimumRole(req.user.role, "MODERATOR");
+      const isParticipant = task.requesterId === reporterId || task.helpSession?.helperId === reporterId;
+      if (task.status !== "OPEN" && !isParticipant && !isPrivileged) {
+        return NextResponse.json({ error: "无权举报此任务" }, { status: 403 });
+      }
+    }
+
     // Check for duplicate report from same user on same target
     const existingReport = await prisma.report.findFirst({
       where: {
@@ -56,6 +77,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         targetUserId: targetUserId ?? null,
         targetPostId: targetPostId ?? null,
         targetCommentId: targetCommentId ?? null,
+        targetTaskId: targetTaskId ?? null,
       },
     });
 
@@ -75,6 +97,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         targetUserId: targetUserId ?? null,
         targetPostId: targetPostId ?? null,
         targetCommentId: targetCommentId ?? null,
+        targetTaskId: targetTaskId ?? null,
       },
     });
 
@@ -132,6 +155,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           targetUser: { select: { id: true, nickname: true } },
           targetPost: { select: { id: true, title: true, status: true } },
           targetComment: { select: { id: true, content: true, isDeleted: true } },
+          targetTask: { select: { id: true, title: true, status: true } },
         },
       }),
       prisma.report.count({ where }),

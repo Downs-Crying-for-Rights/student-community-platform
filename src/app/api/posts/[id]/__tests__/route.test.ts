@@ -73,11 +73,43 @@ describe("GET /api/posts/[id]", () => {
     vi.clearAllMocks();
   });
 
-  it("应返回 401 当用户未登录", async () => {
+  it("未登录用户应可查看公开且已发布的帖子", async () => {
     mockGetServerSession.mockResolvedValue(null);
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      title: "公开帖子",
+      status: "PUBLISHED",
+      authorId: "user1",
+      author: { id: "user1", nickname: "用户1", avatar: null, isShadowBanned: false },
+      board: { id: "b1", name: "娱乐", zone: "PUBLIC" },
+      tags: [],
+      case_: null,
+    });
+
     const { GET } = await import("../../[id]/route");
     const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
-    expect(res.status).toBe(401);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.post.id).toBe("p1");
+    expect(data.post.author.isShadowBanned).toBeUndefined();
+  });
+
+  it("未登录用户不可查看非公开区帖子", async () => {
+    mockGetServerSession.mockResolvedValue(null);
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      status: "PUBLISHED",
+      authorId: "user1",
+      author: { id: "user1", nickname: "用户1", avatar: null, isShadowBanned: false },
+      board: { id: "b1", name: "DCR", zone: "DCR" },
+      tags: [],
+      case_: null,
+    });
+
+    const { GET } = await import("../../[id]/route");
+    const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
+    expect(res.status).toBe(404);
   });
 
   it("应返回 404 当帖子不存在", async () => {

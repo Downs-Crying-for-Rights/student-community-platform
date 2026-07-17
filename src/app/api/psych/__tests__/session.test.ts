@@ -9,6 +9,7 @@ const mockCreateNotification = vi.fn();
 const mockMessageCreate = vi.fn();
 const mockScanContent = vi.fn();
 const mockUserFindMany = vi.fn();
+const mockAuditLogCreate = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -21,6 +22,9 @@ vi.mock("@/lib/prisma", () => ({
     },
     user: {
       findMany: (...args: unknown[]) => mockUserFindMany(...args),
+    },
+    auditLog: {
+      create: (...args: unknown[]) => mockAuditLogCreate(...args),
     },
   },
 }));

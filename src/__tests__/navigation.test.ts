@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  adminNavItems,
+  bottomMoreNavItems,
+  bottomPrimaryNavItems,
+  isVisible,
+  moderationNavItems,
+  sidebarCoreNavItems,
+  sidebarZoneNavItems,
+} from "@/components/layout/navigation-config";
 
 /**
  * 全局路由与导航集成测试
@@ -190,218 +199,88 @@ describe("全局路由与导航集成", () => {
     });
   });
 
-  describe("BottomNav 导航链接验证", () => {
+  describe("共享导航配置验证", () => {
     const bottomNavSource = readSourceFile("components/layout/BottomNav.tsx");
-
-    it("应包含首页链接 /", () => {
-      expect(bottomNavSource).toContain('href="/"');
-    });
-
-    it("应包含发现页链接 /discover", () => {
-      expect(bottomNavSource).toContain('href="/discover"');
-    });
-
-    it("应包含发布页链接 /create", () => {
-      expect(bottomNavSource).toContain('href="/create"');
-    });
-
-    it("应包含消息页链接 /messages", () => {
-      expect(bottomNavSource).toContain('href="/messages"');
-    });
-
-    it("应包含个人主页链接 /u/me", () => {
-      expect(bottomNavSource).toContain('href: "/u/me"');
-    });
-
-    it("更多菜单应包含群聊标签入口", () => {
-      expect(bottomNavSource).toContain('href: "/messages?tab=chat"');
-    });
-
-    it("应包含五个导航项", () => {
-      const hrefMatches = bottomNavSource.match(/href:\s*"/g);
-      // navItems array has 5 href entries
-      expect(hrefMatches).not.toBeNull();
-      expect(hrefMatches!.length).toBeGreaterThanOrEqual(5);
-    });
-
-    it("移动端显示、PC 端隐藏 (lg:hidden)", () => {
-      expect(bottomNavSource).toContain("lg:hidden");
-    });
-  });
-
-  describe("Sidebar 导航链接与角色验证", () => {
     const sidebarSource = readSourceFile("components/layout/Sidebar.tsx");
 
-    it("核心导航应包含首页 /", () => {
-      expect(sidebarSource).toContain('href: "/"');
+    it("BottomNav 使用真实共享配置并保持移动端布局", () => {
+      expect(bottomNavSource).toContain('from "./navigation-config"');
+      expect(bottomNavSource).toContain("lg:hidden");
+      expect(bottomPrimaryNavItems.map((item) => item.href)).toEqual([
+        "/",
+        "/discover",
+        "/create",
+        "/messages",
+      ]);
+      expect(bottomMoreNavItems.map((item) => item.href)).toEqual([
+        "/u/me",
+        "/messages?tab=chat",
+        "/dcr",
+        "/psych",
+        "/moderation",
+      ]);
     });
 
-    it("核心导航应包含发现页 /discover", () => {
-      expect(sidebarSource).toContain('href: "/discover"');
-    });
-
-    it("核心导航应包含发布页 /create", () => {
-      expect(sidebarSource).toContain('href: "/create"');
-    });
-
-    it("核心导航应包含消息页 /messages", () => {
-      expect(sidebarSource).toContain('href: "/messages"');
-    });
-
-    it("核心导航应直接包含群聊入口", () => {
-      expect(sidebarSource).toContain('href: "/messages?tab=chat"');
-    });
-
-    it("核心导航应包含个人主页 /u/me", () => {
-      expect(sidebarSource).toContain('href: "/u/me"');
-    });
-
-    it("心理区入口应需要 psychAccess 权限", () => {
-      expect(sidebarSource).toContain("requirePsychAccess: true");
-      expect(sidebarSource).toContain('href: "/psych"');
-    });
-
-    it("DCR 区入口应需要 dcrAccess 权限", () => {
-      expect(sidebarSource).toContain("requireDcrAccess: true");
-      // Task 8.2 changed sidebar to have DCR sub-navigation items
-      expect(sidebarSource).toContain('href: "/dcr/tickets"');
-      expect(sidebarSource).toContain('href: "/dcr/helper"');
-      expect(sidebarSource).toContain('href: "/dcr/posts"');
-    });
-
-    it("审核入口应需要 MODERATOR 角色", () => {
-      expect(sidebarSource).toContain('href: "/moderation"');
-      expect(sidebarSource).toContain('"MODERATOR"');
-    });
-
-    it("管理后台入口应需要 ADMIN 角色", () => {
-      expect(sidebarSource).toContain('href: "/admin/users"');
-      expect(sidebarSource).toContain('href: "/admin/invites"');
-      expect(sidebarSource).toContain('href: "/admin/audit"');
-      expect(sidebarSource).toContain('href: "/admin/boards"');
-    });
-
-    it("设置链接应指向 /settings/profile", () => {
+    it("Sidebar 使用真实共享配置并保持桌面布局与设置入口", () => {
+      expect(sidebarSource).toContain('from "./navigation-config"');
       expect(sidebarSource).toContain('href="/settings/profile"');
-    });
-
-    it("PC 端显示、移动端隐藏 (lg:flex + hidden)", () => {
       expect(sidebarSource).toContain("lg:flex");
       expect(sidebarSource).toContain("hidden");
+      expect(sidebarCoreNavItems.map((item) => item.href)).toEqual([
+        "/",
+        "/discover",
+        "/messages",
+        "/messages?tab=chat",
+        "/create",
+        "/u/me",
+      ]);
     });
 
-    it("应定义角色层级 (ROLE_HIERARCHY)", () => {
-      expect(sidebarSource).toContain("ROLE_HIERARCHY");
-      expect(sidebarSource).toContain("USER");
-      expect(sidebarSource).toContain("TRUSTED_USER");
-      expect(sidebarSource).toContain("DCR_HELPER");
-      expect(sidebarSource).toContain("MODERATOR");
-      expect(sidebarSource).toContain("ADMIN");
-    });
-  });
-
-  describe("角色动态导航渲染逻辑验证", () => {
-    // Re-implement the visibility logic for testing
-    const ROLE_HIERARCHY: Record<string, number> = {
-      USER: 0,
-      TRUSTED_USER: 1,
-      DCR_HELPER: 2,
-      MODERATOR: 3,
-      ADMIN: 4,
-    };
-
-    interface NavItem {
-      href: string;
-      label: string;
-      minRole?: string;
-      requirePsychAccess?: boolean;
-      requireDcrAccess?: boolean;
-    }
-
-    interface AccessFlags {
-      psychAccess?: boolean;
-      dcrAccess?: boolean;
-    }
-
-    function hasMinRole(userRole: string, minRole: string): boolean {
-      return (
-        (ROLE_HIERARCHY[userRole] ?? 0) >= (ROLE_HIERARCHY[minRole] ?? 999)
+    it("普通用户只获得统一 DCR 入口，心理区仍受权限控制", () => {
+      const visible = sidebarZoneNavItems.filter((item) =>
+        isVisible(item, "USER", { dcrAccess: false }),
       );
-    }
-
-    function isVisible(
-      item: NavItem,
-      role: string,
-      flags: AccessFlags
-    ): boolean {
-      if (item.minRole && !hasMinRole(role, item.minRole)) return false;
-      if (item.requirePsychAccess && !flags.psychAccess) return false;
-      if (item.requireDcrAccess && !flags.dcrAccess) return false;
-      return true;
-    }
-
-    const allRoleItems: NavItem[] = [
-      { href: "/psych", label: "心理区", requirePsychAccess: true },
-      { href: "/dcr/tickets", label: "工单列表", requireDcrAccess: true },
-      { href: "/dcr/helper", label: "Helper 工作台", requireDcrAccess: true, minRole: "DCR_HELPER" },
-      { href: "/dcr/posts", label: "DCR 帖子", requireDcrAccess: true },
-      { href: "/moderation", label: "审核", minRole: "MODERATOR" },
-      { href: "/admin/users", label: "用户管理", minRole: "ADMIN" },
-      { href: "/admin/invites", label: "邀请码", minRole: "ADMIN" },
-      { href: "/admin/audit", label: "审计日志", minRole: "ADMIN" },
-      { href: "/admin/boards", label: "板块管理", minRole: "ADMIN" },
-    ];
-
-    it("普通 USER 无专区权限时不可见任何受限导航项", () => {
-      const visible = allRoleItems.filter((i) =>
-        isVisible(i, "USER", {})
-      );
-      expect(visible).toHaveLength(0);
+      expect(visible.map((item) => item.href)).toEqual(["/dcr"]);
+      expect(
+        sidebarZoneNavItems.filter((item) =>
+          isVisible(item, "USER", { psychAccess: true }),
+        ).map((item) => item.href),
+      ).toEqual(["/psych", "/dcr"]);
     });
 
-    it("USER + psychAccess 仅可见心理区", () => {
-      const visible = allRoleItems.filter((i) =>
-        isVisible(i, "USER", { psychAccess: true })
-      );
-      expect(visible).toHaveLength(1);
-      expect(visible[0].href).toBe("/psych");
+    it("Helper 工作台独立且只对 helper/admin/显式 helper 权限可见", () => {
+      const helper = sidebarZoneNavItems.find((item) => item.href === "/dcr/helper");
+      expect(helper).toBeDefined();
+      expect(isVisible(helper!, "USER", {})).toBe(false);
+      expect(isVisible(helper!, "DCR_HELPER", {})).toBe(true);
+      expect(isVisible(helper!, "ADMIN", {})).toBe(true);
+      expect(isVisible(helper!, "USER", { dcrHelperAccess: true })).toBe(true);
     });
 
-    it("USER + dcrAccess 仅可见 DCR 区", () => {
-      const visible = allRoleItems.filter((i) =>
-        isVisible(i, "USER", { dcrAccess: true })
-      );
-      expect(visible).toHaveLength(2);
-      expect(visible[0].href).toBe("/dcr/tickets");
-      expect(visible[1].href).toBe("/dcr/posts");
-    });
-
-    it("MODERATOR 可见审核入口但不可见管理后台", () => {
-      const visible = allRoleItems.filter((i) =>
-        isVisible(i, "MODERATOR", {})
-      );
-      expect(visible).toHaveLength(1);
-      expect(visible[0].href).toBe("/moderation");
-    });
-
-    it("ADMIN 可见审核入口和全部管理后台入口", () => {
-      const visible = allRoleItems.filter((i) =>
-        isVisible(i, "ADMIN", {})
-      );
-      expect(visible).toHaveLength(5); // moderation + 4 admin
-      const hrefs = visible.map((i) => i.href);
-      expect(hrefs).toContain("/moderation");
-      expect(hrefs).toContain("/admin/users");
-      expect(hrefs).toContain("/admin/invites");
-      expect(hrefs).toContain("/admin/audit");
-      expect(hrefs).toContain("/admin/boards");
-    });
-
-    it("ADMIN + 全部专区权限可见所有导航项", () => {
-      const visible = allRoleItems.filter((i) =>
-        isVisible(i, "ADMIN", { psychAccess: true, dcrAccess: true })
-      );
-      expect(visible).toHaveLength(9);
+    it("审核与管理端入口配置保持不变", () => {
+      expect(moderationNavItems).toEqual([
+        expect.objectContaining({ href: "/moderation", minRole: "MODERATOR" }),
+      ]);
+      expect(adminNavItems.map((item) => item.href)).toEqual([
+        "/admin/users",
+        "/admin/content",
+        "/admin/invites",
+        "/admin/audit",
+        "/admin/boards",
+        "/admin/kb",
+        "/admin/applications",
+        "/admin/dcr/reviews",
+        "/admin/dcr/questions",
+        "/admin/quiz",
+        "/admin/chat-rooms",
+        "/admin/disputes",
+        "/admin/tasks",
+        "/admin/logs",
+        "/admin/telemetry",
+        "/admin/system",
+        "/admin/dcr/tutorial",
+        "/admin/site-content",
+      ]);
     });
   });
 

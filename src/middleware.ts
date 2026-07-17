@@ -10,7 +10,7 @@ const isSetUsernamePath = (pathname: string) =>
   SET_USERNAME_PATHS.some((p) => pathname.startsWith(p));
 
 /**
- * 白名单路径 — 不触发手机号绑定 / 引导 / 昵称 重定向
+ * 白名单路径 — 不触发引导 / 昵称重定向
  */
 export const AUTH_WHITELIST = [
   "/api/auth",
@@ -31,7 +31,7 @@ export function isAuthWhitelisted(pathname: string): boolean {
 /**
  * 认证中间件 — 纯 JWT 检测（无 DB 查询，兼容 Edge Runtime）
  *
- * 检查顺序：昵称 → 手机号 → 新手引导
+ * 检查顺序：昵称 → 新手引导
  * 不设置用户名无法进行任何操作（仅允许 /set-username 和必需 API）
  *
  * 注意：Prisma Client 不支持 Edge Runtime，因此中间件仅依赖 JWT token。
@@ -55,13 +55,8 @@ export default async function middleware(req: NextRequest) {
     }
   }
 
-  // ========== 第2优先级：手机号绑定 ==========
-  if (!token.phone && !isAuthWhitelisted(pathname)) {
-    return NextResponse.redirect(new URL("/bindphone", req.url));
-  }
-
-  // ========== 第3优先级：新手引导 ==========
-  if (token.phone && !(token.onboardingDone || token.quizPassed)) {
+  // ========== 第2优先级：新手引导 ==========
+  if (!(token.onboardingDone || token.quizPassed)) {
     if (pathname.startsWith("/onboarding") || pathname.startsWith("/api/onboarding")) {
       return NextResponse.next();
     }

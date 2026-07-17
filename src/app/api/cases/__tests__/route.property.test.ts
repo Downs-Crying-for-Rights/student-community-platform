@@ -167,20 +167,27 @@ describe("Property: GET /api/cases 对所有 (dcrAccess, role, hasCase) 组合�
 
         expect(res.status).toBe(200);
 
-        // DCR_HELPER uses AND/OR structure (Task 4.1 fix):
-        // where.AND = [{ OR: [{ handlers: { some: { userId } } }, { submitterId: userId }, { status: "OPENED" }] }]
+        // DCR_HELPER can always see their own submissions. Cases handled by
+        // them and unassigned OPENED cases are visible only after approval.
         const call = mockCaseFindMany.mock.calls[0][0];
         expect(call.where.AND).toBeDefined();
         expect(Array.isArray(call.where.AND)).toBe(true);
         const orClause = call.where.AND[0];
-        expect(orClause.OR).toBeDefined();
-        expect(orClause.OR).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ handlers: { some: { userId } } }),
-            expect.objectContaining({ submitterId: userId }),
-            expect.objectContaining({ status: "OPENED" }),
-          ]),
-        );
+        expect(orClause.OR).toEqual([
+          { submitterId: userId },
+          {
+            AND: [
+              { handlers: { some: { userId } } },
+              { requestStatus: "APPROVED" },
+            ],
+          },
+          {
+            AND: [
+              { status: "OPENED" },
+              { requestStatus: "APPROVED" },
+            ],
+          },
+        ]);
       }),
       { numRuns: 50 },
     );
@@ -209,18 +216,22 @@ describe("Property: GET /api/cases 对所有 (dcrAccess, role, hasCase) 组合�
 
         const call = mockCaseFindMany.mock.calls[0][0];
         if (dcrAccess) {
-          // dcrAccess=true → AND/OR structure (Task 4.1 fix):
-          // where.AND = [{ OR: [{ handlers: { some: { userId } } }, { submitterId: userId }, { status: "OPENED" }] }]
-          expect(call.where.AND).toBeDefined();
-          expect(Array.isArray(call.where.AND)).toBe(true);
-          const orClause = call.where.AND[0];
-          expect(orClause.OR).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ handlers: { some: { userId } } }),
-              expect.objectContaining({ submitterId: userId }),
-              expect.objectContaining({ status: "OPENED" }),
-            ]),
-          );
+          // dcrAccess alone does not make a regular USER a helper or expose
+          // the public OPENED queue. They see own submissions plus approved
+          // cases explicitly assigned through CaseHandler.
+          expect(call.where.AND).toEqual([
+            {
+              OR: [
+                { submitterId: userId },
+                {
+                  AND: [
+                    { handlers: { some: { userId } } },
+                    { requestStatus: "APPROVED" },
+                  ],
+                },
+              ],
+            },
+          ]);
         } else {
           // dcrAccess=false → submitterId constraint only
           expect(call.where.submitterId).toBe(userId);

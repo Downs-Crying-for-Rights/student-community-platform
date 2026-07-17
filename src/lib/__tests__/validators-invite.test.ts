@@ -7,6 +7,7 @@ const validInput = {
   password: "password123",
   phone: "13800138000",
   code: "123456",
+  nickname: "测试用户",
 };
 
 describe("inviteRegisterSchema", () => {

@@ -2,21 +2,16 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
+import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
 
 const applySchema = z.object({
   pledgeText: z.string().min(1, "守则声明不能为空"),
+  caseId: z.string().min(1, "必须指定关联委托"),
 });
 
 /**
- * POST /api/dcr/apply
- * Submit a DCR zone access application with signed pledge declaration.
- * - Requires authentication
- * - pledgeText must contain required phrases
- * - Returns 409 if user already has dcrAccess
- * - Returns 409 if user already has a PENDING DCR application
- * - Creates AccessApplication with type=DCR, pledgeText
- *
- * Validates: Requirements 9.1, 9.2
+ * 兼容旧客户端的 DCR 申请入口。
+ * 新申请必须已绑定手机号、通过考核，并存在管理员审核通过的委托。
  */
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   try {
@@ -32,7 +27,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { pledgeText } = parsed.data;
+    const { pledgeText, caseId } = parsed.data;
 
     // Validate pledge text contains required phrases
     if (
@@ -45,10 +40,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    // Check if user already has dcrAccess
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { dcrAccess: true },
+      select: { id: true, dcrAccess: true, phone: true, quizPassed: true },
     });
 
     if (!user) {
@@ -62,29 +56,65 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    // Check if user already has a PENDING DCR application
-    const pendingApplication = await prisma.accessApplication.findFirst({
-      where: {
-        applicantId: userId,
-        type: "DCR",
-        status: "PENDING",
-      },
-    });
-
-    if (pendingApplication) {
+    if (!user.phone) {
       return NextResponse.json(
-        { error: "您已有待审核的 DCR 准入申请" },
-        { status: 409 },
+        { error: "申请 DCR 前请先完成手机号验证", next: "/bindphone?callbackUrl=/dcr" },
+        { status: 403 },
       );
     }
 
-    // Create application
+    if (!user.quizPassed) {
+      return NextResponse.json(
+        { error: "请先完成 DCR 入频考核", next: "/dcr/quiz" },
+        { status: 403 },
+      );
+    }
+
+    const [caseRecord, existingForCase, pendingApplication] = await Promise.all([
+      prisma.case.findUnique({
+        where: { id: caseId },
+        select: { id: true, submitterId: true, requestStatus: true },
+      }),
+      prisma.accessApplication.findUnique({ where: { caseId } }),
+      prisma.accessApplication.findFirst({
+        where: { applicantId: userId, type: "DCR", status: "PENDING" },
+      }),
+    ]);
+
+    if (existingForCase) {
+      if (existingForCase.applicantId !== userId || existingForCase.type !== "DCR") {
+        return NextResponse.json({ error: "该委托已关联其他准入申请" }, { status: 409 });
+      }
+      return NextResponse.json({ application: existingForCase, existing: true });
+    }
+
+    const decision = evaluateDcrAdmission({
+      stage: "CREATE_APPLICATION",
+      user: {
+        id: userId,
+        phone: user.phone,
+        quizPassed: user.quizPassed,
+        dcrAccess: user.dcrAccess,
+      },
+      case: caseRecord,
+      hasOtherPendingApplication: Boolean(pendingApplication),
+    });
+
+    if (!decision.allowed) {
+      const status = decision.code === "APPLICATION_ALREADY_PENDING" ? 409 : 403;
+      return NextResponse.json(
+        { error: decision.reason, code: decision.code, next: decision.next },
+        { status },
+      );
+    }
+
     const application = await prisma.accessApplication.create({
       data: {
         type: "DCR",
         status: "PENDING",
         pledgeText,
         applicantId: userId,
+        caseId,
       },
     });
 

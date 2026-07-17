@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
+import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
 
 const answerSchema = z.object({
   questionId: z.string(),
@@ -19,10 +20,31 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     // 已拥有 DCR 权限的用户无需再考核
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { dcrAccess: true },
+      select: { id: true, dcrAccess: true, phone: true, quizPassed: true },
     });
-    if (user?.dcrAccess) {
+    if (!user) {
+      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
+    }
+    const decision = evaluateDcrAdmission({
+      stage: "START_QUIZ",
+      user: {
+        id: user.id,
+        phone: user.phone,
+        quizPassed: user.quizPassed,
+        dcrAccess: user.dcrAccess,
+      },
+    });
+    if (!decision.allowed) {
+      return NextResponse.json(
+        { error: decision.reason, code: decision.code, next: decision.next },
+        { status: 403 },
+      );
+    }
+    if (user.dcrAccess) {
       return NextResponse.json({ completed: true, reason: "已拥有 DCR 访问权限" });
+    }
+    if (user.quizPassed) {
+      return NextResponse.json({ completed: true, reason: "已通过 DCR 入频考核" });
     }
 
     // 已有审核中申请的无需重复考核（避免多次提交）
@@ -56,6 +78,32 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   try {
     const userId = req.user.id;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, dcrAccess: true, phone: true, quizPassed: true },
+    });
+    if (!user) {
+      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
+    }
+    const decision = evaluateDcrAdmission({
+      stage: "START_QUIZ",
+      user: {
+        id: user.id,
+        phone: user.phone,
+        quizPassed: user.quizPassed,
+        dcrAccess: user.dcrAccess,
+      },
+    });
+    if (!decision.allowed) {
+      return NextResponse.json(
+        { error: decision.reason, code: decision.code, next: decision.next },
+        { status: 403 },
+      );
+    }
+    if (user.dcrAccess) {
+      return NextResponse.json({ completed: true, reason: "已拥有 DCR 访问权限" });
+    }
+
     const body = await req.json();
     const parsed = quizSubmitSchema.safeParse(body);
     if (!parsed.success) {

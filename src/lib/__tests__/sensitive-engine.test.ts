@@ -11,7 +11,7 @@ const mockWords = vi.hoisted(() => [
   { word: "脏话", category: "PROFANITY" as const },
 ]);
 
-const redisStore = vi.hoisted(() => new Map<string, string>());
+const redisStore = vi.hoisted(() => new Map<string, Record<string, string>>());
 
 vi.mock("../prisma", () => ({
   default: {
@@ -25,14 +25,29 @@ vi.mock("../prisma", () => ({
 
 vi.mock("../redis", () => ({
   default: {
-    get: vi.fn(async (key: string) => redisStore.get(key) ?? null),
-    set: vi.fn(async (key: string, value: string) => {
-      redisStore.set(key, value);
-      return "OK";
-    }),
+    hgetall: vi.fn(async (key: string) => redisStore.get(key) ?? {}),
     del: vi.fn(async (key: string) => {
       redisStore.delete(key);
       return 1;
+    }),
+    pipeline: vi.fn(() => {
+      const operations: Array<() => void> = [];
+      const pipeline = {
+        del: vi.fn((key: string) => {
+          operations.push(() => redisStore.delete(key));
+          return pipeline;
+        }),
+        hset: vi.fn((key: string, entries: Record<string, string>) => {
+          operations.push(() => redisStore.set(key, { ...entries }));
+          return pipeline;
+        }),
+        expire: vi.fn(() => pipeline),
+        exec: vi.fn(async () => {
+          operations.forEach((operation) => operation());
+          return [];
+        }),
+      };
+      return pipeline;
     }),
   },
 }));
@@ -66,9 +81,9 @@ describe("loadSensitiveWords", () => {
     expect(prisma.sensitiveWord.findMany).toHaveBeenCalledTimes(1);
   });
 
-  it("should fall back to DB when Redis get fails", async () => {
+  it("should fall back to DB when Redis hash read fails", async () => {
     const redis = (await import("../redis")).default;
-    (redis.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    (redis.hgetall as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error("Redis down")
     );
     const words = await loadSensitiveWords();
@@ -178,7 +193,7 @@ describe("invalidateSensitiveWordsCache", () => {
   it("should delete the cache key from Redis", async () => {
     const redis = (await import("../redis")).default;
     await invalidateSensitiveWordsCache();
-    expect(redis.del).toHaveBeenCalledWith("sensitive-words:all");
+    expect(redis.del).toHaveBeenCalledWith("sensitive-words:entries");
   });
 
   it("should not throw when Redis is unavailable", async () => {

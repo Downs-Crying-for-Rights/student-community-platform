@@ -141,12 +141,8 @@ function LoginContent() {
   // Registration state
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
-  const [regPhone, setRegPhone] = useState("");
   const [regNickname, setRegNickname] = useState("");
-  const [regCode, setRegCode] = useState("");
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
-  const [regCountdown, setRegCountdown] = useState(0);
-  const regCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [agreedKeys, setAgreedKeys] = useState<Record<string, boolean>>({});
   const [showAgreement, setShowAgreement] = useState("");
   const [agreementContent, setAgreementContent] = useState("");
@@ -186,7 +182,6 @@ function LoginContent() {
   useEffect(() => {
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
-      if (regCountdownRef.current) clearInterval(regCountdownRef.current);
       if (inviteCountdownRef.current) clearInterval(inviteCountdownRef.current);
     };
   }, []);
@@ -493,8 +488,8 @@ function LoginContent() {
 
       // 自动登录：注册成功后用密码登录以获取 JWT
       const signInRes = await signIn("credentials-password", {
-        email: regEmail.trim(),
-        password: regPassword,
+        email: inviteEmail.trim(),
+        password: invitePassword,
         redirect: false,
         callbackUrl: "/",
       });
@@ -517,54 +512,6 @@ function LoginContent() {
   }
 
   // ===== Registration =====
-  async function handleRegSendCode() {
-    setRegErrors({});
-
-    const result = phoneSchema.safeParse(regPhone.trim());
-    if (!result.success) {
-      setRegErrors((prev) => ({ ...prev, phone: result.error.issues[0].message }));
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/sms/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: regPhone.trim(), purpose: "login" }),
-      });
-
-      if (res.status === 429) {
-        setRegErrors((prev) => ({ ...prev, phone: "请求过于频繁，请稍后再试" }));
-        return;
-      }
-
-      if (!res.ok) {
-        const data = await res.json();
-        setRegErrors((prev) => ({ ...prev, phone: data.error || "验证码发送失败" }));
-        return;
-      }
-
-      setRegCountdown(60);
-      if (regCountdownRef.current) clearInterval(regCountdownRef.current);
-      regCountdownRef.current = setInterval(() => {
-        setRegCountdown((prev) => {
-          if (prev <= 1) {
-            if (regCountdownRef.current) clearInterval(regCountdownRef.current);
-            regCountdownRef.current = null;
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } catch {
-      setRegErrors((prev) => ({ ...prev, phone: "网络错误，请检查网络连接后重试" }));
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handleRegisterSubmit(e: React.FormEvent) {
     e.preventDefault();
     setRegErrors({});
@@ -573,9 +520,7 @@ function LoginContent() {
     const result = registerSchema.safeParse({
       email: regEmail.trim(),
       password: regPassword,
-      phone: regPhone.trim(),
       nickname: regNickname.trim(),
-      code: regCode.trim(),
     });
 
     if (!result.success) {
@@ -597,9 +542,7 @@ function LoginContent() {
         body: JSON.stringify({
           email: regEmail.trim(),
           password: regPassword,
-          phone: regPhone.trim(),
           nickname: regNickname.trim(),
-          code: regCode.trim(),
         }),
       });
 
@@ -610,7 +553,22 @@ function LoginContent() {
         return;
       }
 
-      router.push("/");
+      const signInRes = await signIn("credentials-password", {
+        email: regEmail.trim(),
+        password: regPassword,
+        redirect: false,
+        callbackUrl: "/",
+      });
+
+      if (signInRes?.error) {
+        setErrorMessage("注册成功，但自动登录失败，请使用邮箱和密码登录");
+        setView("form");
+        setActiveTab("password");
+        setPwEmail(regEmail.trim());
+        return;
+      }
+
+      router.push(signInRes?.url || "/");
       router.refresh();
     } catch {
       setErrorMessage("网络错误，请检查网络连接后重试。");
@@ -814,68 +772,6 @@ function LoginContent() {
                 {regErrors.password && (
                   <p id="reg-password-error" className="text-xs text-red-500" role="alert">
                     {regErrors.password}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="reg-phone">手机号</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="reg-phone"
-                    type="tel"
-                    placeholder="请输入手机号"
-                    value={regPhone}
-                    onChange={(e) => {
-                      setRegPhone(e.target.value);
-                      if (regErrors.phone) setRegErrors((prev) => ({ ...prev, phone: "" }));
-                    }}
-                    autoComplete="tel"
-                    disabled={loading}
-                    className="flex-1"
-                    maxLength={11}
-                    aria-invalid={!!regErrors.phone}
-                    aria-describedby={regErrors.phone ? "reg-phone-error" : undefined}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleRegSendCode}
-                    disabled={loading || regCountdown > 0 || !regPhone.trim()}
-                    className="shrink-0 whitespace-nowrap"
-                    aria-label={regCountdown > 0 ? `${regCountdown} 秒后可重新发送` : "发送验证码"}
-                  >
-                    {regCountdown > 0 ? `${regCountdown}s` : "发送验证码"}
-                  </Button>
-                </div>
-                {regErrors.phone && (
-                  <p id="reg-phone-error" className="text-xs text-red-500" role="alert">
-                    {regErrors.phone}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="reg-code">验证码</Label>
-                <Input
-                  id="reg-code"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="请输入 6 位验证码"
-                  value={regCode}
-                  onChange={(e) => {
-                    setRegCode(e.target.value);
-                    if (regErrors.code) setRegErrors((prev) => ({ ...prev, code: "" }));
-                  }}
-                  autoComplete="one-time-code"
-                  disabled={loading}
-                  maxLength={6}
-                  aria-invalid={!!regErrors.code}
-                  aria-describedby={regErrors.code ? "reg-code-error" : undefined}
-                />
-                {regErrors.code && (
-                  <p id="reg-code-error" className="text-xs text-red-500" role="alert">
-                    {regErrors.code}
                   </p>
                 )}
               </div>
@@ -1108,7 +1004,7 @@ function LoginContent() {
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  使用邀请码注册将自动获得 DCR 区域访问权限
+                  使用邀请码完成注册后，仍需通过 DCR 安全准入流程
                 </p>
                 <div className="flex gap-2">
                   <Button

@@ -6,7 +6,9 @@ import { dcrCategorySchema, paginationSchema } from "@/lib/validators";
 import { extractFields, type DelegationInput } from "@/lib/dcr-field-extractor";
 import { reviewDelegation } from "@/lib/dcr-review-rules";
 import { scanContent } from "@/lib/sensitive-engine";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
 
 // ==================== Schemas ====================
 
@@ -22,6 +24,17 @@ const createCaseSchema = z.object({
   expectedHelperProvince: z.string().optional(),
   riskPreference: z.string().optional(),
 });
+
+class DcrAdmissionError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly next?: string,
+  ) {
+    super(message);
+    this.name = "DcrAdmissionError";
+  }
+}
 
 const caseStatusEnum = z.enum(["OPENED", "IN_PROGRESS", "NEED_MORE_INFO", "CLOSED"]);
 
@@ -62,11 +75,25 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     // Verify user exists
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, dcrAccess: true },
+      select: { id: true, dcrAccess: true, phone: true, quizPassed: true },
     });
 
     if (!user) {
       return NextResponse.json({ error: "用户不存在" }, { status: 404 });
+    }
+
+    if (!user.dcrAccess && !user.phone) {
+      return NextResponse.json(
+        { error: "提交 DCR 委托前请先完成手机号验证", next: "/bindphone?callbackUrl=/dcr/delegate" },
+        { status: 403 },
+      );
+    }
+
+    if (!user.dcrAccess && !user.quizPassed) {
+      return NextResponse.json(
+        { error: "提交 DCR 委托前请先完成入频考核", next: "/dcr/quiz" },
+        { status: 403 },
+      );
     }
 
     const body = await req.json();
@@ -117,57 +144,105 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     const rawText = formText + " " + pledgeText;
     const reviewResult = reviewDelegation(extraction, rawText);
 
-    // ---- 创建 Case ----
-    const caseRecord = await prisma.case.create({
-      data: {
-        category,
-        formData: formData as unknown as import("@prisma/client").Prisma.InputJsonValue,
-        pledgeText,
-        status: "OPENED",
-        requestStatus: "PENDING",
-        reviewNote: "委托已提交，正在等待管理员审核",
-        extractedFields: extraction.extractedFields as unknown as import("@prisma/client").Prisma.InputJsonValue,
-        missingFields: extraction.missingFields,
-        sensitiveHitCount,
-        grade,
-        timeRange,
-        province,
-        city,
-        expectedHelperProvince,
-        riskPreference,
-        submitterId: userId,
-        timeline: {
-          create: {
-            action: "委托创建",
-            newStatus: "OPENED",
-            details: "委托已提交，正在等待管理员审核；审核通过前仅提交者和管理员可见",
-          },
-        },
-      },
-      include: {
-        submitter: { select: { id: true, nickname: true } },
-        timeline: true,
-      },
-    });
+    // ---- 创建 Case，并把首次准入申请原子地绑定到该 Case ----
+    const caseRecord = await prisma.$transaction(async (tx) => {
+      let hasOtherPendingApplication = false;
+      if (!user.dcrAccess) {
+        hasOtherPendingApplication = Boolean(await tx.accessApplication.findFirst({
+          where: { applicantId: userId, type: "DCR", status: "PENDING" },
+          select: { id: true },
+        }));
+      }
 
-    // Auto-create AccessApplication for admin review if user doesn't have dcrAccess
-    // and doesn't already have a PENDING DCR application
-    if (!user.dcrAccess) {
-      const existingPending = await prisma.accessApplication.findFirst({
-        where: { applicantId: userId, type: "DCR", status: "PENDING" },
+      const admissionDecision = evaluateDcrAdmission({
+        stage: "SUBMIT_CASE",
+        user: {
+          id: user.id,
+          phone: user.phone,
+          quizPassed: user.quizPassed,
+          dcrAccess: user.dcrAccess,
+        },
+        hasOtherPendingApplication,
       });
 
-      if (!existingPending) {
-        await prisma.accessApplication.create({
+      if (!admissionDecision.allowed) {
+        throw new DcrAdmissionError(
+          admissionDecision.code,
+          admissionDecision.reason,
+          admissionDecision.next,
+        );
+      }
+
+      const createdCase = await tx.case.create({
+        data: {
+          category,
+          formData: formData as unknown as Prisma.InputJsonValue,
+          pledgeText,
+          status: "OPENED",
+          requestStatus: "PENDING",
+          reviewNote: "委托已提交，正在等待管理员审核",
+          extractedFields: extraction.extractedFields as unknown as Prisma.InputJsonValue,
+          missingFields: extraction.missingFields,
+          sensitiveHitCount,
+          grade,
+          timeRange,
+          province,
+          city,
+          expectedHelperProvince,
+          riskPreference,
+          submitterId: userId,
+          timeline: {
+            create: {
+              action: "委托创建",
+              newStatus: "OPENED",
+              details: "委托已提交，正在等待管理员审核；审核通过前仅提交者和管理员可见",
+            },
+          },
+        },
+        include: {
+          submitter: { select: { id: true, nickname: true } },
+          timeline: true,
+        },
+      });
+
+      if (!user.dcrAccess) {
+        const createApplicationDecision = evaluateDcrAdmission({
+          stage: "CREATE_APPLICATION",
+          user: {
+            id: user.id,
+            phone: user.phone,
+            quizPassed: user.quizPassed,
+            dcrAccess: user.dcrAccess,
+          },
+          case: {
+            id: createdCase.id,
+            submitterId: user.id,
+            requestStatus: "PENDING",
+          },
+          hasOtherPendingApplication: false,
+        });
+
+        if (!createApplicationDecision.allowed) {
+          throw new DcrAdmissionError(
+            createApplicationDecision.code,
+            createApplicationDecision.reason,
+            createApplicationDecision.next,
+          );
+        }
+
+        await tx.accessApplication.create({
           data: {
             type: "DCR",
             status: "PENDING",
             pledgeText,
             applicantId: userId,
+            caseId: createdCase.id,
           },
         });
       }
-    }
+
+      return createdCase;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     // Log audit
     await logAudit(
@@ -194,6 +269,12 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof DcrAdmissionError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code, next: error.next },
+        { status: error.code === "APPLICATION_ALREADY_PENDING" ? 409 : 403 },
+      );
+    }
     console.error("POST /api/cases error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

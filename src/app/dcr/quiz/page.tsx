@@ -28,7 +28,7 @@ const FALLBACK_TUTORIAL_CHAPTERS: TutorialChapter[] = [
     title: "DCR 互助区规则",
     paragraphs: [
       "DCR 互助区是一个权益信息互助与合规工单流转空间。所有参与者需遵守平台规则，通过结构化表单提交互助请求。",
-      "互助区采用四步流程：填写委托表 → 管理员审核 → 考核测试 → 加入互助队伍。每一步都有明确的要求和标准。",
+      "DCR 准入采用四步流程：验证手机号 → 完成入频考核 → 提交委托表 → 管理员审核。审核通过后方可进入互助区。每一步都有明确的要求和标准。",
       "工单内容应基于事实客观描述违规行为，不得包含谣言、侮辱性语言或夸大事实的内容。恶意提交虚假举报信息将导致互助资格被取消。",
     ],
   },
@@ -278,6 +278,7 @@ export default function QuizPage() {
       setPhase("result");
       // Fetch application status if passed
       if (data.passed) {
+        await update();
         setAppStatusLoading(true);
         try {
           const statusRes = await fetch("/api/dcr/progress");

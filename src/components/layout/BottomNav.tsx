@@ -4,103 +4,103 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import {
-  Home, Compass, Plus, MessageCircle, Ellipsis,
-  User, MessagesSquare, Shield, ShieldCheck,
-  FileText, Lock, Heart, Repeat,
+  Home,
+  Compass,
+  Plus,
+  MessageCircle,
+  Ellipsis,
+  User,
+  MessagesSquare,
+  Shield,
+  ShieldCheck,
+  Heart,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  bottomMoreNavItems,
+  bottomPrimaryNavItems,
+  formatUnreadCount,
+  getUnreadAccessibleLabel,
+  isActive,
+  isVisible,
+  type BottomPrimaryNavigationItem,
+  type NavigationIconName,
+  type NavigationItem,
+} from "./navigation-config";
 
 export interface BottomNavProps {
   unreadCount?: number;
 }
 
-/* ========== Constants ========== */
-
-const ROLE_HIERARCHY: Record<string, number> = {
-  USER: 0, TRUSTED_USER: 1, DCR_HELPER: 2,
-  MODERATOR: 3, ADMIN: 4, SUPER_ADMIN: 5,
+const NAV_ICONS: Partial<Record<NavigationIconName, LucideIcon>> = {
+  home: Home,
+  compass: Compass,
+  plus: Plus,
+  message: MessageCircle,
+  user: User,
+  messages: MessagesSquare,
+  shield: Shield,
+  "shield-check": ShieldCheck,
+  heart: Heart,
 };
 
-interface MoreItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  minRole?: string;
-  requireDcrAccess?: boolean;
-  requirePsychAccess?: boolean;
+function getIcon(item: NavigationItem): LucideIcon {
+  const Icon = NAV_ICONS[item.icon];
+  if (!Icon) throw new Error(`BottomNav icon is not configured: ${item.icon}`);
+  return Icon;
 }
-
-/** Items shown in the "更多" slide-up sheet */
-const moreItems: MoreItem[] = [
-  { href: "/u/me", label: "我的", icon: User },
-  { href: "/messages?tab=chat", label: "群聊", icon: MessagesSquare },
-  { href: "/dcr", label: "DCR 互助", icon: ShieldCheck, requireDcrAccess: true },
-  { href: "/dcr/tasks", label: "互助任务", icon: FileText, requireDcrAccess: true },
-  { href: "/dcr/tickets", label: "我的工单", icon: Lock, requireDcrAccess: true },
-  { href: "/dcr/cycles", label: "互助闭环", icon: Repeat, requireDcrAccess: true },
-  { href: "/psych", label: "心理区", icon: Heart, requirePsychAccess: true },
-  { href: "/moderation", label: "审核管理", icon: Shield, minRole: "MODERATOR" },
-];
-
-/* ========== Component ========== */
 
 export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const role = (session?.user?.role as string) ?? "USER";
-  const [dcrAccess, setDcrAccess] = useState(false);
   const [psychAccess, setPsychAccess] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // Fetch access flags from user profile
   useEffect(() => {
-    const userId = (session?.user as any)?.id;
+    const userId = (session?.user as { id?: string } | undefined)?.id;
     if (!userId) return;
+
+    let cancelled = false;
     fetch(`/api/users/${userId}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.user) {
-          setDcrAccess(data.user.dcrAccess ?? false);
+        if (!cancelled && data?.user) {
           setPsychAccess(data.user.psychAccess ?? false);
         }
       })
       .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
   }, [session]);
 
-  function isActive(href: string) {
-    if (href === "/messages?tab=chat") return pathname.startsWith("/chat");
-    if (href === "/messages") return pathname.startsWith("/messages");
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
-  }
+  const visibleMoreItems = bottomMoreNavItems.filter((item) =>
+    isVisible(item, role, { psychAccess }),
+  );
+  const moreActive = visibleMoreItems.some((item) =>
+    isActive(item.href, pathname),
+  );
 
-  function hasMinRole(minRole?: string) {
-    if (!minRole) return true;
-    return (ROLE_HIERARCHY[role] ?? 0) >= (ROLE_HIERARCHY[minRole] ?? 999);
-  }
+  function NavLink({ item }: { item: BottomPrimaryNavigationItem }) {
+    const active = isActive(item.href, pathname);
+    const Icon = getIcon(item);
+    const badgeText = item.badge === "unread" ? formatUnreadCount(unreadCount) : null;
+    const badgeLabel = item.badge === "unread" ? getUnreadAccessibleLabel(unreadCount) : null;
 
-  function isMoreActive(): boolean {
-    const activeMore = moreItems.some((item) => {
-      if (!hasMinRole(item.minRole)) return false;
-      if (item.requireDcrAccess && !dcrAccess) return false;
-      if (item.requirePsychAccess && !psychAccess) return false;
-      return isActive(item.href);
-    });
-    return activeMore;
-  }
-
-  // Fixed 5 slots: 首页 | 发现 | [发布] | 消息 | 更多
-  function NavLink({ href, label, icon: Icon, badge }: {
-    href: string; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number;
-  }) {
-    const active = isActive(href);
     return (
       <a
-        href={href}
-        aria-label={label}
+        href={item.href}
+        aria-label={badgeLabel ? `${item.label}，${badgeLabel}` : item.label}
         aria-current={active ? "page" : undefined}
         className={cn(
           "flex flex-col items-center justify-center gap-0.5",
@@ -111,16 +111,21 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
       >
         <span className="relative">
           <Icon className="h-5 w-5" />
-          {badge != null && badge > 0 && (
+          {badgeText && (
             <span className="absolute -right-2 -top-1.5 flex min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 py-0.5 text-[10px] font-medium leading-none text-destructive-foreground">
-              {badge > 99 ? "99+" : badge}
+              <span aria-hidden="true">{badgeText}</span>
+              <span className="sr-only">{badgeLabel}</span>
             </span>
           )}
         </span>
-        <span className="text-[10px] font-medium">{label}</span>
+        <span className="text-[10px] font-medium">{item.label}</span>
       </a>
     );
   }
+
+  const leadingItems = bottomPrimaryNavItems.filter((item) => item.slot === "leading");
+  const centerItem = bottomPrimaryNavItems.find((item) => item.slot === "center");
+  const trailingItems = bottomPrimaryNavItems.filter((item) => item.slot === "trailing");
 
   return (
     <nav
@@ -133,38 +138,35 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
       aria-label="底部导航"
     >
       <div className="relative mx-auto flex h-16 max-w-screen-xl items-center px-1">
-        {/* Slot 1-2: 首页, 发现 */}
         <div className="flex flex-1 items-center justify-around">
-          <NavLink href="/" label="首页" icon={Home} />
-          <NavLink href="/discover" label="发现" icon={Compass} />
+          {leadingItems.map((item) => <NavLink key={item.href} item={item} />)}
         </div>
 
-        {/* Slot 3: 发布 (raised center) */}
-        <div className="relative flex w-[56px] shrink-0 items-end justify-center self-stretch pb-0.5">
-          <a
-            href="/create"
-            aria-label="发布"
-            aria-current={isActive("/create") ? "page" : undefined}
-            className="absolute bottom-0 flex flex-col items-center justify-center"
-            style={{ transform: "translateY(-8px)" }}
-          >
-            <span className={cn(
-              "flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform duration-150 active:scale-95",
-              isActive("/create")
-                ? "bg-primary text-primary-foreground"
-                : "bg-primary text-primary-foreground",
-            )}>
-              <Plus className="h-6 w-6" />
-            </span>
-            <span className="mt-0.5 text-[10px] font-medium text-primary">发布</span>
-          </a>
-        </div>
+        {centerItem && (
+          <div className="relative flex w-[56px] shrink-0 items-end justify-center self-stretch pb-0.5">
+            <a
+              href={centerItem.href}
+              aria-label={centerItem.label}
+              aria-current={isActive(centerItem.href, pathname) ? "page" : undefined}
+              className="absolute bottom-0 flex flex-col items-center justify-center"
+              style={{ transform: "translateY(-8px)" }}
+            >
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-150 active:scale-95">
+                {(() => {
+                  const Icon = getIcon(centerItem);
+                  return <Icon className="h-6 w-6" />;
+                })()}
+              </span>
+              <span className="mt-0.5 text-[10px] font-medium text-primary">
+                {centerItem.label}
+              </span>
+            </a>
+          </div>
+        )}
 
-        {/* Slot 4: 消息 */}
         <div className="flex flex-1 items-center justify-around">
-          <NavLink href="/messages" label="消息" icon={MessageCircle} badge={unreadCount} />
+          {trailingItems.map((item) => <NavLink key={item.href} item={item} />)}
 
-          {/* Slot 5: 更多 — opens sheet */}
           <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
             <SheetTrigger asChild>
               <button
@@ -173,7 +175,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
                   "flex flex-1 flex-col items-center justify-center gap-0.5",
                   "min-h-[44px] min-w-[44px]",
                   "transition-colors duration-150",
-                  isMoreActive() ? "text-primary" : "text-muted-foreground hover:text-foreground",
+                  moreActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Ellipsis className="h-5 w-5" />
@@ -185,24 +187,21 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
                 <SheetTitle className="text-center">更多功能</SheetTitle>
               </SheetHeader>
               <div className="grid grid-cols-3 gap-4">
-                {moreItems.filter((item) => {
-                  if (!hasMinRole(item.minRole)) return false;
-                  if (item.requireDcrAccess && !dcrAccess) return false;
-                  if (item.requirePsychAccess && !psychAccess) return false;
-                  return true;
-                }).map((item) => {
-                  const Icon = item.icon;
-                  const active = isActive(item.href);
+                {visibleMoreItems.map((item) => {
+                  const Icon = getIcon(item);
+                  const active = isActive(item.href, pathname);
                   return (
                     <a
                       key={item.href}
                       href={item.href}
+                      aria-label={item.label}
+                      aria-current={active ? "page" : undefined}
                       onClick={() => setSheetOpen(false)}
                       className={cn(
                         "flex flex-col items-center gap-1.5 rounded-xl p-3 transition-colors",
                         active
                           ? "bg-primary/10 text-primary"
-                          : "hover:bg-accent text-muted-foreground",
+                          : "text-muted-foreground hover:bg-accent",
                       )}
                     >
                       <Icon className="h-6 w-6" />

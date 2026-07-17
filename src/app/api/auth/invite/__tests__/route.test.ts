@@ -42,6 +42,7 @@ const validBody = {
   email: "test@example.com",
   password: "password123",
   phone: "13800138000",
+  nickname: "测试用户",
   code: "123456",
 };
 
@@ -296,14 +297,14 @@ describe("POST /api/auth/invite", () => {
       expect(data.message).toBe("注册成功");
       expect(data.userId).toBe("newuser1");
 
-      // Verify user was created with full identity and DCR access
+      // 邀请码只授予注册资格，DCR 权限仍需走统一安全准入流程。
       expect(mockCreate).toHaveBeenCalledWith({
         data: {
           email: "test@example.com",
           passwordHash: "hashed_password",
           phone: "13800138000",
+          nickname: "测试用户",
           isAnonymous: false,
-          dcrAccess: true,
         },
       });
 
@@ -322,17 +323,11 @@ describe("POST /api/auth/invite", () => {
         })
       );
 
-      // Verify session was created
-      expect(mockSessionCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            userId: mockUser.id,
-          }),
-        })
-      );
+      // JWT 会话由前端注册成功后通过 Credentials Provider 创建。
+      expect(mockSessionCreate).not.toHaveBeenCalled();
     });
 
-    it("应在成功注册后设置会话cookie", async () => {
+    it("成功注册后不应写入数据库 Session cookie", async () => {
       const inviteCode = buildInviteCode();
       mockFindUnique.mockResolvedValue(inviteCode);
 
@@ -349,15 +344,14 @@ describe("POST /api/auth/invite", () => {
       const res = await POST(req);
 
       const setCookie = res.headers.get("set-cookie");
-      expect(setCookie).toBeTruthy();
-      expect(setCookie).toContain("next-auth.session-token");
+      expect(setCookie).toBeNull();
     });
   });
 
-  // ========== 会话创建与管理 ==========
+  // ========== 事务管理 ==========
 
-  describe("会话创建与管理", () => {
-    it("应创建30天有效期的会话", async () => {
+  describe("事务管理", () => {
+    it("应在事务中同时创建用户并更新邀请码，但不创建数据库会话", async () => {
       const inviteCode = buildInviteCode();
       mockFindUnique.mockResolvedValue(inviteCode);
 
@@ -373,38 +367,10 @@ describe("POST /api/auth/invite", () => {
       const req = createRequest(validBody);
       await POST(req);
 
-      // Verify session expiry is approximately 30 days from now
-      const sessionCall = mockSessionCreate.mock.calls[0][0];
-      const expires = new Date(sessionCall.data.expires);
-      const thirtyDaysFromNow = new Date(
-        Date.now() + 30 * 24 * 60 * 60 * 1000
-      );
-      const diffMs = Math.abs(expires.getTime() - thirtyDaysFromNow.getTime());
-      // Allow 5 seconds tolerance
-      expect(diffMs).toBeLessThan(5000);
-    });
-
-    it("应在事务中同时创建用户、更新邀请码和创建会话", async () => {
-      const inviteCode = buildInviteCode();
-      mockFindUnique.mockResolvedValue(inviteCode);
-
-      mockTransaction.mockImplementation(async (fn: Function) => {
-        const tx = {
-          user: { create: mockCreate.mockResolvedValue({ id: "user1" }) },
-          inviteCode: { update: mockUpdate.mockResolvedValue({}) },
-          session: { create: mockSessionCreate.mockResolvedValue({}) },
-        };
-        return fn(tx);
-      });
-
-      const req = createRequest(validBody);
-      await POST(req);
-
-      // All three operations should have been called within the transaction
       expect(mockTransaction).toHaveBeenCalledTimes(1);
       expect(mockCreate).toHaveBeenCalledTimes(1);
       expect(mockUpdate).toHaveBeenCalledTimes(1);
-      expect(mockSessionCreate).toHaveBeenCalledTimes(1);
+      expect(mockSessionCreate).not.toHaveBeenCalled();
     });
   });
 

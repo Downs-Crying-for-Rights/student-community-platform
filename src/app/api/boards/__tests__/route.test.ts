@@ -28,6 +28,15 @@ vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 
+const mockRedisGet = vi.fn();
+const mockRedisSet = vi.fn();
+vi.mock("@/lib/redis", () => ({
+  default: {
+    get: (...args: unknown[]) => mockRedisGet(...args),
+    set: (...args: unknown[]) => mockRedisSet(...args),
+  },
+}));
+
 import { getServerSession } from "next-auth/next";
 
 const mockGetServerSession = vi.mocked(getServerSession);
@@ -58,11 +67,24 @@ describe("GET /api/boards", () => {
     vi.clearAllMocks();
   });
 
-  it("应返回 401 当用户未登录", async () => {
+  it("未登录用户应看到 PUBLIC 区活跃板块", async () => {
     mockGetServerSession.mockResolvedValue(null);
+    const boards = [
+      { id: "b1", name: "娱乐", zone: "PUBLIC", sortWeight: 0, isActive: true },
+    ];
+    mockFindMany.mockResolvedValue(boards);
+
     const { GET } = await import("../route");
     const res = await GET(makeRequest("GET"), { params: {} });
-    expect(res.status).toBe(401);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.boards).toEqual(boards);
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockFindMany).toHaveBeenCalledWith({
+      where: { isActive: true, zone: { in: ["PUBLIC"] } },
+      orderBy: { sortWeight: "asc" },
+    });
   });
 
   it("应返回用户可访问的活跃板块列表", async () => {
@@ -93,12 +115,12 @@ describe("GET /api/boards", () => {
     expect(res.status).toBe(200);
     expect(data.boards).toEqual(boards);
 
-    // trustLevel 2 用户可访问 PUBLIC + PSYCHOLOGY
+    // 无心理区显式权限的用户只能访问 PUBLIC
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           isActive: true,
-          zone: { in: ["PUBLIC", "PSYCHOLOGY"] },
+          zone: { in: ["PUBLIC"] },
         },
         orderBy: { sortWeight: "asc" },
       }),
@@ -126,14 +148,9 @@ describe("GET /api/boards", () => {
     const res = await GET(makeRequest("GET"), { params: {} });
 
     expect(res.status).toBe(200);
-    expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          isActive: true,
-          zone: { in: ["PUBLIC", "PSYCHOLOGY"] },
-        },
-      }),
-    );
+    const zones = mockFindMany.mock.calls[0][0].where.zone.in;
+    expect(zones).toEqual(expect.arrayContaining(["PUBLIC", "PSYCHOLOGY"]));
+    expect(zones).toHaveLength(2);
   });
 
   it("应为有 DCR 权限的用户返回 PUBLIC 和 DCR 板块", async () => {
@@ -157,15 +174,10 @@ describe("GET /api/boards", () => {
     const res = await GET(makeRequest("GET"), { params: {} });
 
     expect(res.status).toBe(200);
-    // trustLevel 2 user gets PUBLIC + PSYCHOLOGY + DCR
-    expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          isActive: true,
-          zone: { in: ["PUBLIC", "PSYCHOLOGY", "DCR"] },
-        },
-      }),
-    );
+    // DCR 准入不隐含心理区准入
+    const zones = mockFindMany.mock.calls[0][0].where.zone.in;
+    expect(zones).toEqual(expect.arrayContaining(["PUBLIC", "DCR"]));
+    expect(zones).toHaveLength(2);
   });
 
   it("应返回 404 当用户不存在", async () => {
@@ -212,7 +224,7 @@ describe("GET /api/boards", () => {
       expect.objectContaining({
         where: {
           isActive: true,
-          zone: { in: ["PUBLIC", "PSYCHOLOGY"] },
+          zone: { in: ["PUBLIC"] },
         },
         include: {
           _count: {
@@ -251,14 +263,9 @@ describe("GET /api/boards", () => {
       { params: {} },
     );
 
-    expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          isActive: true,
-          zone: { in: ["PUBLIC", "PSYCHOLOGY"] },
-        },
-      }),
-    );
+    const zones = mockFindMany.mock.calls[0][0].where.zone.in;
+    expect(zones).toEqual(expect.arrayContaining(["PUBLIC", "PSYCHOLOGY"]));
+    expect(zones).toHaveLength(2);
   });
 });
 

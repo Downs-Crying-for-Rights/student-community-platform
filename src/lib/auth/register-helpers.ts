@@ -5,7 +5,7 @@ import type { Prisma } from "@prisma/client";
 export interface CreateUserParams {
   email: string;
   password: string;
-  phone: string;
+  phone?: string;
   nickname: string;
   /** Additional fields to set on the user record (e.g. dcrAccess, dcrPledgeSigned) */
   extraData?: Record<string, unknown>;
@@ -18,8 +18,6 @@ export interface CreateUserParams {
 
 export interface CreateUserSuccess {
   userId: string;
-  sessionToken: string;
-  expires: Date;
 }
 
 export type CreateUserResult =
@@ -55,10 +53,11 @@ export async function checkPhoneUnique(phone: string): Promise<{ error: string; 
 }
 
 /**
- * 创建用户并生成 session。
+ * 创建用户。
  *
- * 封装了邮箱唯一性检查、手机号唯一性检查、密码哈希和 session 创建等
- * register 和 invite 注册流程的公共逻辑。
+ * 封装邮箱唯一性检查、可选手机号唯一性检查和密码哈希，供
+ * register 和 invite 注册流程复用。登录会话由客户端在注册成功后通过
+ * NextAuth Credentials Provider 创建，避免把数据库 Session 与 JWT 会话混用。
  *
  * @param afterCreate - 可选的事务内回调，用于创建用户后在同一事务中执行额外操作（如标记邀请码已使用）
  */
@@ -76,10 +75,12 @@ export async function createUserWithSession({
     return { success: false, ...emailError };
   }
 
-  // 手机号唯一性检查
-  const phoneError = await checkPhoneUnique(phone);
-  if (phoneError) {
-    return { success: false, ...phoneError };
+  // 手机号只在 DCR 准入或邀请码注册场景提供。
+  if (phone) {
+    const phoneError = await checkPhoneUnique(phone);
+    if (phoneError) {
+      return { success: false, ...phoneError };
+    }
   }
 
   // 密码哈希
@@ -102,19 +103,7 @@ export async function createUserWithSession({
       await afterCreate(tx, user.id);
     }
 
-    // 创建 session
-    const sessionToken = crypto.randomUUID();
-    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-
-    await tx.session.create({
-      data: {
-        sessionToken,
-        userId: user.id,
-        expires,
-      },
-    });
-
-    return { userId: user.id, sessionToken, expires };
+    return { userId: user.id };
   });
 
   return { success: true, data: result };

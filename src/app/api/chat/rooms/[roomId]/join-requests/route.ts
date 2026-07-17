@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { findActiveChatRoomBan } from "@/lib/chat-room-membership-policy";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 
 /**
@@ -77,22 +79,30 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "此群聊不需要审核加入" }, { status: 400 });
     }
 
-    // Check if already a member
-    const existingMember = await prisma.chatRoomMember.findUnique({
-      where: { roomId_userId: { roomId, userId } },
-    });
-    if (existingMember) {
+    const result = await prisma.$transaction(async (tx) => {
+      const activeBan = await findActiveChatRoomBan(tx, roomId, userId);
+      if (activeBan) return { kind: "BANNED" as const };
+
+      const existingMember = await tx.chatRoomMember.findUnique({
+        where: { roomId_userId: { roomId, userId } },
+      });
+      if (existingMember) return { kind: "EXISTS" as const };
+
+      const joinRequest = await tx.chatRoomJoinRequest.upsert({
+        where: { roomId_userId: { roomId, userId } },
+        create: { roomId, userId, status: "PENDING" },
+        update: { status: "PENDING", reviewedBy: null },
+      });
+      return { kind: "CREATED" as const, joinRequest };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    if (result.kind === "BANNED") {
+      return NextResponse.json({ error: "你当前被禁止申请加入此群聊" }, { status: 403 });
+    }
+    if (result.kind === "EXISTS") {
       return NextResponse.json({ error: "你已在此群聊中" }, { status: 409 });
     }
-
-    // Upsert request (re-apply if previously rejected)
-    const joinRequest = await prisma.chatRoomJoinRequest.upsert({
-      where: { roomId_userId: { roomId, userId } },
-      create: { roomId, userId, status: "PENDING" },
-      update: { status: "PENDING", reviewedBy: null },
-    });
-
-    return NextResponse.json({ request: joinRequest }, { status: 201 });
+    return NextResponse.json({ request: result.joinRequest }, { status: 201 });
   } catch (error) {
     console.error("POST /api/chat/rooms/[roomId]/join-requests error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

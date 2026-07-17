@@ -612,7 +612,7 @@ export default function TaskDetailPage() {
                 const res = await fetch("/api/reports", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ targetId: id, targetType: "TASK", reason }),
+                  body: JSON.stringify({ targetTaskId: id, reason }),
                 });
                 if (res.ok) {
                   alert("举报已提交，管理员将尽快处理");

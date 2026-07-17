@@ -76,6 +76,7 @@ export default function ChatRoomPage() {
   const [manageTab, setManageTab] = useState<"members" | "requests" | "settings">("members");
   const [joinRequests, setJoinRequests] = useState<any[]>([]);
   const [manageLoading, setManageLoading] = useState(false);
+  const [manageError, setManageError] = useState("");
   const [muted, setMuted] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -299,6 +300,11 @@ export default function ChatRoomPage() {
               </button>
             ))}
           </div>
+          {manageError && (
+            <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {manageError}
+            </p>
+          )}
           {manageTab === "members" && (
             <div className="max-h-60 overflow-y-auto space-y-1">
               {room?.members.map((m) => (
@@ -307,11 +313,21 @@ export default function ChatRoomPage() {
                     <span className="text-sm truncate">{m.nickname ?? "未知"}</span>
                     <span className="text-[10px] text-muted-foreground shrink-0">{m.role}</span>
                   </div>
-                  {m.id !== userId && isOwner && (
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={async () => {
+                  {m.id !== userId && m.role !== "OWNER" && ownerOrAdmin && (isOwner || m.role === "MEMBER") && (
+                    <Button variant="ghost" size="icon" title="踢出（24 小时内不可重新加入）" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={async () => {
                       if (!confirm("确定要移除此成员吗？")) return;
-                      await fetch(`/api/chat/rooms/${roomId}/members/${m.id}`, { method: "DELETE" });
-                      fetchRoom();
+                      setManageError("");
+                      try {
+                        const res = await fetch(`/api/chat/rooms/${roomId}/members/${m.id}`, { method: "DELETE" });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                          setManageError(data.error || "移除成员失败，请重试");
+                          return;
+                        }
+                        await fetchRoom();
+                      } catch {
+                        setManageError("网络错误，未能移除成员");
+                      }
                     }}><UserX className="h-3.5 w-3.5" /></Button>
                   )}
                 </div>

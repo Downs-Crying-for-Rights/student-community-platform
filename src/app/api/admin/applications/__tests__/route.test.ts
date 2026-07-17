@@ -4,15 +4,11 @@ import { NextRequest } from "next/server";
 // ==================== Mocks ====================
 
 const mockAppFindMany = vi.fn();
-const mockCaseFindMany = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     accessApplication: {
       findMany: (...args: unknown[]) => mockAppFindMany(...args),
-    },
-    case: {
-      findMany: (...args: unknown[]) => mockCaseFindMany(...args),
     },
     user: {
       findUnique: vi.fn(),
@@ -78,17 +74,15 @@ describe("GET /api/admin/applications?type=DCR — relatedCase enrichment", () =
         reviewNote: null,
         createdAt: new Date("2024-06-01"),
         applicant: { id: "user-1", nickname: "张三" },
-      },
-    ]);
-
-    mockCaseFindMany.mockResolvedValue([
-      {
-        submitterId: "user-1",
-        formData: mockFormData,
-        pledgeText: "我承诺以上信息真实",
-        category: "EDUCATION",
-        status: "OPENED",
-        createdAt: new Date("2024-06-01"),
+        case_: {
+          id: "case-1",
+          formData: mockFormData,
+          pledgeText: "我承诺以上信息真实",
+          category: "EDUCATION",
+          status: "OPENED",
+          requestStatus: "PENDING",
+          reviewNote: null,
+        },
       },
     ]);
 
@@ -120,6 +114,15 @@ describe("GET /api/admin/applications?type=DCR — relatedCase enrichment", () =
         reviewNote: null,
         createdAt: new Date("2024-06-01"),
         applicant: { id: "user-1", nickname: "张三" },
+        case_: {
+          id: "case-1",
+          formData: { schoolName: "大学A" },
+          pledgeText: "声明A",
+          category: "EDUCATION",
+          status: "OPENED",
+          requestStatus: "PENDING",
+          reviewNote: null,
+        },
       },
       {
         id: "app-2",
@@ -130,25 +133,15 @@ describe("GET /api/admin/applications?type=DCR — relatedCase enrichment", () =
         reviewNote: null,
         createdAt: new Date("2024-05-01"),
         applicant: { id: "user-2", nickname: "李四" },
-      },
-    ]);
-
-    mockCaseFindMany.mockResolvedValue([
-      {
-        submitterId: "user-1",
-        formData: { schoolName: "大学A" },
-        pledgeText: "声明A",
-        category: "EDUCATION",
-        status: "OPENED",
-        createdAt: new Date("2024-06-01"),
-      },
-      {
-        submitterId: "user-2",
-        formData: { schoolName: "大学B" },
-        pledgeText: "声明B",
-        category: "LABOR",
-        status: "IN_PROGRESS",
-        createdAt: new Date("2024-05-01"),
+        case_: {
+          id: "case-2",
+          formData: { schoolName: "大学B" },
+          pledgeText: "声明B",
+          category: "LABOR",
+          status: "IN_PROGRESS",
+          requestStatus: "APPROVED",
+          reviewNote: null,
+        },
       },
     ]);
 
@@ -176,10 +169,9 @@ describe("GET /api/admin/applications?type=DCR — relatedCase enrichment", () =
         reviewNote: null,
         createdAt: new Date("2024-06-01"),
         applicant: { id: "user-1", nickname: "张三" },
+        case_: null,
       },
     ]);
-
-    mockCaseFindMany.mockResolvedValue([]);
 
     const { GET } = await import("../route");
     const res = await GET(makeRequest({ type: "DCR" }), { params: {} } as never);
@@ -202,6 +194,7 @@ describe("GET /api/admin/applications?type=DCR — relatedCase enrichment", () =
         reviewNote: null,
         createdAt: new Date("2024-06-01"),
         applicant: { id: "user-1", nickname: "张三" },
+        case_: null,
       },
     ]);
 
@@ -211,8 +204,6 @@ describe("GET /api/admin/applications?type=DCR — relatedCase enrichment", () =
 
     expect(res.status).toBe(200);
     expect(data.applications[0].relatedCase).toBeNull();
-    // case.findMany should not be called when there are no DCR apps
-    expect(mockCaseFindMany).not.toHaveBeenCalled();
   });
 });
 
@@ -238,17 +229,15 @@ describe("GET /api/admin/applications — 保持性测试：现有字段不受�
         createdAt,
         reviewedAt,
         applicant: { id: "user-p1", nickname: "保持性用户" },
-      },
-    ]);
-
-    mockCaseFindMany.mockResolvedValue([
-      {
-        submitterId: "user-p1",
-        formData: { schoolName: "保持性大学" },
-        pledgeText: "Case声明",
-        category: "EDUCATION",
-        status: "OPENED",
-        createdAt,
+        case_: {
+          id: "case-p1",
+          formData: { schoolName: "保持性大学" },
+          pledgeText: "Case声明",
+          category: "EDUCATION",
+          status: "OPENED",
+          requestStatus: "APPROVED",
+          reviewNote: null,
+        },
       },
     ]);
 
@@ -287,6 +276,7 @@ describe("GET /api/admin/applications — 保持性测试：现有字段不受�
         createdAt,
         reviewedAt: null,
         applicant: { id: "user-p2", nickname: "心理用户" },
+        case_: null,
       },
     ]);
 
@@ -322,6 +312,15 @@ describe("GET /api/admin/applications — 保持性测试：现有字段不受�
         createdAt: new Date("2024-06-01"),
         reviewedAt: null,
         applicant: { id: "user-m1", nickname: "用户A" },
+        case_: {
+          id: "case-m1",
+          formData: { schoolName: "混合大学" },
+          pledgeText: "Case声明",
+          category: "EDUCATION",
+          status: "OPENED",
+          requestStatus: "PENDING",
+          reviewNote: null,
+        },
       },
       {
         id: "app-mix-2",
@@ -333,17 +332,7 @@ describe("GET /api/admin/applications — 保持性测试：现有字段不受�
         createdAt: new Date("2024-05-20"),
         reviewedAt: new Date("2024-05-21"),
         applicant: { id: "user-m2", nickname: "用户B" },
-      },
-    ]);
-
-    mockCaseFindMany.mockResolvedValue([
-      {
-        submitterId: "user-m1",
-        formData: { schoolName: "混合大学" },
-        pledgeText: "Case声明",
-        category: "EDUCATION",
-        status: "OPENED",
-        createdAt: new Date("2024-06-01"),
+        case_: null,
       },
     ]);
 

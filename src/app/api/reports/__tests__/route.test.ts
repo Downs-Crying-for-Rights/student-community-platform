@@ -13,6 +13,7 @@ const mockCommentFindUnique = vi.fn();
 const mockCommentUpdate = vi.fn();
 const mockUserFindMany = vi.fn();
 const mockNotificationCreateMany = vi.fn();
+const mockTaskFindUnique = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -35,6 +36,9 @@ vi.mock("@/lib/prisma", () => ({
     },
     notification: {
       createMany: (...args: unknown[]) => mockNotificationCreateMany(...args),
+    },
+    mutualAidTask: {
+      findUnique: (...args: unknown[]) => mockTaskFindUnique(...args),
     },
   },
 }));
@@ -105,7 +109,7 @@ describe("POST /api/reports", () => {
     );
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toBe("必须指定举报目标（用户、帖子或评论）");
+    expect(data.error).toBe("必须且只能指定一个举报目标（用户、帖子、评论或互助任务）");
   });
 
   it("应返回 400 当举报自己", async () => {
@@ -176,6 +180,81 @@ describe("POST /api/reports", () => {
         }),
       }),
     );
+  });
+
+  it("应成功创建互助任务举报并参与重复检查", async () => {
+    const taskId = "clxxxxxxxxxxxxxxxxxx020";
+    setSession("user1", "USER");
+    mockReportFindFirst.mockResolvedValue(null);
+    mockTaskFindUnique.mockResolvedValue({
+      status: "OPEN",
+      requesterId: "requester",
+      helpSession: null,
+    });
+    mockReportCreate.mockResolvedValue({
+      id: "task-report",
+      reason: "任务信息不实",
+      status: "PENDING",
+      reporterId: "user1",
+      targetTaskId: taskId,
+    });
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      makeRequest("POST", undefined, {
+        reason: "任务信息不实",
+        targetTaskId: taskId,
+      }),
+      { params: {} },
+    );
+
+    expect(res.status).toBe(201);
+    expect(mockReportFindFirst).toHaveBeenCalledWith({
+      where: {
+        reporterId: "user1",
+        targetUserId: null,
+        targetPostId: null,
+        targetCommentId: null,
+        targetTaskId: taskId,
+      },
+    });
+    expect(mockReportCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ targetTaskId: taskId }),
+    });
+    expect(mockReportCount).not.toHaveBeenCalled();
+  });
+
+  it("多目标举报应被拒绝", async () => {
+    setSession("user1", "USER");
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      makeRequest("POST", undefined, {
+        reason: "重复目标",
+        targetPostId: "clxxxxxxxxxxxxxxxxxx001",
+        targetTaskId: "clxxxxxxxxxxxxxxxxxx020",
+      }),
+      { params: {} },
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("只能指定一个");
+  });
+
+  it("不存在的任务目标应返回 404", async () => {
+    setSession("user1", "USER");
+    mockTaskFindUnique.mockResolvedValue(null);
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      makeRequest("POST", undefined, {
+        reason: "任务不存在",
+        targetTaskId: "clxxxxxxxxxxxxxxxxxx020",
+      }),
+      { params: {} },
+    );
+
+    expect(res.status).toBe(404);
   });
 
   it("应在帖子被 3 人以上举报时自动隐藏并通知 Moderator", async () => {

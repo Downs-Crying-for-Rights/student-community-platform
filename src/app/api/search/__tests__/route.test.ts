@@ -72,11 +72,23 @@ describe("GET /api/search", () => {
     vi.clearAllMocks();
   });
 
-  it("应返回 401 当用户未登录", async () => {
+  it("未登录用户应能搜索 PUBLIC 区帖子", async () => {
     mockGetServerSession.mockResolvedValue(null);
+    mockPostFindMany.mockResolvedValue([]);
+    mockPostCount.mockResolvedValue(0);
+
     const { GET } = await import("../route");
     const res = await GET(makeRequest("http://localhost:3000/api/search?q=test"), { params: {} });
-    expect(res.status).toBe(401);
+
+    expect(res.status).toBe(200);
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
+    expect(mockPostFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          board: { zone: { in: ["PUBLIC"] } },
+        }),
+      }),
+    );
   });
 
   it("应返回 400 当缺少搜索关键词", async () => {
@@ -190,7 +202,7 @@ describe("GET /api/search", () => {
       expect(mockPostFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            board: { zone: { in: ["PUBLIC", "PSYCHOLOGY"] } },
+            board: { zone: { in: ["PUBLIC"] } },
           }),
         }),
       );

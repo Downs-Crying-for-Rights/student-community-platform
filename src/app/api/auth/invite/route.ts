@@ -78,8 +78,6 @@ export async function POST(request: NextRequest) {
       nickname,
       extraData: {
         isAnonymous: false,
-        dcrAccess: true,
-        dcrPledgeSigned: true,
       },
       afterCreate: async (tx, userId) => {
         await tx.inviteCode.update({
@@ -97,7 +95,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    const response = NextResponse.json(
+    return NextResponse.json(
       {
         success: true,
         message: "注册成功",
@@ -105,17 +103,6 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-
-    // Set the session cookie so NextAuth recognizes the session
-    response.cookies.set("next-auth.session-token", result.data.sessionToken, {
-      expires: result.data.expires,
-      httpOnly: true,
-      sameSite: "strict",
-      path: "/",
-      secure: process.env.NODE_ENV === "production",
-    });
-
-    return response;
   } catch (error) {
     console.error("Invite code registration error:", error);
     return NextResponse.json(

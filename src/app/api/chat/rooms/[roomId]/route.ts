@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { findActiveChatRoomBan } from "@/lib/chat-room-membership-policy";
 import { hasMinimumRole, withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 
 /**
@@ -91,19 +93,28 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "该群聊需要提交加入申请" }, { status: 400 });
     }
 
-    const existing = await prisma.chatRoomMember.findUnique({
-      where: { roomId_userId: { roomId, userId } },
-    });
+    const result = await prisma.$transaction(async (tx) => {
+      const activeBan = await findActiveChatRoomBan(tx, roomId, userId);
+      if (activeBan) return { kind: "BANNED" as const, activeBan };
 
-    if (existing) {
+      const existing = await tx.chatRoomMember.findUnique({
+        where: { roomId_userId: { roomId, userId } },
+      });
+      if (existing) return { kind: "EXISTS" as const };
+
+      const member = await tx.chatRoomMember.create({
+        data: { roomId, userId, role: "MEMBER" },
+      });
+      return { kind: "CREATED" as const, member };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    if (result.kind === "BANNED") {
+      return NextResponse.json({ error: "你当前被禁止加入此群聊" }, { status: 403 });
+    }
+    if (result.kind === "EXISTS") {
       return NextResponse.json({ error: "你已在此群聊中" }, { status: 409 });
     }
-
-    const member = await prisma.chatRoomMember.create({
-      data: { roomId, userId, role: "MEMBER" },
-    });
-
-    return NextResponse.json({ member }, { status: 201 });
+    return NextResponse.json({ member: result.member }, { status: 201 });
   } catch (error) {
     console.error("POST /api/chat/rooms/[roomId] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

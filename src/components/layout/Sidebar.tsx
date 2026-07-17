@@ -17,7 +17,6 @@ import {
   FileText,
   LayoutDashboard,
   Heart,
-  Lock,
   Settings,
   Terminal,
   Sun,
@@ -29,112 +28,53 @@ import {
   RefreshCw,
   ListTodo,
   Scale,
-  Repeat,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import {
+  adminNavItems,
+  isActive,
+  isVisible,
+  moderationNavItems,
+  sidebarCoreNavItems,
+  sidebarZoneNavItems,
+  type NavigationAccessFlags,
+  type NavigationIconName,
+  type NavigationItem,
+} from "./navigation-config";
 
-/** Flags for special zone access, fetched from user profile */
-export interface SidebarAccessFlags {
-  psychAccess?: boolean;
-  dcrAccess?: boolean;
-  dcrHelperAccess?: boolean;
-}
+export type SidebarAccessFlags = NavigationAccessFlags;
 
 export interface SidebarProps {
-  /** Optional access flags — when omitted, psych/dcr items are hidden */
+  /** Optional access flags; props override values fetched from the user profile. */
   accessFlags?: SidebarAccessFlags;
 }
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  /** Minimum role required to see this item (inclusive of higher roles) */
-  minRole?: string;
-  /** Show only when user has psychAccess */
-  requirePsychAccess?: boolean;
-  /** Show only when user has dcrAccess */
-  requireDcrAccess?: boolean;
-  requireHelperAccess?: boolean;
-}
-
-const ROLE_HIERARCHY: Record<string, number> = {
-  USER: 0,
-  TRUSTED_USER: 1,
-  DCR_HELPER: 2,
-  MODERATOR: 3,
-  ADMIN: 4,
-  SUPER_ADMIN: 5,
+const NAV_ICONS: Record<NavigationIconName, LucideIcon> = {
+  home: Home,
+  compass: Compass,
+  plus: PlusCircle,
+  message: MessageCircle,
+  user: User,
+  shield: Shield,
+  "shield-check": ShieldCheck,
+  users: Users,
+  ticket: Ticket,
+  "file-text": FileText,
+  dashboard: LayoutDashboard,
+  heart: Heart,
+  settings: Settings,
+  terminal: Terminal,
+  messages: MessagesSquare,
+  book: BookOpen,
+  "clipboard-check": ClipboardCheck,
+  activity: Activity,
+  refresh: RefreshCw,
+  "list-todo": ListTodo,
+  scale: Scale,
 };
-
-/** Core nav items visible to all authenticated users */
-const coreNavItems: NavItem[] = [
-  { href: "/", label: "首页", icon: Home },
-  { href: "/discover", label: "发现", icon: Compass },
-  { href: "/messages", label: "消息", icon: MessageCircle },
-  { href: "/messages?tab=chat", label: "群聊", icon: MessagesSquare },
-  { href: "/create", label: "发布", icon: PlusCircle },
-  { href: "/u/me", label: "个人主页", icon: User },
-];
-
-/** Zone-specific nav items */
-const zoneNavItems: NavItem[] = [
-  { href: "/psych", label: "心理区", icon: Heart, requirePsychAccess: true },
-  { href: "/dcr/tickets", label: "工单列表", icon: Lock, requireDcrAccess: true },
-  { href: "/dcr/helper", label: "Helper 工作台", icon: ShieldCheck, requireDcrAccess: true, requireHelperAccess: true },
-  { href: "/dcr/posts", label: "DCR 帖子", icon: FileText, requireDcrAccess: true },
-  { href: "/dcr/cycles", label: "互助闭环", icon: Repeat, requireDcrAccess: true },
-];
-
-/** Moderation nav items */
-const moderationNavItems: NavItem[] = [
-  { href: "/moderation", label: "审核", icon: Shield, minRole: "MODERATOR" },
-];
-
-/** Admin nav items */
-const adminNavItems: NavItem[] = [
-  { href: "/admin/users", label: "用户管理", icon: Users, minRole: "ADMIN" },
-  { href: "/admin/content", label: "内容管理", icon: FileText, minRole: "ADMIN" },
-  { href: "/admin/invites", label: "邀请码", icon: Ticket, minRole: "ADMIN" },
-  { href: "/admin/audit", label: "操作日志", icon: FileText, minRole: "ADMIN" },
-  {
-    href: "/admin/boards",
-    label: "板块管理",
-    icon: LayoutDashboard,
-    minRole: "ADMIN",
-  },
-  { href: "/admin/kb", label: "知识库", icon: BookOpen, minRole: "ADMIN" },
-  { href: "/admin/applications", label: "准入审核", icon: ShieldCheck, minRole: "ADMIN" },
-  { href: "/admin/dcr/reviews", label: "委托表审核", icon: ClipboardCheck, minRole: "ADMIN" },
-  { href: "/admin/dcr/questions", label: "DCR 入频考核题库", icon: BookOpen, minRole: "ADMIN" },
-  { href: "/admin/quiz", label: "平台新手指引题库", icon: BookOpen, minRole: "ADMIN" },
-  { href: "/admin/chat-rooms", label: "群聊审核", icon: MessagesSquare, minRole: "ADMIN" },
-  { href: "/admin/disputes", label: "争议处理", icon: Scale, minRole: "ADMIN" },
-  { href: "/admin/tasks", label: "任务管理", icon: ListTodo, minRole: "ADMIN" },
-  { href: "/admin/logs", label: "系统日志", icon: Terminal, minRole: "ADMIN" },
-  { href: "/admin/telemetry", label: "应用遥测", icon: Activity, minRole: "SUPER_ADMIN" },
-  { href: "/admin/system", label: "系统维护", icon: RefreshCw, minRole: "SUPER_ADMIN" },
-  { href: "/admin/dcr/tutorial", label: "DCR 教程", icon: BookOpen, minRole: "SUPER_ADMIN" },
-  { href: "/admin/site-content", label: "站点内容", icon: FileText, minRole: "SUPER_ADMIN" },
-];
-
-function hasMinRole(userRole: string, minRole: string): boolean {
-  return (ROLE_HIERARCHY[userRole] ?? 0) >= (ROLE_HIERARCHY[minRole] ?? 999);
-}
-
-function isVisible(
-  item: NavItem,
-  role: string,
-  flags: SidebarAccessFlags
-): boolean {
-  if (item.minRole && !hasMinRole(role, item.minRole)) return false;
-  if (item.requirePsychAccess && !flags.psychAccess) return false;
-  if (item.requireDcrAccess && !flags.dcrAccess) return false;
-  if (item.requireHelperAccess && role !== "DCR_HELPER" && !hasMinRole(role, "ADMIN") && !flags.dcrHelperAccess) return false;
-  return true;
-}
 
 export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
   const pathname = usePathname();
@@ -148,12 +88,12 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
     setMounted(true);
   }, []);
 
-  // Auto-fetch access flags from user profile API
   useEffect(() => {
     const userId = (session?.user as { id?: string } | undefined)?.id;
     if (!userId) return;
 
     let cancelled = false;
+    setFlagsLoading(true);
     fetch(`/api/users/${userId}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -165,29 +105,26 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
           });
         }
       })
-      .catch(() => {});
-    return () => { cancelled = true; };
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setFlagsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [session]);
 
-  // Props override fetched flags (for backward compat)
   const accessFlags: SidebarAccessFlags = {
     psychAccess: propAccessFlags?.psychAccess ?? fetchedFlags.psychAccess,
     dcrAccess: propAccessFlags?.dcrAccess ?? fetchedFlags.dcrAccess,
     dcrHelperAccess: propAccessFlags?.dcrHelperAccess ?? fetchedFlags.dcrHelperAccess,
   };
-
   const role = (session?.user?.role as string) ?? "USER";
 
-  function isActive(href: string): boolean {
-    if (href === "/messages?tab=chat") return pathname.startsWith("/chat");
-    if (href === "/messages") return pathname.startsWith("/messages");
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
-  }
-
-  function renderNavItem(item: NavItem) {
-    const active = isActive(item.href);
-    const Icon = item.icon;
+  function renderNavItem(item: NavigationItem) {
+    const active = isActive(item.href, pathname);
+    const Icon = NAV_ICONS[item.icon];
     return (
       <a
         key={item.href}
@@ -199,7 +136,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
           "min-h-[44px]",
           active
             ? "bg-primary/10 text-primary"
-            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground",
         )}
       >
         <Icon className="h-5 w-5 shrink-0" />
@@ -208,25 +145,24 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
     );
   }
 
-  const visibleZoneItems = zoneNavItems.filter((i) =>
-    isVisible(i, role, accessFlags)
+  const visibleZoneItems = sidebarZoneNavItems.filter((item) =>
+    isVisible(item, role, accessFlags),
   );
-  const visibleModItems = moderationNavItems.filter((i) =>
-    isVisible(i, role, accessFlags)
+  const visibleModItems = moderationNavItems.filter((item) =>
+    isVisible(item, role, accessFlags),
   );
-  const visibleAdminItems = adminNavItems.filter((i) =>
-    isVisible(i, role, accessFlags)
+  const visibleAdminItems = adminNavItems.filter((item) =>
+    isVisible(item, role, accessFlags),
   );
 
   return (
     <aside
       className={cn(
         "fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-border/40 bg-background",
-        "lg:flex"
+        "lg:flex",
       )}
       aria-label="侧边栏导航"
     >
-      {/* Logo */}
       <div className="flex h-14 items-center border-b border-border/40 px-6">
         <a
           href="/"
@@ -237,15 +173,12 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
         </a>
       </div>
 
-      {/* Navigation */}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
-        {/* Core items */}
         <div className="flex flex-col gap-0.5">
-          {coreNavItems.map(renderNavItem)}
+          {sidebarCoreNavItems.map(renderNavItem)}
         </div>
 
-        {/* Zone items */}
-        {flagsLoading ? (
+        {flagsLoading && propAccessFlags == null ? (
           <div className="mt-2 space-y-1.5 px-2" aria-label="专区加载中">
             <div className="h-3 w-10 animate-pulse rounded bg-muted" />
             <div className="h-9 w-full animate-pulse rounded-lg bg-muted" />
@@ -263,7 +196,6 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
           </>
         ) : null}
 
-        {/* Moderation items */}
         {visibleModItems.length > 0 && (
           <>
             <div className="my-3 border-t border-border/40" />
@@ -276,7 +208,6 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
           </>
         )}
 
-        {/* Admin items */}
         {visibleAdminItems.length > 0 && (
           <div className="flex flex-col gap-0.5">
             {visibleAdminItems.map(renderNavItem)}
@@ -284,7 +215,6 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
         )}
       </nav>
 
-      {/* Bottom section: settings + theme toggle */}
       <div className="border-t border-border/40 px-3 py-3">
         <a
           href="/settings/profile"
@@ -292,9 +222,9 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
             "min-h-[44px]",
-            isActive("/settings")
+            isActive("/settings", pathname)
               ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-foreground",
           )}
         >
           <Settings className="h-5 w-5 shrink-0" />
@@ -308,7 +238,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
           className={cn(
             "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
             "min-h-[44px]",
-            "text-muted-foreground hover:bg-accent hover:text-foreground"
+            "text-muted-foreground hover:bg-accent hover:text-foreground",
           )}
         >
           {mounted && theme === "dark" ? (

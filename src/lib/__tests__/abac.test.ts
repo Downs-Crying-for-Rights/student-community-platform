@@ -77,10 +77,10 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
         expect(policy.canAccessPrivateZone).toBe(true);
       });
 
-      it("信任等级 4 用户可访问心理区 (无需 psychAccess)", () => {
-        const user = makeUser({ reputationScore: 160, psychAccess: false }); // trustLevel 4
+      it("高信任等级用户仍需 psychAccess 才能访问心理区", () => {
+        const user = makeUser({ reputationScore: 160, psychAccess: false });
         const policy = evaluateABACPolicy(user);
-        expect(policy.canAccessPsychology).toBe(true);
+        expect(policy.canAccessPsychology).toBe(false);
       });
     });
 
@@ -139,13 +139,13 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
         expect(policy.canAccessDCR).toBe(false);
       });
 
-      it("信任等级不足时不可访问 DCR", () => {
+      it("管理员已显式授予 DCR 权限后不再按动态信誉重复撤权", () => {
         const user = makeNewcomer({
           dcrAccess: true,
           dcrPledgeSigned: true,
         });
         const policy = evaluateABACPolicy(user);
-        expect(policy.canAccessDCR).toBe(false);
+        expect(policy.canAccessDCR).toBe(true);
       });
     });
 
@@ -156,11 +156,10 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
         expect(policy.canAccessPsychology).toBe(true);
       });
 
-      it("信任等级 2+ 无 psychAccess 也可浏览心理区", () => {
+      it("无 psychAccess 时不可浏览心理区", () => {
         const user = makeUser({ psychAccess: false });
         const policy = evaluateABACPolicy(user);
-        // trustLevel 2 → canPostInPsychology returns true for browsing
-        expect(policy.canAccessPsychology).toBe(true);
+        expect(policy.canAccessPsychology).toBe(false);
       });
 
       it("信任等级 0 不可访问心理区", () => {
@@ -180,10 +179,10 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
     });
 
     describe("restrictions 列表", () => {
-      it("信任等级 2 用户无 restrictions", () => {
+      it("未获心理区准入时应包含对应限制", () => {
         const user = makeUser();
         const policy = evaluateABACPolicy(user);
-        expect(policy.restrictions).toHaveLength(0);
+        expect(policy.restrictions).toContain("未获得心理交流区准入权限");
       });
 
       it("信任等级 0 用户包含新手限制描述", () => {
@@ -240,9 +239,9 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
       expect(canAccessZone(user, "PSYCHOLOGY").allowed).toBe(true);
     });
 
-    it("信任等级 2+ 无 psychAccess 也可访问心理区", () => {
+    it("无 psychAccess 时不可访问心理区", () => {
       const user = makeUser({ psychAccess: false });
-      expect(canAccessZone(user, "PSYCHOLOGY").allowed).toBe(true);
+      expect(canAccessZone(user, "PSYCHOLOGY").allowed).toBe(false);
     });
 
     it("信任等级 0 不可访问心理区", () => {

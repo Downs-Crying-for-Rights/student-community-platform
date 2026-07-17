@@ -44,11 +44,12 @@ describe("getPsychSections", () => {
     expect(treeHole!.title).toContain("匿名树洞");
   });
 
-  it("includes confide section", () => {
+  it("倾诉匹配暂停时不再进入提交页面", () => {
     const sections = getPsychSections();
     const confide = sections.find((s) => s.id === "confide");
     expect(confide).toBeDefined();
-    expect(confide!.href).toBe("/psych/confide");
+    expect(confide!.title).toContain("暂停");
+    expect(confide!.href).toBe("#confide-paused");
   });
 
   it("includes resources section", () => {

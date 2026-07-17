@@ -46,11 +46,15 @@ describe("buildPostsQueryParams", () => {
 
 /* ---------- Posts API caseIds filtering ---------- */
 
+const mockUserFindUnique = vi.fn();
 const mockPostFindMany = vi.fn();
 const mockPostCount = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
+    user: {
+      findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
+    },
     post: {
       findMany: (...args: unknown[]) => mockPostFindMany(...args),
       count: (...args: unknown[]) => mockPostCount(...args),
@@ -88,6 +92,7 @@ function setSession(id: string, role: string) {
 describe("GET /api/posts with caseIds filter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, psychAccess: false });
   });
 
   it("should filter posts by caseIds when provided", async () => {

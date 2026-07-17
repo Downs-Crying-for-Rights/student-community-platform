@@ -25,6 +25,13 @@ vi.mock("next-auth/next", () => ({
 
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 
+const mockLogAudit = vi.fn();
+vi.mock("@/lib/audit", () => ({
+  logAudit: (...args: unknown[]) => mockLogAudit(...args),
+  AuditAction: { KB_ARTICLE_CREATE: "KB_ARTICLE_CREATE" },
+  AuditTargetType: { KNOWLEDGE_ARTICLE: "KNOWLEDGE_ARTICLE" },
+}));
+
 import { getServerSession } from "next-auth/next";
 const mockGetServerSession = vi.mocked(getServerSession);
 
@@ -142,11 +149,28 @@ describe("POST /api/kb", () => {
 describe("GET /api/kb", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it("应返回 401 当用户未登录", async () => {
+  it("未登录用户应只看到已发布的 PUBLIC 文章", async () => {
     mockGetServerSession.mockResolvedValue(null);
+    mockArticleFindMany.mockResolvedValue([
+      { id: "art1", title: "公开文章", visibility: "PUBLIC" },
+    ]);
+    mockArticleCount.mockResolvedValue(1);
+
     const { GET } = await import("../route");
     const res = await GET(makeGetRequest(), { params: {} });
-    expect(res.status).toBe(401);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.articles).toHaveLength(1);
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
+    expect(mockArticleFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          visibility: { in: ["PUBLIC"] },
+          isPublished: true,
+        },
+      }),
+    );
   });
 
   it("普通用户应只看到 PUBLIC 文章", async () => {

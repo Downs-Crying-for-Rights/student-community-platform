@@ -34,7 +34,6 @@ const NON_WHITELISTED_PREFIXES = [
   "/dcr",
   "/apply",
   "/u",
-  "/onboarding",
   "/dashboard",
   "/profile",
 ];

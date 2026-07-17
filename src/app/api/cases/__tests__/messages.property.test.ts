@@ -50,7 +50,7 @@ function arbUserId() {
 
 /** Generate valid message content (1-2000 chars) */
 function arbValidContent() {
-  return fc.string({ minLength: 1, maxLength: 100 });
+  return fc.string({ minLength: 1, maxLength: 100 }).filter((value) => value.trim().length > 0);
 }
 
 /** Generate content that exceeds 2000 chars */

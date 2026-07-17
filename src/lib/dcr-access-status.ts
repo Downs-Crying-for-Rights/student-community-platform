@@ -7,7 +7,8 @@ export type DcrApplicationStatus = "PENDING" | "APPROVED" | "REJECTED" | "NONE";
 export function hasEffectiveDcrAccess(
   sessionAccess: boolean,
   progressAccess: boolean,
-  applicationStatus: DcrApplicationStatus,
+  _applicationStatus?: DcrApplicationStatus,
 ): boolean {
-  return sessionAccess || progressAccess || applicationStatus === "APPROVED";
+  // 申请状态只描述审核流程；实际权限必须来自 User.dcrAccess。
+  return sessionAccess || progressAccess;
 }

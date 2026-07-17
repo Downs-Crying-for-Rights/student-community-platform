@@ -25,6 +25,15 @@ vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 
+const mockRedisGet = vi.fn();
+const mockRedisSet = vi.fn();
+vi.mock("@/lib/redis", () => ({
+  default: {
+    get: (...args: unknown[]) => mockRedisGet(...args),
+    set: (...args: unknown[]) => mockRedisSet(...args),
+  },
+}));
+
 import { getServerSession } from "next-auth/next";
 
 const mockGetServerSession = vi.mocked(getServerSession);
@@ -51,11 +60,21 @@ describe("GET /api/recommendations", () => {
     vi.clearAllMocks();
   });
 
-  it("应返回 401 当用户未登录", async () => {
+  it("未登录用户应看到公开的活跃推荐", async () => {
     mockGetServerSession.mockResolvedValue(null);
+    const recommendations = [
+      { id: "r1", title: "推荐1", postId: null, sortOrder: 0, isActive: true },
+    ];
+    mockRecommendationFindMany.mockResolvedValue(recommendations);
+
     const { GET } = await import("../route");
     const res = await GET(makeRequest(), { params: {} });
-    expect(res.status).toBe(401);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.recommendations).toEqual([
+      expect.objectContaining({ id: "r1", post: null }),
+    ]);
   });
 
   it("应返回按 sortOrder 排序的活跃推荐列表", async () => {

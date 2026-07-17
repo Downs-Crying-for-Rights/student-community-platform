@@ -1,54 +1,15 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
-import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 
 /**
- * POST /api/dcr/join
- * Join the DCR mutual aid team.
- * - Requires quizPassed=true, otherwise 403
- * - If dcrAccess already true, returns 409
- * - Sets dcrAccess=true and logs audit
- *
- * Validates: Requirements 9.1, 9.2, 9.3, 9.4
+ * 旧版自助加入入口已停用。DCR 权限只能由委托审核和管理员准入审核授予。
  */
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  try {
-    const userId = req.user.id;
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { quizPassed: true, dcrAccess: true },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
-    }
-
-    if (!user.quizPassed) {
-      return NextResponse.json({ error: "请先完成考核" }, { status: 403 });
-    }
-
-    if (user.dcrAccess) {
-      return NextResponse.json({ error: "已加入互助队伍" }, { status: 409 });
-    }
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: { dcrAccess: true },
-    });
-
-    await logAudit(
-      userId,
-      AuditAction.DCR_ACCESS_GRANT,
-      AuditTargetType.USER,
-      userId,
-      { action: "join_mutual_aid" },
-    );
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("POST /api/dcr/join error:", error);
-    return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
-  }
+export const POST = withAuth(async (_req: AuthenticatedRequest) => {
+  return NextResponse.json(
+    {
+      error: "自助加入入口已停用，请完成手机号验证、入频考核并提交委托表等待审核",
+      next: "/dcr",
+    },
+    { status: 410 },
+  );
 });

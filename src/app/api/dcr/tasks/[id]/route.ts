@@ -39,6 +39,40 @@ export const GET = withAuth(async (
       return NextResponse.json({ error: "任务不存在" }, { status: 404 });
     }
 
+    const isPrivileged = MODERATOR_ROLES.includes(
+      req.user.role as (typeof MODERATOR_ROLES)[number],
+    );
+    const isRequester = task.requesterId === req.user.id;
+    const isHelper = task.helpSession?.helperId === req.user.id;
+
+    if (!isPrivileged && !isRequester && !isHelper) {
+      const access = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { dcrAccess: true },
+      });
+      if (!access?.dcrAccess) {
+        return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
+      }
+
+      // 任务被领取后包含会话、证据和时间线信息，仅参与者和管理人员可见。
+      if (task.status !== "OPEN") {
+        return NextResponse.json({ error: "无权访问此任务详情" }, { status: 403 });
+      }
+
+      const {
+        helpSession: _,
+        timeline: __,
+        requesterId: ___,
+        completionReport: ____,
+        riskFlags: _____,
+        ...publicTask
+      } = task;
+      return NextResponse.json({
+        ...publicTask,
+        requester: { nickname: task.requester.nickname, avatar: task.requester.avatar },
+      });
+    }
+
     return NextResponse.json(task);
   } catch (error) {
     console.error("GET /api/dcr/tasks/[id] error:", error);

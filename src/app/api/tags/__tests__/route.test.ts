@@ -62,11 +62,20 @@ describe("GET /api/tags", () => {
     vi.clearAllMocks();
   });
 
-  it("应返回 401 当用户未登录", async () => {
+  it("未登录用户应看到按名称排序的标签列表", async () => {
     mockGetServerSession.mockResolvedValue(null);
+    const tags = [{ id: "t1", name: "公开标签", createdAt: new Date() }];
+    mockFindMany.mockResolvedValue(tags);
+
     const { GET } = await import("../route");
     const res = await GET(makeRequest("GET"), { params: {} });
-    expect(res.status).toBe(401);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.tags).toEqual([
+      expect.objectContaining({ id: "t1", name: "公开标签" }),
+    ]);
+    expect(mockFindMany).toHaveBeenCalledWith({ orderBy: { name: "asc" } });
   });
 
   it("应返回按名称排序的标签列表", async () => {

@@ -121,6 +121,7 @@ export const createReportSchema = z.object({
   targetUserId: z.string().cuid().optional(),
   targetPostId: z.string().cuid().optional(),
   targetCommentId: z.string().cuid().optional(),
+  targetTaskId: z.string().cuid().optional(),
 });
 
 // ==================== 标签相关 ====================
@@ -239,9 +240,7 @@ export const setPasswordSchema = z.object({
 export const registerSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
-  phone: phoneSchema,
   nickname: nicknameSchema,
-  code: verificationCodeSchema,
 });
 
 export const inviteRegisterSchema = z.object({

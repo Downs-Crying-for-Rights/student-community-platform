@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import nextConfig from "../../../next.config";
 
+async function getGlobalHeaders() {
+  const headerGroups = await nextConfig.headers!();
+  const globalHeaders = headerGroups.find((group) => group.source === "/(.*)");
+  expect(globalHeaders).toBeDefined();
+  return globalHeaders!;
+}
+
 describe("Security Headers Configuration", () => {
   it("应禁用 X-Powered-By 头", () => {
     expect(nextConfig.poweredByHeader).toBe(false);
@@ -13,8 +20,7 @@ describe("Security Headers Configuration", () => {
     const headerGroups = await headersFn!();
     expect(headerGroups.length).toBeGreaterThan(0);
 
-    const globalHeaders = headerGroups[0];
-    expect(globalHeaders.source).toBe("/(.*)");
+    const globalHeaders = await getGlobalHeaders();
 
     const headerMap = new Map(
       globalHeaders.headers.map((h: { key: string; value: string }) => [
@@ -32,8 +38,7 @@ describe("Security Headers Configuration", () => {
   });
 
   it("应配置 Content-Security-Policy 头", async () => {
-    const headerGroups = await nextConfig.headers!();
-    const globalHeaders = headerGroups[0];
+    const globalHeaders = await getGlobalHeaders();
     const headerMap = new Map(
       globalHeaders.headers.map((h: { key: string; value: string }) => [
         h.key,

@@ -1,6 +1,7 @@
 import type { Role } from "@prisma/client";
 import { getAccountAgeDays } from "@/lib/utils";
 import { computeTrustLevel, getDailyPostLimit, canPostInPsychology, canSendDM as tlCanSendDM, type TrustLevel } from "@/lib/trust-level";
+import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
 
 // ==================== Types ====================
 
@@ -127,19 +128,29 @@ export function evaluateABACPolicy(
     restrictions.push("信任等级不足，禁止发送私信 (需 L1+)");
   }
 
-  // --- DCR zone access ---
-  const canAccessDCR =
-    user.dcrAccess &&
-    user.dcrPledgeSigned &&
-    trustLevel >= 2;
-  if (!canAccessDCR && user.dcrAccess) {
-    restrictions.push("信任等级不足，暂时无法使用 DCR (需 L2+)");
+  // --- DCR zone access（委托给统一准入策略） ---
+  const dcrDecision = evaluateDcrAdmission({
+    stage: "USE_DCR",
+    user: {
+      id: "abac-user",
+      role: user.role,
+      createdAt: user.createdAt,
+      quizPassed: user.quizPassed,
+      reputationScore: user.reputationScore,
+      violationCount: user.violationCount,
+      dcrAccess: user.dcrAccess,
+      dcrPledgeSigned: user.dcrPledgeSigned,
+    },
+  });
+  const canAccessDCR = dcrDecision.allowed;
+  if (!dcrDecision.allowed && user.dcrAccess) {
+    restrictions.push(dcrDecision.reason);
   }
 
   // --- Psychology zone access ---
   const canAccessPsychology = canPostInPsychology(trustLevel, user.psychAccess);
   if (!canAccessPsychology) {
-    restrictions.push("信任等级不足，心理区仅可浏览 (需 L2+ 可浏览, L3+ 可发帖)");
+    restrictions.push("未获得心理交流区准入权限");
   }
 
   return {
@@ -210,16 +221,22 @@ export function canAccessZone(
   }
 
   if (zone === "DCR") {
-    if (!policy.canAccessDCR) {
-      const reasons: string[] = [];
-      if (!user.dcrAccess) reasons.push("未获得 DCR 区准入权限");
-      if (!user.dcrPledgeSigned) reasons.push("未签署私密区守则");
-      if (getAccountAgeDays(user.createdAt) < DCR_MIN_ACCOUNT_AGE_DAYS) {
-        reasons.push(`账号年龄不足 ${DCR_MIN_ACCOUNT_AGE_DAYS} 天`);
-      }
-      return { allowed: false, reason: reasons.join("；") };
-    }
-    return { allowed: true };
+    const decision = evaluateDcrAdmission({
+      stage: "USE_DCR",
+      user: {
+        id: "zone-user",
+        role: user.role,
+        createdAt: user.createdAt,
+        quizPassed: user.quizPassed,
+        reputationScore: user.reputationScore,
+        violationCount: user.violationCount,
+        dcrAccess: user.dcrAccess,
+        dcrPledgeSigned: user.dcrPledgeSigned,
+      },
+    });
+    return decision.allowed
+      ? { allowed: true }
+      : { allowed: false, reason: decision.reason };
   }
 
   return { allowed: false, reason: "未知区域" };

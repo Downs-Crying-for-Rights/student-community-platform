@@ -44,10 +44,10 @@ describe("响应式布局验证", () => {
       expect(source).toContain("min-w-[44px]");
     });
 
-    it("BottomNav 应包含五个导航入口", () => {
-      const hrefMatches = source.match(/href:\s*"/g);
-      expect(hrefMatches).not.toBeNull();
-      expect(hrefMatches!.length).toBeGreaterThanOrEqual(5);
+    it("BottomNav 应从共享配置渲染固定入口与更多菜单", () => {
+      expect(source).toContain("bottomPrimaryNavItems");
+      expect(source).toContain("bottomMoreNavItems");
+      expect(source).toContain('aria-label="更多"');
     });
   });
 

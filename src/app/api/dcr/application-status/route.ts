@@ -19,6 +19,16 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         status: true,
         reviewNote: true,
         reviewedAt: true,
+        caseId: true,
+        case_: {
+          select: {
+            id: true,
+            category: true,
+            status: true,
+            requestStatus: true,
+            reviewNote: true,
+          },
+        },
       },
     });
 
@@ -31,6 +41,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       status: application.status,
       reviewNote: application.reviewNote,
       reviewedAt: application.reviewedAt?.toISOString() ?? null,
+      caseId: application.caseId,
+      relatedCase: application.case_,
+      caseLinkMissing: application.caseId === null,
     });
   } catch (error) {
     console.error("GET /api/dcr/application-status error:", error);

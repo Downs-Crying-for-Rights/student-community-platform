@@ -62,6 +62,16 @@ export const GET = withOptionalAuth(async (
       }
     }
 
+    if (post.board.zone === "PSYCHOLOGY") {
+      const access = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { psychAccess: true },
+      });
+      if (!access?.psychAccess && !isModerator) {
+        return NextResponse.json({ error: "无心理区访问权限" }, { status: 403 });
+      }
+    }
+
     // Don't show DELETED posts unless moderator
     if (post.status === "DELETED" && !isModerator) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });

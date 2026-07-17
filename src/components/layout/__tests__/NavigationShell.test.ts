@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  bottomMoreNavItems,
+  isActive,
+  sidebarCoreNavItems,
+} from "../navigation-config";
 
 const SRC = path.resolve(__dirname, "../../..");
 
@@ -19,15 +24,17 @@ function walkTsx(directory: string): string[] {
 describe("统一会员导航壳", () => {
   it("移动端更多菜单保留群聊入口", () => {
     const source = read("components/layout/BottomNav.tsx");
-    expect(source).toContain('href: "/messages?tab=chat"');
-    expect(source).toContain('label: "群聊"');
+    expect(bottomMoreNavItems).toContainEqual(
+      expect.objectContaining({ href: "/messages?tab=chat", label: "群聊" }),
+    );
     expect(source).toContain("MessagesSquare");
   });
 
   it("PC 左侧菜单直接显示群聊入口", () => {
     const source = read("components/layout/Sidebar.tsx");
-    expect(source).toContain('href: "/messages?tab=chat"');
-    expect(source).toContain('label: "群聊"');
+    expect(sidebarCoreNavItems).toContainEqual(
+      expect.objectContaining({ href: "/messages?tab=chat", label: "群聊" }),
+    );
     expect(source).toContain("MessagesSquare");
   });
 
@@ -35,9 +42,10 @@ describe("统一会员导航壳", () => {
     for (const file of ["components/layout/BottomNav.tsx", "components/layout/Sidebar.tsx"]) {
       const source = read(file);
       expect(source).not.toContain("useSearchParams");
-      expect(source).toContain('href === "/messages?tab=chat"');
-      expect(source).toContain('href === "/messages"');
+      expect(source).toContain("isActive(");
     }
+    expect(isActive("/messages?tab=chat", "/chat/123")).toBe(true);
+    expect(isActive("/messages", "/messages/123")).toBe(true);
 
     const shell = read("components/layout/MemberShell.tsx");
     expect(shell).not.toContain("Suspense");
