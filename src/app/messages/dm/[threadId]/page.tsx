@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { ReportDialog } from "@/components/shared/ReportDialog";
 
 interface DMMessage {
   id: string;
@@ -70,8 +71,11 @@ export default function DMThreadPage() {
       {error && <p className="mb-3 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
       <div className="flex-1 space-y-3 overflow-y-auto pb-24">
         {loading ? <Loader2 className="mx-auto mt-12 h-6 w-6 animate-spin" /> : messages.map((message) => (
-          <div key={message.id} className={cn("flex", message.senderId === userId ? "justify-end" : "justify-start")}>
+          <div key={message.id} className={cn("flex items-end gap-1", message.senderId === userId ? "justify-end" : "justify-start")}>
             <div className={cn("max-w-[80%] rounded-2xl px-4 py-2 text-sm", message.senderId === userId ? "bg-primary text-primary-foreground" : "bg-muted")}>{message.content}</div>
+            {message.senderId !== userId && (
+              <ReportDialog target={{ targetDmMessageId: message.id }} label="举报此私信" compact />
+            )}
           </div>
         ))}
         <div ref={endRef} />

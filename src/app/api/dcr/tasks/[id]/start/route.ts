@@ -4,6 +4,8 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 import { canTransition } from "@/lib/task-state-machine";
 import { TaskStatus } from "@prisma/client";
+import { aggregateHelpSessionStatus } from "@/lib/task-state-machine";
+import { notifyMutualAidUsersBestEffort } from "@/lib/mutual-aid-notifications";
 
 /**
  * POST /api/dcr/tasks/[id]/start
@@ -20,40 +22,52 @@ export const POST = withAuth(async (
 
     const task = await prisma.mutualAidTask.findUnique({
       where: { id },
-      include: { helpSessions: { select: { helperId: true } } },
+      include: { helpSessions: { select: { id: true, helperId: true, status: true } } },
     });
 
     if (!task) {
       return NextResponse.json({ error: "任务不存在" }, { status: 404 });
     }
 
-    if (!task.helpSessions.some((session) => session.helperId === userId)) {
+    const session = task.helpSessions.find((item) => item.helperId === userId);
+    if (!session) {
       return NextResponse.json({ error: "只有领取该任务的互助人才能开始处理" }, { status: 403 });
     }
 
-    if (!(["CLAIMED", "IN_PROGRESS"].includes(task.status)) && !canTransition(task.status as any, "IN_PROGRESS")) {
-      return NextResponse.json({ error: `当前状态 ${task.status} 不允许开始处理` }, { status: 400 });
+    if (session.status !== "CLAIMED") {
+      return NextResponse.json({ error: `当前会话状态 ${session.status} 不允许开始处理` }, { status: 400 });
     }
 
-    await prisma.$transaction([
-      prisma.mutualAidTask.update({
-        where: { id },
-        data: { status: TaskStatus.IN_PROGRESS },
-      }),
-      prisma.taskTimelineEvent.create({
+    const status = aggregateHelpSessionStatus(
+      task.helpSessions.map((item) => item.id === session.id ? "IN_PROGRESS" : item.status),
+    );
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.helpSession.updateMany({
+        where: { id: session.id, status: "CLAIMED" },
+        data: { status: "IN_PROGRESS" },
+      });
+      if (updated.count === 0) throw new Error("SESSION_STATE_CHANGED");
+      await tx.mutualAidTask.updateMany({ where: { id }, data: { status } });
+      await tx.taskTimelineEvent.create({
         data: {
           taskId: id,
           action: "start",
           oldStatus: task.status,
-          newStatus: TaskStatus.IN_PROGRESS,
+          newStatus: status,
+          details: `[session:${session.id}]`,
           operatorId: userId,
         },
-      }),
-    ]);
+      });
+    });
 
     await logAudit(userId, "TASK_START", "TASK", id, {});
+    await notifyMutualAidUsersBestEffort([task.requesterId], {
+      title: "互助会话已开始",
+      content: `互助任务「${task.title}」的一项互助会话已开始处理。`,
+      link: `/dcr/tasks/${id}`,
+    });
 
-    return NextResponse.json({ status: TaskStatus.IN_PROGRESS });
+    return NextResponse.json({ status, sessionId: session.id, sessionStatus: TaskStatus.IN_PROGRESS });
   } catch (error) {
     console.error("POST /api/dcr/tasks/[id]/start error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

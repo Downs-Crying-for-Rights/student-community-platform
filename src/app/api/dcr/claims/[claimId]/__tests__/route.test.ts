@@ -5,20 +5,22 @@ const mocks = vi.hoisted(() => ({
   claimFindUnique: vi.fn(),
   claimUpdateMany: vi.fn(),
   sessionCreate: vi.fn(),
+  sessionFindMany: vi.fn(),
   messageCreate: vi.fn(),
   claimUpdate: vi.fn(),
-  taskUpdate: vi.fn(),
+  taskUpdateMany: vi.fn(),
   timelineCreate: vi.fn(),
   userUpdateMany: vi.fn(),
   logAudit: vi.fn(),
+  notifyUsers: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
     helpClaim: { updateMany: mocks.claimUpdateMany, update: mocks.claimUpdate },
-    helpSession: { create: mocks.sessionCreate },
+    helpSession: { create: mocks.sessionCreate, findMany: mocks.sessionFindMany },
     helpChatMessage: { create: mocks.messageCreate },
-    mutualAidTask: { update: mocks.taskUpdate },
+    mutualAidTask: { updateMany: mocks.taskUpdateMany },
     taskTimelineEvent: { create: mocks.timelineCreate },
     user: { updateMany: mocks.userUpdateMany },
   };
@@ -28,6 +30,9 @@ vi.mock("@/lib/prisma", () => {
   } };
 });
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.logAudit }));
+vi.mock("@/lib/mutual-aid-notifications", () => ({
+  notifyMutualAidUsersBestEffort: mocks.notifyUsers,
+}));
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 
@@ -65,7 +70,10 @@ describe("POST /api/dcr/claims/[claimId]", () => {
       helpChat: { id: "chat-1" },
       evidenceRoom: { id: "room-1" },
     });
+    mocks.sessionFindMany.mockResolvedValue([{ status: "CLAIMED" }]);
+    mocks.taskUpdateMany.mockResolvedValue({ count: 1 });
     mocks.logAudit.mockResolvedValue({});
+    mocks.notifyUsers.mockResolvedValue(undefined);
   });
 
   it("creates the mutual-aid session only after the requester accepts", async () => {
@@ -81,6 +89,9 @@ describe("POST /api/dcr/claims/[claimId]", () => {
     expect(mocks.sessionCreate).toHaveBeenCalledTimes(1);
     expect(mocks.messageCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ isSystemMessage: true, senderId: "helper" }),
+    }));
+    expect(mocks.notifyUsers).toHaveBeenCalledWith(["helper"], expect.objectContaining({
+      title: "互助申请已通过",
     }));
   });
 
@@ -112,6 +123,30 @@ describe("POST /api/dcr/claims/[claimId]", () => {
     const response = await POST(request("reject"), context as never);
 
     expect(response.status).toBe(200);
+    expect(mocks.sessionCreate).not.toHaveBeenCalled();
+    expect(mocks.notifyUsers).toHaveBeenCalledWith(["helper"], expect.objectContaining({
+      title: "互助申请未通过",
+    }));
+    expect(mocks.logAudit).toHaveBeenCalledWith(
+      "requester",
+      "TASK_CLAIM_REJECT",
+      "TASK",
+      "task-1",
+      { claimId: "claim-1" },
+      undefined,
+      expect.anything(),
+    );
+  });
+
+  it("does not accept a stale claim after the task entered closure", async () => {
+    mocks.claimFindUnique.mockResolvedValue({
+      ...claim,
+      targetTask: { ...claim.targetTask, status: "COMPLETED", helpSessions: [] },
+    });
+
+    const response = await POST(request("accept"), context as never);
+
+    expect(response.status).toBe(409);
     expect(mocks.sessionCreate).not.toHaveBeenCalled();
   });
 });

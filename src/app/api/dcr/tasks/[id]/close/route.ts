@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { closeTaskSchema } from "@/lib/validators";
-import { canTransition, type TaskStatus } from "@/lib/task-state-machine";
+import { aggregateHelpSessionStatus, canTransition, type TaskStatus } from "@/lib/task-state-machine";
 import { checkCompletionRequirements } from "@/lib/task-completion";
 import { logAudit } from "@/lib/audit";
+import { notifyMutualAidUsersBestEffort } from "@/lib/mutual-aid-notifications";
 
 /** Roles allowed to force-close a task */
 const MODERATOR_ROLES = ["MODERATOR", "ADMIN", "SUPER_ADMIN"] as const;
@@ -47,7 +48,7 @@ export const POST = withAuth(async (
       );
     }
 
-    const { action, reason } = parsed.data;
+    const { action, reason, sessionId } = parsed.data;
 
     // Load task with session and evidence
     const task = await prisma.mutualAidTask.findUnique({
@@ -137,133 +138,87 @@ export const POST = withAuth(async (
       });
     }
 
-    // ==================== action=request / action=confirm ====================
-    // Both require the user to be A or B
     if (!isRequester && !isHelper) {
       return NextResponse.json({ error: "仅互助双方可操作" }, { status: 403 });
     }
-
-    // Validate current status allows closure operations
-    const allowedStatuses: TaskStatus[] = ["IN_PROGRESS", "EVIDENCE_PENDING"];
-    if (!allowedStatuses.includes(task.status as TaskStatus)) {
-      return NextResponse.json(
-        { error: `当前状态 ${task.status} 不允许结案操作` },
-        { status: 400 },
-      );
+    const activeSessions = task.helpSessions.filter((session) =>
+      !["COMPLETED", "CLOSED"].includes(session.status),
+    );
+    if (isRequester && !sessionId && activeSessions.length > 1) {
+      return NextResponse.json({ error: "请选择要结案的互助会话" }, { status: 400 });
+    }
+    const selected = activeSessions.find((session) =>
+      session.id === (sessionId ?? activeSessions[0]?.id)
+      && (isRequester || session.helperId === userId),
+    );
+    if (!selected) return NextResponse.json({ error: "互助会话不存在" }, { status: 404 });
+    if (!["IN_PROGRESS", "EVIDENCE_PENDING"].includes(selected.status)) {
+      return NextResponse.json({ error: `当前会话状态 ${selected.status} 不允许结案操作` }, { status: 400 });
     }
 
-    if (action === "request") {
-      // Set the corresponding confirmed flag
-      const updateData: Record<string, any> = {};
-      if (isRequester) {
-        updateData.requesterConfirmed = true;
-      } else {
-        updateData.helperConfirmed = true;
-      }
-
-      // If task is IN_PROGRESS, transition to EVIDENCE_PENDING
-      let newStatus = task.status;
-      if (task.status === "IN_PROGRESS") {
-        if (!canTransition("IN_PROGRESS", "EVIDENCE_PENDING")) {
-          return NextResponse.json(
-            { error: "状态转移不合法" },
-            { status: 400 },
-          );
-        }
-        updateData.status = "EVIDENCE_PENDING";
-        newStatus = "EVIDENCE_PENDING";
-      }
-
-      // Check if both parties have now confirmed (including the current request)
-      const bothConfirmed =
-        (isRequester ? true : task.requesterConfirmed) &&
-        (isHelper ? true : task.helperConfirmed);
-
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.helpSession.update({
+        where: { id: selected.id },
+        data: {
+          ...(isRequester ? { requesterConfirmed: true } : { helperConfirmed: true }),
+          ...(action === "request" && selected.status === "IN_PROGRESS" ? { status: "EVIDENCE_PENDING" } : {}),
+        },
+      });
+      const current = await tx.helpSession.findUniqueOrThrow({
+        where: { id: selected.id },
+        include: { evidenceRoom: { include: { items: { select: { type: true } } } } },
+      });
+      let sessionStatus = current.status;
+      const bothConfirmed = current.requesterConfirmed && current.helperConfirmed;
       if (bothConfirmed) {
-        // Both confirmed — proceed to completion
-        return await completeTask(id, task, userId, newStatus as string);
-      }
-
-      // Only one party confirmed so far
-      const updated = await prisma.$transaction(async (tx) => {
-        const updatedTask = await tx.mutualAidTask.update({
-          where: { id },
-          data: updateData,
+        const check = checkCompletionRequirements(current.evidenceRoom?.items ?? []);
+        if (!check.canComplete) throw new Error("EVIDENCE_INCOMPLETE");
+        await tx.helpSession.update({
+          where: { id: selected.id },
+          data: { status: "COMPLETED", closedAt: new Date() },
         });
-
-        await tx.taskTimelineEvent.create({
-          data: {
-            taskId: id,
-            action: "close_request",
-            oldStatus: task.status,
-            newStatus: newStatus as string,
-            details: isRequester ? "求助者发起结案" : "互助者发起结案",
-            operatorId: userId,
-          },
+        sessionStatus = "COMPLETED";
+        const reward = await tx.helpSession.updateMany({
+          where: { id: selected.id, status: "COMPLETED", rewardGrantedAt: null },
+          data: { rewardGrantedAt: new Date() },
         });
-
-        return updatedTask;
-      });
-
-      await logAudit(userId, "TASK_CLOSE_REQUEST", "TASK", id, {
-        oldStatus: task.status,
-        newStatus,
-        role: isRequester ? "requester" : "helper",
-      });
-
-      return NextResponse.json({ status: updated.status });
-    }
-
-    if (action === "confirm") {
-      // Set the confirming party's flag
-      const updateData: Record<string, any> = {};
-      if (isRequester) {
-        updateData.requesterConfirmed = true;
-      } else {
-        updateData.helperConfirmed = true;
-      }
-
-      // Check if both parties have now confirmed
-      const bothConfirmed =
-        (isRequester ? true : task.requesterConfirmed) &&
-        (isHelper ? true : task.helperConfirmed);
-
-      if (!bothConfirmed) {
-        // Still waiting for the other party
-        const updated = await prisma.$transaction(async (tx) => {
-          const updatedTask = await tx.mutualAidTask.update({
-            where: { id },
-            data: updateData,
+        if (reward.count > 0) {
+          await tx.user.update({
+            where: { id: selected.helperId },
+            data: { reputationScore: { increment: 10 } },
           });
-
-          await tx.taskTimelineEvent.create({
-            data: {
-              taskId: id,
-              action: "close_confirm",
-              oldStatus: task.status,
-              newStatus: task.status,
-              details: isRequester ? "求助者确认结案" : "互助者确认结案",
-              operatorId: userId,
-            },
-          });
-
-          return updatedTask;
-        });
-
-        await logAudit(userId, "TASK_CLOSE_CONFIRM", "TASK", id, {
-          role: isRequester ? "requester" : "helper",
-          bothConfirmed: false,
-        });
-
-        return NextResponse.json({ status: updated.status });
+        }
       }
+      const statuses = await tx.helpSession.findMany({ where: { taskId: id }, select: { status: true } });
+      const status = aggregateHelpSessionStatus(statuses.map((item) => item.status));
+      await tx.mutualAidTask.updateMany({ where: { id }, data: { status } });
+      await tx.taskTimelineEvent.create({
+        data: {
+          taskId: id,
+          action: bothConfirmed ? "complete" : action === "request" ? "close_request" : "close_confirm",
+          oldStatus: task.status,
+          newStatus: status,
+          details: `[session:${selected.id}]`,
+          operatorId: userId,
+        },
+      });
+      return { status, sessionStatus, bothConfirmed };
+    });
 
-      // Both confirmed — proceed to completion
-      return await completeTask(id, task, userId, task.status);
-    }
-
-    return NextResponse.json({ error: "未知操作" }, { status: 400 });
+    await logAudit(userId, result.bothConfirmed ? "TASK_COMPLETE" : action === "request" ? "TASK_CLOSE_REQUEST" : "TASK_CLOSE_CONFIRM", "TASK", id, {
+      sessionId: selected.id,
+    });
+    const counterpartId = isRequester ? selected.helperId : task.requesterId;
+    await notifyMutualAidUsersBestEffort([counterpartId], {
+      title: result.bothConfirmed ? "互助会话已结案" : "收到互助结案请求",
+      content: `互助任务「${task.title}」的一项会话状态已更新。`,
+      link: `/dcr/tasks/${id}`,
+    });
+    return NextResponse.json({ status: result.status, sessionId: selected.id, sessionStatus: result.sessionStatus });
   } catch (error) {
+    if (error instanceof Error && error.message === "EVIDENCE_INCOMPLETE") {
+      return NextResponse.json({ error: "证据不完整，无法结案" }, { status: 400 });
+    }
     console.error("POST /api/dcr/tasks/[id]/close error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

@@ -34,7 +34,8 @@ export type NavigationIconName =
   | "activity"
   | "refresh"
   | "list-todo"
-  | "scale";
+  | "scale"
+  | "flag";
 
 export interface NavigationItem {
   href: string;
@@ -75,6 +76,7 @@ export const moderationNavItems: readonly NavigationItem[] = [
 
 /** Admin destinations intentionally remain unchanged. */
 export const adminNavItems: readonly NavigationItem[] = [
+  { href: "/admin/reports", label: "举报处理", icon: "flag", minRole: "MODERATOR" },
   { href: "/admin/users", label: "用户管理", icon: "users", minRole: "ADMIN" },
   { href: "/admin/content", label: "内容管理", icon: "file-text", minRole: "ADMIN" },
   { href: "/admin/invites", label: "邀请码", icon: "ticket", minRole: "ADMIN" },

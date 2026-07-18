@@ -37,6 +37,21 @@ describe("审计日志模块", () => {
       expect(AuditAction.REPORT_RESOLVE).toBe("REPORT_RESOLVE");
       expect(AuditAction.REPORT_DISMISS).toBe("REPORT_DISMISS");
       expect(AuditAction.DCR_ACCESS_GRANT).toBe("DCR_ACCESS_GRANT");
+      expect(AuditAction.CREATE_CASE).toBe("CREATE_CASE");
+      expect(AuditAction.SUPPLEMENT_CASE).toBe("SUPPLEMENT_CASE");
+      expect(AuditAction.REVIEW_CASE).toBe("REVIEW_CASE");
+      expect(AuditAction.UPDATE_CASE_STATUS).toBe("UPDATE_CASE_STATUS");
+      expect(AuditAction.CREATE_TASK).toBe("CREATE_TASK");
+      expect(AuditAction.PUBLISH_TASK_FROM_APPROVED_CASE).toBe("PUBLISH_TASK_FROM_APPROVED_CASE");
+      expect(AuditAction.TASK_CLAIM_REQUEST).toBe("TASK_CLAIM_REQUEST");
+      expect(AuditAction.TASK_CLAIM_ACCEPT).toBe("TASK_CLAIM_ACCEPT");
+      expect(AuditAction.TASK_CLAIM_REJECT).toBe("TASK_CLAIM_REJECT");
+      expect(AuditAction.TASK_START).toBe("TASK_START");
+      expect(AuditAction.TASK_COMPLETE).toBe("TASK_COMPLETE");
+      expect(AuditAction.TASK_DISPUTE).toBe("TASK_DISPUTE");
+      expect(AuditAction.CREATE_EVIDENCE).toBe("CREATE_EVIDENCE");
+      expect(AuditAction.EXPORT_EVIDENCE).toBe("EXPORT_EVIDENCE");
+      expect(AuditAction.DISPUTE_FREEZE).toBe("DISPUTE_FREEZE");
       expect(AuditAction.CASE_EXPORT).toBe("CASE_EXPORT");
       expect(AuditAction.BOARD_PERMISSION_CHANGE).toBe("BOARD_PERMISSION_CHANGE");
       expect(AuditAction.UNAUTHORIZED_ACCESS).toBe("UNAUTHORIZED_ACCESS");
@@ -90,6 +105,31 @@ describe("审计日志模块", () => {
           ipHash: "abc123hash",
         },
       });
+    });
+
+    it("应支持使用事务客户端原子写入", async () => {
+      const transactionCreate = vi.fn().mockResolvedValue({ id: "audit-tx" });
+
+      await logAudit(
+        "admin-1",
+        AuditAction.TASK_CLAIM_ACCEPT,
+        AuditTargetType.TASK,
+        "task-1",
+        { claimId: "claim-1" },
+        undefined,
+        { auditLog: { create: transactionCreate } } as never,
+      );
+
+      expect(transactionCreate).toHaveBeenCalledWith({
+        data: {
+          operatorId: "admin-1",
+          action: "TASK_CLAIM_ACCEPT",
+          targetType: "TASK",
+          targetId: "task-1",
+          details: { claimId: "claim-1" },
+        },
+      });
+      expect(mockCreate).not.toHaveBeenCalled();
     });
 
     it("应在 details 为 undefined 时不传递该字段", async () => {

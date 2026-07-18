@@ -12,6 +12,7 @@ import { CardSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ReportDialog } from "@/components/shared/ReportDialog";
 
 /* ---------- Types ---------- */
 
@@ -297,10 +298,13 @@ export default function ProfilePage() {
               <span>{formatJoinDate(user.createdAt)} 加入</span>
             </div>
             {!isOwnProfile && session?.user?.id && (
-              <Button type="button" variant="outline" onClick={startDirectMessage} disabled={startingDM}>
-                {startingDM ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
-                发私信
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={startDirectMessage} disabled={startingDM}>
+                  {startingDM ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                  发私信
+                </Button>
+                <ReportDialog target={{ targetUserId: user.id }} label="举报用户" />
+              </div>
             )}
             {dmError && <p className="text-sm text-destructive" role="alert">{dmError}</p>}
           </div>

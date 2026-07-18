@@ -39,42 +39,39 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const where = { status: "DISPUTED" as const };
 
     const [disputes, total] = await Promise.all([
-      prisma.mutualAidTask.findMany({
+      prisma.helpSession.findMany({
         where,
         include: {
-          requester: {
-            select: {
-              id: true,
-              nickname: true,
-              email: true,
-              avatar: true,
+          task: {
+            include: {
+              requester: { select: { id: true, nickname: true, email: true, avatar: true } },
+              timeline: { orderBy: { createdAt: "desc" } },
             },
-          },
-          helpSessions: {
-            select: {
-              id: true,
-              helperId: true,
-              requesterId: true,
-              createdAt: true,
-            },
-          },
-          timeline: {
-            orderBy: { createdAt: "desc" },
           },
         },
-        orderBy: { updatedAt: "desc" },
+        orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.mutualAidTask.count({ where }),
+      prisma.helpSession.count({ where }),
     ]);
 
     return NextResponse.json({
-      disputes: disputes.map((item) => ({
-        ...item,
-        // Keep the existing admin UI contract while exposing all sessions for newer clients.
-        helpSession: item.helpSessions[0] ?? null,
-      })),
+      disputes: disputes.map((session) => {
+        const marker = `[session:${session.id}]`;
+        const event = session.task.timeline.find((item) => item.action === "dispute" && item.details?.startsWith(marker));
+        return {
+          ...session.task,
+          disputeSessionId: session.id,
+          disputeExplanation: event?.details?.slice(marker.length).trim() ?? "",
+          helpSession: {
+            id: session.id,
+            helperId: session.helperId,
+            requesterId: session.requesterId,
+            createdAt: session.createdAt,
+          },
+        };
+      }),
       total,
       page,
       pageSize,

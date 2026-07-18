@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
-import { taskActionSchema } from "@/lib/validators";
-import { canTransition, type TaskStatus } from "@/lib/task-state-machine";
-import { logAudit } from "@/lib/audit";
 
 /**
  * GET /api/dcr/tasks/[id]
@@ -130,107 +127,19 @@ export const PATCH = withAuth(async (
 ) => {
   try {
     const { id } = context.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    const body = await req.json();
-    const parsed = taskActionSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "参数校验失败", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
-      );
-    }
-
-    const { action, reason } = parsed.data;
-
-    // Find the task
+    await req.json().catch(() => null);
     const task = await prisma.mutualAidTask.findUnique({ where: { id } });
-
-    if (!task) {
-      return NextResponse.json({ error: "任务不存在" }, { status: 404 });
-    }
-
-    let targetStatus: string;
-
-    switch (action) {
-      case "submit": {
-        // Only the task creator can submit
-        if (task.requesterId !== userId) {
-          return NextResponse.json({ error: "仅任务创建者可提交" }, { status: 403 });
-        }
-        targetStatus = "SUBMITTED";
-        break;
-      }
-      case "review": {
-        if (!MODERATOR_ROLES.includes(userRole as (typeof MODERATOR_ROLES)[number])) {
-          return NextResponse.json({ error: "权限不足" }, { status: 403 });
-        }
-        targetStatus = "UNDER_REVIEW";
-        break;
-      }
-      case "approve": {
-        if (!MODERATOR_ROLES.includes(userRole as (typeof MODERATOR_ROLES)[number])) {
-          return NextResponse.json({ error: "权限不足" }, { status: 403 });
-        }
-        targetStatus = "OPEN";
-        break;
-      }
-      case "reject": {
-        if (!MODERATOR_ROLES.includes(userRole as (typeof MODERATOR_ROLES)[number])) {
-          return NextResponse.json({ error: "权限不足" }, { status: 403 });
-        }
-        if (!reason) {
-          return NextResponse.json({ error: "拒绝操作必须提供原因" }, { status: 400 });
-        }
-        targetStatus = "REJECTED";
-        break;
-      }
-      default:
-        return NextResponse.json({ error: "未知操作" }, { status: 400 });
-    }
-
-    // Verify state transition legality
-    if (!canTransition(task.status as TaskStatus, targetStatus as TaskStatus)) {
+    if (!task) return NextResponse.json({ error: "任务不存在" }, { status: 404 });
+    if (!task.caseId) {
       return NextResponse.json(
-        { error: `不允许从 ${task.status} 转移到 ${targetStatus}` },
-        { status: 400 },
+        { error: "旧版未关联委托的任务不能继续审核，请从已审核委托重新发布" },
+        { status: 410 },
       );
     }
-
-    // Update task status + create timeline event in a transaction
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedTask = await tx.mutualAidTask.update({
-        where: { id },
-        data: {
-          status: targetStatus as TaskStatus,
-          ...(action === "reject" ? { rejectionReason: reason } : {}),
-        },
-      });
-
-      await tx.taskTimelineEvent.create({
-        data: {
-          taskId: id,
-          action,
-          oldStatus: task.status,
-          newStatus: targetStatus,
-          details: reason ?? null,
-          operatorId: userId,
-        },
-      });
-
-      return updatedTask;
-    });
-
-    // Audit log
-    await logAudit(userId, `TASK_${action.toUpperCase()}`, "TASK", id, {
-      oldStatus: task.status,
-      newStatus: targetStatus,
-      reason: reason ?? null,
-    });
-
-    return NextResponse.json({ id: updated.id, status: updated.status });
+    return NextResponse.json(
+      { error: "关联委托已完成审核，任务不再进入第二套审核流程" },
+      { status: 409 },
+    );
   } catch (error) {
     console.error("PATCH /api/dcr/tasks/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

@@ -7,6 +7,10 @@ import { sendUserMail } from "@/lib/mail";
 import { generateAnonymousId } from "@/lib/utils";
 import { CaseStatus } from "@prisma/client";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import { dcrCategorySchema } from "@/lib/validators";
+import { extractFields, type DelegationInput } from "@/lib/dcr-field-extractor";
+import { scanContent } from "@/lib/sensitive-engine";
 
 // ==================== Status Flow Rules ====================
 
@@ -33,6 +37,19 @@ const updateStatusSchema = z.union([
 
 const joinActionSchema = z.object({
   action: z.literal("JOIN"),
+});
+
+const supplementSchema = z.object({
+  _action: z.literal("supplement"),
+  category: dcrCategorySchema,
+  formData: z.record(z.unknown()),
+  pledgeText: z.string().min(1),
+  grade: z.string().optional(),
+  timeRange: z.string().optional(),
+  province: z.string().optional(),
+  city: z.string().optional(),
+  expectedHelperProvince: z.string().optional(),
+  riskPreference: z.string().optional(),
 });
 
 /**
@@ -136,6 +153,75 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     const { id } = await context.params;
 
     const body = await req.json();
+
+    const supplement = supplementSchema.safeParse(body);
+    if (supplement.success) {
+      const current = await prisma.case.findUnique({ where: { id } });
+      if (!current) return NextResponse.json({ error: "委托不存在" }, { status: 404 });
+      if (current.submitterId !== userId) return NextResponse.json({ error: "仅提交者可补充材料" }, { status: 403 });
+      if (current.requestStatus !== "NEED_MORE_INFO") {
+        return NextResponse.json({ error: "当前委托不在待补充状态", code: "CASE_NOT_AWAITING_SUPPLEMENT" }, { status: 409 });
+      }
+      const data = supplement.data;
+      const contentType = typeof data.formData.contentType === "string" ? data.formData.contentType : "";
+      const expectedCategory = contentType.includes("补课") ? "TUTORING"
+        : contentType.includes("收费") ? "FEES"
+          : contentType.includes("双休") ? "WEEKENDS"
+            : "OTHER";
+      if (data.category !== expectedCategory) {
+        return NextResponse.json({ error: "委托分类与表单内容不一致" }, { status: 400 });
+      }
+      const input: DelegationInput = {
+        ...(data.formData as DelegationInput),
+        pledgeText: data.pledgeText,
+        grade: data.grade,
+        timeRange: data.timeRange,
+        province: data.province,
+        city: data.city,
+        expectedHelperProvince: data.expectedHelperProvince,
+        riskPreference: data.riskPreference,
+      };
+      const extraction = extractFields(input);
+      const matches = await scanContent(`${Object.values(data.formData).join(" ")} ${data.pledgeText}`);
+      const updated = await prisma.$transaction(async (tx) => {
+        const result = await tx.case.updateMany({
+          where: { id, submitterId: userId, requestStatus: "NEED_MORE_INFO" },
+          data: {
+            category: data.category,
+            formData: data.formData as Prisma.InputJsonValue,
+            pledgeText: data.pledgeText,
+            grade: data.grade,
+            timeRange: data.timeRange,
+            province: data.province,
+            city: data.city,
+            expectedHelperProvince: data.expectedHelperProvince,
+            riskPreference: data.riskPreference,
+            extractedFields: extraction.extractedFields as Prisma.InputJsonValue,
+            missingFields: extraction.missingFields,
+            sensitiveHitCount: matches.length,
+            requestStatus: "PENDING",
+            reviewNote: "补充材料已提交，等待管理员重新审核",
+          },
+        });
+        if (result.count === 0) return null;
+        await tx.accessApplication.updateMany({
+          where: { caseId: id, applicantId: userId, type: "DCR", status: "PENDING" },
+          data: { pledgeText: data.pledgeText },
+        });
+        await tx.timelineEvent.create({
+          data: { caseId: id, action: "提交补充材料", oldStatus: "NEED_MORE_INFO", newStatus: "PENDING" },
+        });
+        await logAudit(userId, "SUPPLEMENT_CASE", "CASE", id, {
+          oldRequestStatus: "NEED_MORE_INFO",
+          newRequestStatus: "PENDING",
+        }, undefined, tx);
+        return tx.case.findUnique({ where: { id } });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      if (!updated) {
+        return NextResponse.json({ error: "委托审核状态已变化", code: "CASE_NOT_AWAITING_SUPPLEMENT" }, { status: 409 });
+      }
+      return NextResponse.json({ case: updated });
+    }
 
     // Check if this is a JOIN action
     const joinParsed = joinActionSchema.safeParse(body);

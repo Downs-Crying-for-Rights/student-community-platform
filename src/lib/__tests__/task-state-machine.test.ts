@@ -4,6 +4,7 @@ import {
   getNextStates,
   FORWARD_TRANSITIONS,
   TERMINAL_STATES,
+  aggregateHelpSessionStatus,
   type TaskStatus,
 } from '../task-state-machine';
 
@@ -37,19 +38,27 @@ describe('task-state-machine', () => {
       expect(canTransition('OPEN', 'UNDER_REVIEW')).toBe(false);
     });
 
-    it('allows transition to terminal states from any state', () => {
-      for (const from of ALL_STATUSES) {
-        for (const terminal of TERMINAL_STATES) {
-          expect(canTransition(from, terminal)).toBe(true);
-        }
+    it('allows rejection and closure from non-terminal states', () => {
+      for (const from of ALL_STATUSES.filter((status) => !TERMINAL_STATES.includes(status))) {
+        expect(canTransition(from, 'REJECTED')).toBe(true);
+        expect(canTransition(from, 'CLOSED')).toBe(true);
       }
     });
 
-    it('disallows transitions from terminal states (except to other terminals)', () => {
-      expect(canTransition('COMPLETED', 'DRAFT')).toBe(false);
-      expect(canTransition('COMPLETED', 'SUBMITTED')).toBe(false);
-      expect(canTransition('REJECTED', 'OPEN')).toBe(false);
-      expect(canTransition('CLOSED', 'OPEN')).toBe(false);
+    it('allows disputes only from active workflow states', () => {
+      expect(canTransition('CLAIMED', 'DISPUTED')).toBe(true);
+      expect(canTransition('IN_PROGRESS', 'DISPUTED')).toBe(true);
+      expect(canTransition('EVIDENCE_PENDING', 'DISPUTED')).toBe(true);
+      expect(canTransition('DRAFT', 'DISPUTED')).toBe(false);
+      expect(canTransition('OPEN', 'DISPUTED')).toBe(false);
+    });
+
+    it('disallows every transition from terminal states', () => {
+      for (const terminal of TERMINAL_STATES) {
+        for (const target of ALL_STATUSES) {
+          expect(canTransition(terminal, target)).toBe(false);
+        }
+      }
     });
   });
 
@@ -59,18 +68,18 @@ describe('task-state-machine', () => {
       expect(next).toContain('SUBMITTED');
       expect(next).toContain('REJECTED');
       expect(next).toContain('CLOSED');
-      expect(next).toContain('DISPUTED');
-      expect(next).toHaveLength(4); // 1 forward + 3 terminal
+      expect(next).not.toContain('DISPUTED');
+      expect(next).toHaveLength(3); // 1 forward + rejection + closure
     });
 
-    it('returns only terminal states for COMPLETED', () => {
+    it('returns no states for COMPLETED', () => {
       const next = getNextStates('COMPLETED');
-      expect(next).toEqual(TERMINAL_STATES);
+      expect(next).toEqual([]);
     });
 
-    it('returns only terminal states for terminal statuses', () => {
+    it('returns no states for terminal statuses', () => {
       for (const terminal of TERMINAL_STATES) {
-        expect(getNextStates(terminal)).toEqual(TERMINAL_STATES);
+        expect(getNextStates(terminal)).toEqual([]);
       }
     });
 
@@ -79,7 +88,7 @@ describe('task-state-machine', () => {
       expect(next).toContain('CLAIMED');
       expect(next).toContain('REJECTED');
       expect(next).toContain('CLOSED');
-      expect(next).toContain('DISPUTED');
+      expect(next).not.toContain('DISPUTED');
     });
   });
 
@@ -89,6 +98,25 @@ describe('task-state-machine', () => {
       for (const status of ALL_STATUSES) {
         expect(FORWARD_TRANSITIONS).toHaveProperty(status);
       }
+    });
+  });
+
+  describe('aggregateHelpSessionStatus', () => {
+    it.each([
+      [[], 'OPEN'],
+      [['CLAIMED', 'CLAIMED'], 'CLAIMED'],
+      [['CLAIMED', 'IN_PROGRESS'], 'IN_PROGRESS'],
+      [['EVIDENCE_PENDING', 'EVIDENCE_PENDING'], 'EVIDENCE_PENDING'],
+      [['COMPLETED', 'EVIDENCE_PENDING'], 'EVIDENCE_PENDING'],
+      [['COMPLETED', 'IN_PROGRESS'], 'IN_PROGRESS'],
+      [['COMPLETED', 'COMPLETED'], 'COMPLETED'],
+      [['COMPLETED', 'CLOSED'], 'COMPLETED'],
+      [['CLOSED', 'CLAIMED'], 'CLAIMED'],
+      [['CLOSED', 'CLOSED'], 'OPEN'],
+      [['COMPLETED', 'DISPUTED'], 'DISPUTED'],
+      [['COMPLETED', 'CLAIMED'], 'CLAIMED'],
+    ] as const)('aggregates %j as %s', (sessions, expected) => {
+      expect(aggregateHelpSessionStatus([...sessions])).toBe(expected);
     });
   });
 });

@@ -102,4 +102,4 @@ export const PATCH = withAuth(async (
     console.error("PATCH /api/reports/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-}, "MODERATOR");
+}, "MODERATOR", { captureAllTelemetry: true });

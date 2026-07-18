@@ -122,6 +122,11 @@ export const createReportSchema = z.object({
   targetPostId: z.string().cuid().optional(),
   targetCommentId: z.string().cuid().optional(),
   targetTaskId: z.string().cuid().optional(),
+  targetCaseMessageId: z.string().cuid().optional(),
+  targetHelpMessageId: z.string().cuid().optional(),
+  targetDmMessageId: z.string().cuid().optional(),
+  targetChatMessageId: z.string().cuid().optional(),
+  targetChatRoomId: z.string().cuid().optional(),
 });
 
 // ==================== 标签相关 ====================
@@ -328,10 +333,12 @@ export const createEvidenceItemSchema = z.object({
 export const closeTaskSchema = z.object({
   action: z.enum(['request', 'confirm', 'force']),
   reason: z.string().max(1000).optional(),
+  sessionId: z.string().cuid().optional(),
 });
 
 export const disputeTaskSchema = z.object({
   explanation: z.string().min(10, '争议说明至少 10 字').max(5000),
+  sessionId: z.string().cuid().optional(),
 });
 
 export const moderateDisputeSchema = z.object({

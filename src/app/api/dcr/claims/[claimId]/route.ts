@@ -3,6 +3,8 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { aggregateHelpSessionStatus } from "@/lib/task-state-machine";
+import { notifyMutualAidUsersBestEffort } from "@/lib/mutual-aid-notifications";
 
 const decisionSchema = z.object({
   action: z.enum(["accept", "reject"]),
@@ -42,8 +44,17 @@ export const POST = withAuth(async (
       if (rejected.count === 0) {
         return NextResponse.json({ error: "该申请已被处理" }, { status: 409 });
       }
-      await logAudit(req.user.id, "TASK_CLAIM_REJECT", "TASK", claim.targetTaskId, { claimId: claim.id });
+      await logAudit(req.user.id, "TASK_CLAIM_REJECT", "TASK", claim.targetTaskId, { claimId: claim.id }, undefined, prisma);
+      await notifyMutualAidUsersBestEffort([claim.applicantId], {
+        title: "互助申请未通过",
+        content: "你的互助申请未被委托发起人接受。",
+        link: `/dcr/tasks/${claim.targetTaskId}`,
+      });
       return NextResponse.json({ status: "REJECTED" });
+    }
+
+    if (!["OPEN", "CLAIMED", "IN_PROGRESS"].includes(claim.targetTask.status)) {
+      return NextResponse.json({ error: "任务已进入结案流程，不能再接受申请" }, { status: 409 });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -82,17 +93,16 @@ export const POST = withAuth(async (
         data: { sessionId: session.id },
       });
 
-      await tx.mutualAidTask.update({
-        where: { id: claim.targetTaskId },
-        data: { status: claim.targetTask.status === "OPEN" ? "CLAIMED" : claim.targetTask.status },
-      });
+      const sessions = await tx.helpSession.findMany({ where: { taskId: claim.targetTaskId }, select: { status: true } });
+      const nextStatus = aggregateHelpSessionStatus(sessions.map((item) => item.status));
+      await tx.mutualAidTask.updateMany({ where: { id: claim.targetTaskId }, data: { status: nextStatus } });
 
       await tx.taskTimelineEvent.create({
         data: {
           taskId: claim.targetTaskId,
           action: "claim_accepted",
           oldStatus: claim.targetTask.status,
-          newStatus: claim.targetTask.status === "OPEN" ? "CLAIMED" : claim.targetTask.status,
+          newStatus: nextStatus,
           details: claim.offeredTask
             ? `双方确认，已交换委托 ${claim.offeredTask.id}`
             : "双方确认，互助人以无偿帮助方式加入",
@@ -112,6 +122,11 @@ export const POST = withAuth(async (
       claimId: claim.id,
       offeredTaskId: claim.offeredTaskId,
       sessionId: result.sessionId,
+    });
+    await notifyMutualAidUsersBestEffort([claim.applicantId], {
+      title: "互助申请已通过",
+      content: "你的互助申请已通过，可以进入互助会话。",
+      link: `/dcr/tasks/${claim.targetTaskId}`,
     });
 
     return NextResponse.json({ status: "ACCEPTED", ...result });

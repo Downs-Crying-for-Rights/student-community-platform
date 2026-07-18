@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { z } from "zod";
 import { enforceRateLimit } from "@/lib/rate-limiter";
 import { Prisma } from "@prisma/client";
+import { notifyMutualAidUsersBestEffort } from "@/lib/mutual-aid-notifications";
 
 const claimSchema = z.object({
   offeredTaskId: z.string().cuid().nullable().optional(),
@@ -99,52 +100,57 @@ export const POST = withAuth(async (
       );
     }
 
-    let claim: { id: string; status: string; offeredTaskId: string | null };
-    if (existingClaim) {
-      const updated = await prisma.helpClaim.updateMany({
-        where: { id: existingClaim.id, status: { not: "ACCEPTED" } },
-        data: {
-          offeredTaskId: offeredTask?.id ?? null,
-          status: "PENDING",
-          applicantConfirmed: true,
-          requesterConfirmed: false,
-          sessionId: null,
-        },
-      });
-      if (updated.count === 0) {
-        return NextResponse.json({ error: "该互助关系已建立，不能重复申请" }, { status: 409 });
+    const claim = await prisma.$transaction(async (tx) => {
+      let result: { id: string; status: string; offeredTaskId: string | null };
+      if (existingClaim) {
+        const updated = await tx.helpClaim.updateMany({
+          where: { id: existingClaim.id, status: { not: "ACCEPTED" } },
+          data: {
+            offeredTaskId: offeredTask?.id ?? null,
+            status: "PENDING",
+            applicantConfirmed: true,
+            requesterConfirmed: false,
+            sessionId: null,
+          },
+        });
+        if (updated.count === 0) throw new Error("CLAIM_ALREADY_ACCEPTED");
+        result = (await tx.helpClaim.findUnique({
+          where: { id: existingClaim.id },
+          select: { id: true, status: true, offeredTaskId: true },
+        }))!;
+      } else {
+        result = await tx.helpClaim.create({
+          data: {
+            targetTaskId: id,
+            offeredTaskId: offeredTask?.id ?? null,
+            applicantId: userId,
+            requesterId: task.requesterId,
+          },
+          select: { id: true, status: true, offeredTaskId: true },
+        });
       }
-      claim = (await prisma.helpClaim.findUnique({
-        where: { id: existingClaim.id },
-        select: { id: true, status: true, offeredTaskId: true },
-      }))!;
-    } else {
-      claim = await prisma.helpClaim.create({
+      await tx.taskTimelineEvent.create({
         data: {
-          targetTaskId: id,
-          offeredTaskId: offeredTask?.id ?? null,
-          applicantId: userId,
-          requesterId: task.requesterId,
+          taskId: id,
+          action: "claim_requested",
+          oldStatus: task.status,
+          newStatus: task.status,
+          details: offeredTask ? `已交换委托：${offeredTask.title}` : "互助人选择无偿帮助，未附带自己的委托",
+          operatorId: userId,
         },
-        select: { id: true, status: true, offeredTaskId: true },
       });
-    }
-
-    await prisma.taskTimelineEvent.create({
-      data: {
-        taskId: id,
-        action: "claim_requested",
-        oldStatus: task.status,
-        newStatus: task.status,
-        details: offeredTask ? `已交换委托：${offeredTask.title}` : "互助人选择无偿帮助，未附带自己的委托",
-        operatorId: userId,
-      },
+      return result;
     });
 
     await logAudit(userId, "TASK_CLAIM_REQUEST", "TASK", id, {
       claimId: claim.id,
       offeredTaskId: offeredTask?.id ?? null,
       mode: offeredTask ? "TASK_EXCHANGE" : "GOOD_SAMARITAN",
+    }, undefined, prisma);
+    await notifyMutualAidUsersBestEffort([task.requesterId], {
+      title: "收到新的互助申请",
+      content: `互助任务「${task.title}」收到新的互助申请。`,
+      link: `/dcr/tasks/${id}`,
     });
 
     return NextResponse.json({
@@ -154,6 +160,9 @@ export const POST = withAuth(async (
         : "无偿帮助申请已发送，等待对方同意",
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === "CLAIM_ALREADY_ACCEPTED") {
+      return NextResponse.json({ error: "该互助关系已建立，不能重复申请" }, { status: 409 });
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ error: "该委托的接取申请已存在" }, { status: 409 });
     }

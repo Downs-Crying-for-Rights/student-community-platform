@@ -9,6 +9,7 @@ import { Heart, Bookmark, MessageCircle, Share2, User, Trash2, Loader2, Clock, H
 import { ImageCarousel } from "@/components/post/ImageCarousel";
 import { CommentDrawer } from "@/components/comment/CommentDrawer";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
+import { ReportDialog } from "@/components/shared/ReportDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -362,6 +363,14 @@ export default function PostDetailPage() {
                 <Share2 className="h-5 w-5" />
                 <span className="text-xs">分享</span>
               </Button>
+
+              {!isAuthor && (
+                <ReportDialog
+                  target={{ targetPostId: postId }}
+                  label="举报帖子"
+                  className="min-h-[44px] min-w-[44px]"
+                />
+              )}
 
               {isAuthor && (
                 <Button

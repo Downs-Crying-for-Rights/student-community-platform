@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw, Activity, ClipboardCheck, ListTodo, Scale } from "lucide-react";
+import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw, Activity, ClipboardCheck, ListTodo, Scale, Flag } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adminLinks = [
   { href: "/moderation", label: "审核看板", icon: Shield },
+  { href: "/admin/reports", label: "举报处理", icon: Flag },
   { href: "/admin/users", label: "用户管理", icon: Users },
   { href: "/admin/content", label: "内容管理", icon: MessageSquare },
   { href: "/admin/invites", label: "邀请码", icon: Ticket },

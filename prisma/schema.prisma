@@ -313,19 +313,34 @@ model Report {
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
-  reporterId      String
-  targetUserId    String?
-  targetPostId    String?
-  targetCommentId String?
-  targetTaskId    String?
+  reporterId          String
+  targetUserId        String?
+  targetPostId        String?
+  targetCommentId     String?
+  targetTaskId        String?
+  targetCaseMessageId String?
+  targetHelpMessageId String?
+  targetDmMessageId   String?
+  targetChatMessageId String?
+  targetChatRoomId    String?
 
-  reporter      User           @relation("ReportFiler", fields: [reporterId], references: [id])
-  targetUser    User?          @relation("ReportTarget", fields: [targetUserId], references: [id])
-  targetPost    Post?          @relation("ReportedPost", fields: [targetPostId], references: [id])
-  targetComment Comment?       @relation("ReportedComment", fields: [targetCommentId], references: [id])
-  targetTask    MutualAidTask? @relation("ReportedTask", fields: [targetTaskId], references: [id], onDelete: SetNull)
+  reporter          User             @relation("ReportFiler", fields: [reporterId], references: [id])
+  targetUser        User?            @relation("ReportTarget", fields: [targetUserId], references: [id])
+  targetPost        Post?            @relation("ReportedPost", fields: [targetPostId], references: [id])
+  targetComment     Comment?         @relation("ReportedComment", fields: [targetCommentId], references: [id])
+  targetTask        MutualAidTask?   @relation("ReportedTask", fields: [targetTaskId], references: [id], onDelete: SetNull)
+  targetCaseMessage Message?         @relation("ReportedCaseMessage", fields: [targetCaseMessageId], references: [id], onDelete: SetNull)
+  targetHelpMessage HelpChatMessage? @relation("ReportedHelpMessage", fields: [targetHelpMessageId], references: [id], onDelete: SetNull)
+  targetDmMessage   DMMessage?       @relation("ReportedDmMessage", fields: [targetDmMessageId], references: [id], onDelete: SetNull)
+  targetChatMessage ChatMessage?     @relation("ReportedChatMessage", fields: [targetChatMessageId], references: [id], onDelete: SetNull)
+  targetChatRoom    ChatRoom?        @relation("ReportedChatRoom", fields: [targetChatRoomId], references: [id], onDelete: SetNull)
 
   @@index([targetTaskId])
+  @@index([targetCaseMessageId])
+  @@index([targetHelpMessageId])
+  @@index([targetDmMessageId])
+  @@index([targetChatMessageId])
+  @@index([targetChatRoomId])
 }
 
 // ==================== DCR 工单 ====================
@@ -430,9 +445,10 @@ model Message {
   caseId     String?
   sessionId  String? // 倾听会话 ID
 
-  sender   User  @relation("MessageSender", fields: [senderId], references: [id])
-  receiver User  @relation("MessageReceiver", fields: [receiverId], references: [id])
-  case_    Case? @relation(fields: [caseId], references: [id])
+  sender   User     @relation("MessageSender", fields: [senderId], references: [id])
+  receiver User     @relation("MessageReceiver", fields: [receiverId], references: [id])
+  case_    Case?    @relation(fields: [caseId], references: [id])
+  reports  Report[] @relation("ReportedCaseMessage")
 }
 
 enum CaseMessageType {
@@ -644,6 +660,15 @@ enum HelpClaimStatus {
   CANCELLED
 }
 
+enum HelpSessionStatus {
+  CLAIMED
+  IN_PROGRESS
+  EVIDENCE_PENDING
+  COMPLETED
+  CLOSED
+  DISPUTED
+}
+
 // ==================== 互助任务 ====================
 
 model MutualAidTask {
@@ -702,9 +727,14 @@ model TaskTimelineEvent {
 // ==================== 互助会话 ====================
 
 model HelpSession {
-  id        String    @id @default(cuid())
-  createdAt DateTime  @default(now())
-  closedAt  DateTime?
+  id                  String             @id @default(cuid())
+  createdAt           DateTime           @default(now())
+  closedAt            DateTime?
+  status              HelpSessionStatus  @default(CLAIMED)
+  statusBeforeDispute HelpSessionStatus?
+  requesterConfirmed  Boolean            @default(false)
+  helperConfirmed     Boolean            @default(false)
+  rewardGrantedAt     DateTime?
 
   taskId String
   task   MutualAidTask @relation(fields: [taskId], references: [id])
@@ -770,6 +800,7 @@ model HelpChatMessage {
   chatId   String
   chat     HelpChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
   senderId String
+  reports  Report[] @relation("ReportedHelpMessage")
 
   @@index([chatId, createdAt])
 }
@@ -850,7 +881,8 @@ model DMMessage {
   thread   DMThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   senderId String
-  sender   User   @relation("DMSender", fields: [senderId], references: [id], onDelete: Cascade)
+  sender   User     @relation("DMSender", fields: [senderId], references: [id], onDelete: Cascade)
+  reports  Report[] @relation("ReportedDmMessage")
 
   @@index([threadId, createdAt])
   @@index([senderId])
@@ -927,6 +959,7 @@ model ChatRoom {
   joinRequests ChatRoomJoinRequest[]
   bans         ChatRoomBan[]
   messages     ChatMessage[]
+  reports      Report[]              @relation("ReportedChatRoom")
 
   @@index([type, updatedAt])
   @@index([updatedAt])
@@ -991,6 +1024,7 @@ model ChatMessage {
   content   String
   createdAt DateTime  @default(now())
   editedAt  DateTime?
+  reports   Report[]  @relation("ReportedChatMessage")
 
   @@index([roomId, createdAt])
 }

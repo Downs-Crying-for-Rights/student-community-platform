@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canSendMessage, formatMessageTime, isOwnMessage, type CaseStatus } from "@/lib/dcr-ui-helpers";
 import { cn } from "@/lib/utils";
+import { ReportDialog } from "@/components/shared/ReportDialog";
 
 type MessageType = "TEXT" | "IMAGE" | "AUDIO" | "FILE";
 
@@ -193,7 +194,7 @@ export function MessagePanel({ caseId, currentUserId, caseStatus, isSubmitter }:
             {!messages.length ? <p className="py-4 text-center text-sm text-muted-foreground">暂无回复</p> : messages.map((msg) => {
               const own = isOwnMessage(msg.senderId, currentUserId);
               const type = msg.messageType ?? "TEXT";
-              return <div key={msg.id} className={cn("flex", own ? "justify-end" : "justify-start")}>
+              return <div key={msg.id} className={cn("flex items-end gap-1", own ? "justify-end" : "justify-start")}>
                 <div className={cn("max-w-[82%] rounded-2xl px-4 py-2", own ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>
                   {type === "IMAGE" && msg.mediaUrl && <a href={msg.mediaUrl} target="_blank" rel="noreferrer"><img src={msg.mediaUrl} alt={msg.mediaName || "工单图片"} className="mb-2 max-h-72 rounded-lg object-contain" /></a>}
                   {type === "AUDIO" && msg.mediaUrl && <div className="mb-2"><audio controls preload="metadata" src={msg.mediaUrl} className="max-w-full" /><p className="mt-1 text-xs opacity-70">录音 {msg.durationSeconds ? `${msg.durationSeconds} 秒` : ""}</p></div>}
@@ -201,6 +202,7 @@ export function MessagePanel({ caseId, currentUserId, caseStatus, isSubmitter }:
                   {msg.content && !/^\[(图片|录音|附件)\]$/.test(msg.content) && <p className="whitespace-pre-wrap break-words text-sm">{msg.content}</p>}
                   <p className={cn("mt-1 text-xs", own ? "text-primary-foreground/70" : "text-muted-foreground")}>{formatMessageTime(msg.createdAt)}</p>
                 </div>
+                {!own && <ReportDialog target={{ targetCaseMessageId: msg.id }} label="举报工单消息" compact />}
               </div>;
             })}
             <div ref={messagesEndRef} />

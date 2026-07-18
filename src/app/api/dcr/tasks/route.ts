@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
-import { createTaskSchema, paginationSchema } from "@/lib/validators";
-import { scanContent } from "@/lib/sensitive-engine";
-import { enforceRateLimit } from "@/lib/rate-limiter";
-import { logAudit } from "@/lib/audit";
+import { paginationSchema } from "@/lib/validators";
 import { TaskStatus } from "@prisma/client";
 import { z } from "zod";
 
@@ -34,79 +31,11 @@ const VISIBLE_STATUSES = [
  *
  * Validates: Requirements 1.1, 1.2, 1.6, 6.1, 6.2
  */
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  try {
-    const userId = req.user.id;
-
-    // Check dcrAccess
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { dcrAccess: true },
-    });
-
-    if (!user?.dcrAccess) {
-      return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
-    }
-
-    // Rate limit
-    const rateLimited = await enforceRateLimit(`dcr-task-create:${userId}`, 10, 60_000);
-    if (rateLimited) {
-      return rateLimited.response as unknown as NextResponse;
-    }
-
-    const body = await req.json();
-    const parsed = createTaskSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "参数校验失败", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
-      );
-    }
-
-    const { title, category, summary, expectedHelpType, urgencyLevel, structuredFields } = parsed.data;
-
-    // Sensitive word detection on title and summary
-    const [titleMatches, summaryMatches] = await Promise.all([
-      scanContent(title),
-      scanContent(summary),
-    ]);
-
-    if (titleMatches.length > 0 || summaryMatches.length > 0) {
-      return NextResponse.json(
-        {
-          error: "内容包含敏感词，请修改后重试",
-          details: {
-            title: titleMatches.map((m) => m.word),
-            summary: summaryMatches.map((m) => m.word),
-          },
-        },
-        { status: 400 },
-      );
-    }
-
-    // Create task with DRAFT status
-    const task = await prisma.mutualAidTask.create({
-      data: {
-        title,
-        category,
-        summary,
-        expectedHelpType,
-        urgencyLevel,
-        structuredFields: structuredFields as unknown as import("@prisma/client").Prisma.InputJsonValue,
-        status: TaskStatus.DRAFT,
-        requesterId: userId,
-      },
-    });
-
-    // Log audit
-    await logAudit(userId, "CREATE_TASK", "TASK", task.id, { title, category, urgencyLevel });
-
-    return NextResponse.json({ id: task.id, status: TaskStatus.DRAFT }, { status: 201 });
-  } catch (error) {
-    console.error("POST /api/dcr/tasks error:", error);
-    return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
-  }
+export const POST = withAuth(async (_req: AuthenticatedRequest) => {
+  return NextResponse.json(
+    { error: "通用任务创建已停用，请先提交委托表并在审核通过后发布", next: "/dcr/delegate" },
+    { status: 410 },
+  );
 });
 
 /**

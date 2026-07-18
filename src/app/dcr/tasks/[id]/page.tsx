@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   MessageCircle,
   FolderOpen,
-  Flag,
   CheckCircle,
   HandHelping,
   Play,
@@ -17,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
+import { ReportDialog } from "@/components/shared/ReportDialog";
 import { TimelineView } from "@/components/dcr/TimelineView";
 
 /* ========== Types ========== */
@@ -825,36 +825,11 @@ export default function TaskDetailPage() {
         )}
 
         {/* ===== 6. Report button ===== */}
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:text-red-600"
-            aria-label="举报此任务"
-            onClick={async () => {
-              const reason = prompt("请输入举报原因");
-              if (!reason) return;
-              try {
-                const res = await fetch("/api/reports", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ targetTaskId: id, reason }),
-                });
-                if (res.ok) {
-                  alert("举报已提交，管理员将尽快处理");
-                } else {
-                  const data = await res.json().catch(() => ({}));
-                  alert(data.error || "举报提交失败");
-                }
-              } catch {
-                alert("网络错误");
-              }
-            }}
-          >
-            <Flag className="h-4 w-4" aria-hidden="true" />
-            举报
-          </Button>
-        </div>
+        {userId !== task.requesterId && (
+          <div className="flex justify-end">
+            <ReportDialog target={{ targetTaskId: id }} label="举报此任务" />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { ArrowLeft, Send, LogIn, Users, Hash, Lock, Settings, UserX, BellOff, Be
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { ReportDialog } from "@/components/shared/ReportDialog";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -247,6 +248,9 @@ export default function ChatRoomPage() {
           </Button>
         )}
         {requestStatus === "PENDING" && <span className="text-xs text-amber-600 px-2 py-1 rounded">审核中</span>}
+        {room && !isOwner && (
+          <ReportDialog target={{ targetChatRoomId: room.id }} label="举报此群聊" compact />
+        )}
         {ownerOrAdmin && (
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setManageTab("members"); setShowManage(true); fetchJoinRequests(); }}>
             <Settings className="h-4 w-4" />
@@ -275,7 +279,7 @@ export default function ChatRoomPage() {
           <p className="flex items-center justify-center h-full text-sm text-muted-foreground">暂无消息，发送第一条消息吧</p>
         ) : (
           messages.map((msg) => (
-            <div key={msg.id} className={`flex ${isOwnMessage(msg) ? "justify-end" : "justify-start"}`}>
+            <div key={msg.id} className={`flex items-end gap-1 ${isOwnMessage(msg) ? "justify-end" : "justify-start"}`}>
               <Card className={`max-w-[75%] px-3 py-1.5 ${isOwnMessage(msg) ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                 <Link
                   href={`/u/${msg.sender.id}`}
@@ -288,6 +292,9 @@ export default function ChatRoomPage() {
                   {new Date(msg.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
                 </p>
               </Card>
+              {!isOwnMessage(msg) && (
+                <ReportDialog target={{ targetChatMessageId: msg.id }} label="举报群聊消息" compact />
+              )}
             </div>
           ))
         )}

@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
+import { ReportDialog } from "@/components/shared/ReportDialog";
 import { cn } from "@/lib/utils";
 
 /* ========== Types ========== */
@@ -444,6 +445,13 @@ export default function HelpChatPage() {
                             )}
                             标记为证据
                           </button>
+                        )}
+                        {!isOwn && (
+                          <ReportDialog
+                            target={{ targetHelpMessageId: msg.id }}
+                            label="举报互助消息"
+                            compact
+                          />
                         )}
                       </div>
                     </div>

@@ -54,6 +54,13 @@ describe("AdminAuditPage", () => {
     const mod = await import("../audit/page");
     expect(mod.default).toBeDefined();
     expect(typeof mod.default).toBe("function");
+    expect(mod.AUDIT_ACTIONS).toEqual(expect.arrayContaining([
+      "CREATE_CASE",
+      "TASK_CLAIM_ACCEPT",
+      "TASK_COMPLETE",
+      "DISPUTE_FREEZE",
+      "EXPORT_EVIDENCE",
+    ]));
   });
 
   it("应在加载时调用 GET API 获取审计日志", async () => {

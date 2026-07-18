@@ -18,12 +18,35 @@ export const FORWARD_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
 };
 
 export const TERMINAL_STATES: TaskStatus[] = ['REJECTED', 'CLOSED', 'DISPUTED'];
+const ABSOLUTE_TERMINAL_STATES: TaskStatus[] = ['REJECTED', 'CLOSED', 'DISPUTED'];
+
+const DISPUTABLE_STATES: TaskStatus[] = ['CLAIMED', 'IN_PROGRESS', 'EVIDENCE_PENDING'];
 
 export function canTransition(from: TaskStatus, to: TaskStatus): boolean {
-  if (TERMINAL_STATES.includes(to)) return true;
+  if (ABSOLUTE_TERMINAL_STATES.includes(from)) return false;
+  if (to === 'DISPUTED') return DISPUTABLE_STATES.includes(from);
+  if (to === 'REJECTED' || to === 'CLOSED') return true;
   return FORWARD_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
 export function getNextStates(current: TaskStatus): TaskStatus[] {
-  return [...(FORWARD_TRANSITIONS[current] ?? []), ...TERMINAL_STATES];
+  if (current === 'COMPLETED' || TERMINAL_STATES.includes(current)) return [];
+  return [
+    ...(FORWARD_TRANSITIONS[current] ?? []),
+    'REJECTED',
+    'CLOSED',
+    ...(DISPUTABLE_STATES.includes(current) ? ['DISPUTED' as const] : []),
+  ];
+}
+
+type HelpSessionStatus = 'CLAIMED' | 'IN_PROGRESS' | 'EVIDENCE_PENDING' | 'COMPLETED' | 'CLOSED' | 'DISPUTED';
+
+export function aggregateHelpSessionStatus(statuses: HelpSessionStatus[]): TaskStatus {
+  if (statuses.includes('DISPUTED')) return 'DISPUTED';
+  const active = statuses.filter((status) => status !== 'COMPLETED' && status !== 'CLOSED');
+  if (active.includes('EVIDENCE_PENDING')) return 'EVIDENCE_PENDING';
+  if (active.includes('IN_PROGRESS')) return 'IN_PROGRESS';
+  if (active.includes('CLAIMED')) return 'CLAIMED';
+  if (statuses.includes('COMPLETED')) return 'COMPLETED';
+  return 'OPEN';
 }

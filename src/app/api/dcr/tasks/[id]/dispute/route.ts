@@ -2,8 +2,12 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { disputeTaskSchema } from "@/lib/validators";
-import { canTransition, type TaskStatus } from "@/lib/task-state-machine";
+import { aggregateHelpSessionStatus, canTransition, type TaskStatus } from "@/lib/task-state-machine";
 import { logAudit } from "@/lib/audit";
+import {
+  notifyMutualAidAdminsBestEffort,
+  notifyMutualAidUsersBestEffort,
+} from "@/lib/mutual-aid-notifications";
 
 /**
  * POST /api/dcr/tasks/[id]/dispute
@@ -35,7 +39,7 @@ export const POST = withAuth(async (
       );
     }
 
-    const { explanation } = parsed.data;
+    const { explanation, sessionId } = parsed.data;
 
     // Load task with helpSession
     const task = await prisma.mutualAidTask.findUnique({
@@ -51,30 +55,39 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "互助会话不存在" }, { status: 404 });
     }
 
-    // Verify user is requester or helper
     const isRequester = task.requesterId === userId;
-    const isHelper = task.helpSessions.some((session) => session.helperId === userId);
-
-    if (!isRequester && !isHelper) {
+    const eligibleSessions = task.helpSessions.filter((session) =>
+      !["COMPLETED", "CLOSED"].includes(session.status),
+    );
+    if (!isRequester && !eligibleSessions.some((session) => session.helperId === userId)) {
       return NextResponse.json({ error: "仅互助双方可发起争议" }, { status: 403 });
     }
 
-    // Verify state transition is allowed
-    if (!canTransition(task.status as TaskStatus, "DISPUTED")) {
-      return NextResponse.json(
-        { error: `当前状态 ${task.status} 不允许发起争议` },
-        { status: 400 },
-      );
+    if (isRequester && !sessionId && eligibleSessions.length > 1) {
+      return NextResponse.json({ error: "请选择要发起争议的互助会话" }, { status: 400 });
+    }
+    const selected = eligibleSessions.find((session) =>
+      session.id === (sessionId ?? eligibleSessions[0]?.id)
+      && (isRequester || session.helperId === userId),
+    );
+    if (!selected) return NextResponse.json({ error: "互助会话不存在" }, { status: 404 });
+    if (!canTransition(selected.status as TaskStatus, "DISPUTED")) {
+      return NextResponse.json({ error: `当前会话状态 ${selected.status} 不允许发起争议` }, { status: 400 });
     }
 
     // Transition to DISPUTED in a transaction
     const oldStatus = task.status;
 
     await prisma.$transaction(async (tx) => {
-      await tx.mutualAidTask.update({
-        where: { id },
-        data: { status: "DISPUTED" },
+      const updated = await tx.helpSession.updateMany({
+        where: { id: selected.id, status: selected.status },
+        data: { status: "DISPUTED", statusBeforeDispute: selected.status },
       });
+      if (updated.count === 0) throw new Error("SESSION_STATE_CHANGED");
+      const status = aggregateHelpSessionStatus(
+        task.helpSessions.map((session) => session.id === selected.id ? "DISPUTED" : session.status),
+      );
+      await tx.mutualAidTask.updateMany({ where: { id }, data: { status } });
 
       await tx.taskTimelineEvent.create({
         data: {
@@ -82,15 +95,26 @@ export const POST = withAuth(async (
           action: "dispute",
           oldStatus,
           newStatus: "DISPUTED",
-          details: explanation,
+          details: `[session:${selected.id}]\n${explanation}`,
           operatorId: userId,
         },
       });
     });
 
-    await logAudit(userId, "TASK_DISPUTE", "TASK", id, { explanation });
+    await logAudit(userId, "TASK_DISPUTE", "TASK", id, { explanation, sessionId: selected.id });
+    const counterpartId = isRequester ? selected.helperId : task.requesterId;
+    await notifyMutualAidUsersBestEffort([counterpartId], {
+      title: "互助任务已发起争议",
+      content: `互助任务「${task.title}」的一项会话已发起争议。`,
+      link: `/dcr/tasks/${id}`,
+    });
+    await notifyMutualAidAdminsBestEffort({
+      title: "新的互助争议待处理",
+      content: `互助任务「${task.title}」有新的会话争议。`,
+      link: "/admin/disputes",
+    });
 
-    return NextResponse.json({ status: "DISPUTED" });
+    return NextResponse.json({ status: "DISPUTED", sessionId: selected.id });
   } catch (error) {
     console.error("POST /api/dcr/tasks/[id]/dispute error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

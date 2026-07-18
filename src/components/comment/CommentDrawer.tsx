@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { MessageCircle, Send, User } from "lucide-react";
 import {
   Sheet,
@@ -13,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn, formatDate } from "@/lib/utils";
+import { ReportDialog } from "@/components/shared/ReportDialog";
 
 // ---------- Types ----------
 
@@ -84,10 +86,12 @@ function CommentAvatar({ comment }: { comment: CommentData }) {
 function CommentItem({
   comment,
   onReply,
+  currentUserId,
   isReply = false,
 }: {
   comment: CommentData;
   onReply: (comment: CommentData) => void;
+  currentUserId?: string;
   isReply?: boolean;
 }) {
   const name = getDisplayName(comment);
@@ -105,14 +109,24 @@ function CommentItem({
           </span>
         </div>
         <p className="mt-0.5 text-sm text-foreground/90">{comment.content}</p>
-        <button
-          type="button"
-          onClick={() => onReply(comment)}
-          className="mt-1 text-xs text-muted-foreground hover:text-primary"
-          aria-label={`回复 ${name}`}
-        >
-          回复
-        </button>
+        <div className="mt-1 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onReply(comment)}
+            className="text-xs text-muted-foreground hover:text-primary"
+            aria-label={`回复 ${name}`}
+          >
+            回复
+          </button>
+          {currentUserId && comment.author.id !== currentUserId && (
+            <ReportDialog
+              target={{ targetCommentId: comment.id }}
+              label="举报评论"
+              compact
+              className="h-6 w-6"
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -121,6 +135,7 @@ function CommentItem({
 // ---------- Main Component ----------
 
 export function CommentDrawer({ postId, open, onOpenChange }: CommentDrawerProps) {
+  const { data: session } = useSession();
   const [comments, setComments] = useState<CommentData[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -232,7 +247,7 @@ export function CommentDrawer({ postId, open, onOpenChange }: CommentDrawerProps
             <div className="space-y-4">
               {displayComments.map((comment) => (
                 <div key={comment.id}>
-                  <CommentItem comment={comment} onReply={handleReply} />
+                  <CommentItem comment={comment} onReply={handleReply} currentUserId={session?.user?.id} />
                   {/* Nested replies (2nd level) */}
                   {comment.replies && comment.replies.length > 0 && (
                     <div className="mt-2 space-y-2">
@@ -241,6 +256,7 @@ export function CommentDrawer({ postId, open, onOpenChange }: CommentDrawerProps
                           key={reply.id}
                           comment={reply}
                           onReply={handleReply}
+                          currentUserId={session?.user?.id}
                           isReply
                         />
                       ))}

@@ -30,6 +30,13 @@ vi.mock("@/lib/audit", () => ({
     DCR_ACCESS_REVOKE: "DCR_ACCESS_REVOKE",
     CASE_EXPORT: "CASE_EXPORT",
     CASE_ACCESS: "CASE_ACCESS",
+    CREATE_CASE: "CREATE_CASE",
+    REVIEW_CASE: "REVIEW_CASE",
+    UPDATE_CASE_STATUS: "UPDATE_CASE_STATUS",
+    CREATE_TASK: "CREATE_TASK",
+    TASK_CLAIM_ACCEPT: "TASK_CLAIM_ACCEPT",
+    TASK_COMPLETE: "TASK_COMPLETE",
+    TASK_DISPUTE: "TASK_DISPUTE",
     BOARD_PERMISSION_CHANGE: "BOARD_PERMISSION_CHANGE",
     PSYCH_ACCESS_GRANT: "PSYCH_ACCESS_GRANT",
     UNAUTHORIZED_ACCESS: "UNAUTHORIZED_ACCESS",
@@ -152,6 +159,23 @@ describe("GET /api/admin/audit", () => {
       expect.objectContaining({
         where: expect.objectContaining({ action: "ROLE_CHANGE" }),
       }),
+    );
+  });
+
+  it("应支持按 DCR 自定义操作类型筛选", async () => {
+    setSession("admin1", "ADMIN");
+    mockFindMany.mockResolvedValue([]);
+    mockCount.mockResolvedValue(0);
+
+    const { GET } = await import("../route");
+    const res = await GET(
+      makeGetRequest("http://localhost:3000/api/admin/audit?action=TASK_CLAIM_ACCEPT"),
+      { params: {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { action: "TASK_CLAIM_ACCEPT" } }),
     );
   });
 

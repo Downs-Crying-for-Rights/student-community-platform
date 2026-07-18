@@ -37,6 +37,19 @@ type ApprovedCase = {
   activeTask: { id: string; status: string } | null;
 };
 
+type EditableCase = {
+  id: string;
+  requestStatus: string;
+  reviewNote: string | null;
+  formData: Partial<DelegationFormData>;
+  grade?: string | null;
+  timeRange?: string | null;
+  province?: string | null;
+  city?: string | null;
+  expectedHelperProvince?: string | null;
+  riskPreference?: FormValues["riskPreference"] | null;
+};
+
 const CONTENT_TYPES = Object.keys(CONTENT_TYPE_MAP);
 const SCHOOL_CATEGORIES = Object.keys(SCHOOL_TYPE_OPTIONS);
 const FEE_OPTIONS = [
@@ -64,12 +77,16 @@ export default function DelegatePage() {
   const [approvedCases, setApprovedCases] = useState<ApprovedCase[]>([]);
   const [approvedCasesLoading, setApprovedCasesLoading] = useState(true);
   const [publishingCaseId, setPublishingCaseId] = useState<string | null>(null);
+  const [editCaseId, setEditCaseId] = useState<string | null>(null);
+  const [editReviewNote, setEditReviewNote] = useState<string | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
 
   const {
     register,
     handleSubmit,
     watch,
     setValue,
+    reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(delegationFormSchema),
@@ -92,6 +109,7 @@ export default function DelegatePage() {
   const schoolCategory = watch("schoolCategory");
   const contentType = watch("contentType");
   const feeStatus = watch("feeStatus");
+  const schoolType = watch("schoolType");
   const demands = watch("demands");
   const confirmations = watch("confirmations");
 
@@ -100,12 +118,60 @@ export default function DelegatePage() {
     ? SCHOOL_TYPE_OPTIONS[schoolCategory] ?? []
     : [];
 
-  // Reset schoolType when schoolCategory changes
   useEffect(() => {
-    if (schoolCategory) {
+    if (
+      schoolCategory
+      && schoolType
+      && !(SCHOOL_TYPE_OPTIONS[schoolCategory] ?? []).includes(schoolType)
+    ) {
       setValue("schoolType", "");
     }
-  }, [schoolCategory, setValue]);
+  }, [schoolCategory, schoolType, setValue]);
+
+  useEffect(() => {
+    const caseId = new URLSearchParams(window.location.search).get("edit");
+    if (!caseId) return;
+
+    setEditCaseId(caseId);
+    setEditLoading(true);
+    fetch(`/api/cases/${encodeURIComponent(caseId)}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? "读取委托表失败");
+        return data.case as EditableCase;
+      })
+      .then((caseRecord) => {
+        if (caseRecord.requestStatus !== "NEED_MORE_INFO") {
+          throw new Error("该委托表当前不需要补充材料");
+        }
+        const form = caseRecord.formData;
+        reset({
+          contentType: form.contentType as FormValues["contentType"],
+          schoolName: form.schoolName ?? "",
+          schoolCategory: form.schoolCategory as FormValues["schoolCategory"],
+          schoolType: form.schoolType ?? "",
+          schoolAddress: form.schoolAddress ?? "",
+          reportChannels: form.reportChannels ?? "",
+          description: form.description ?? "",
+          feeStatus: form.feeStatus ?? "none",
+          feeDetails: form.feeDetails ?? "",
+          demands: form.demands ?? [],
+          otherDemand: form.otherDemand ?? "",
+          confirmations: [false, false, false] as unknown as [true, true, true],
+          grade: caseRecord.grade ?? "",
+          timeRange: caseRecord.timeRange ?? "",
+          province: caseRecord.province ?? "",
+          city: caseRecord.city ?? "",
+          expectedHelperProvince: caseRecord.expectedHelperProvince ?? "",
+          riskPreference: caseRecord.riskPreference ?? undefined,
+        });
+        setEditReviewNote(caseRecord.reviewNote);
+      })
+      .catch((loadError: unknown) => {
+        setError(loadError instanceof Error ? loadError.message : "读取委托表失败");
+      })
+      .finally(() => setEditLoading(false));
+  }, [reset]);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,10 +264,11 @@ export default function DelegatePage() {
       const pledgeText = formatDelegation(formData);
       const category = CONTENT_TYPE_MAP[data.contentType];
 
-      const res = await fetch("/api/cases", {
-        method: "POST",
+      const res = await fetch(editCaseId ? `/api/cases/${encodeURIComponent(editCaseId)}` : "/api/cases", {
+        method: editCaseId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(editCaseId ? { _action: "supplement" } : {}),
           category,
           formData,
           pledgeText,
@@ -216,7 +283,7 @@ export default function DelegatePage() {
 
       const resData = await res.json().catch(() => ({}));
       if (res.ok || res.status === 201) {
-        setSubmittedCaseId(resData.case?.id ?? "submitted");
+        setSubmittedCaseId(resData.case?.id ?? editCaseId ?? "submitted");
       } else {
         setError(resData.error ?? "提交失败，请稍后重试");
       }
@@ -305,13 +372,22 @@ export default function DelegatePage() {
           </div>
 
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-foreground">统一互助委托表</h1>
+            <h1 className="text-2xl font-bold text-foreground">
+              {editCaseId ? "补充委托材料" : "统一互助委托表"}
+            </h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              首次提交由管理员审核；已在入频时通过审核的委托表可在下方直接发布，无须再次审核。
+              {editCaseId
+                ? "请按审核说明完善原委托表。提交后将返回管理员复审，不会创建新的委托。"
+                : "首次提交由管理员审核；已在入频时通过审核的委托表可在下方直接发布，无须再次审核。"}
             </p>
+            {editReviewNote && (
+              <div className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-800 dark:bg-orange-950/40 dark:text-orange-200">
+                审核说明：{editReviewNote}
+              </div>
+            )}
           </div>
 
-          {(approvedCasesLoading || approvedCases.length > 0) && (
+          {!editCaseId && (approvedCasesLoading || approvedCases.length > 0) && (
             <Card className="mb-6 border-green-200 bg-green-50/40 dark:border-green-900 dark:bg-green-950/20">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -389,7 +465,12 @@ export default function DelegatePage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {editLoading ? (
+          <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden="true" />
+            正在读取原委托表...
+          </div>
+        ) : <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
 
           {/* Section 1: Content Type */}
           <Card>
@@ -783,14 +864,14 @@ export default function DelegatePage() {
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  提交中...
+                  {editCaseId ? "补交中..." : "提交中..."}
                 </>
               ) : (
-                "提交委托表"
+                editCaseId ? "提交补充材料" : "提交委托表"
               )}
             </Button>
           </div>
-        </form>
+        </form>}
       </div>
   );
 }

@@ -14,6 +14,13 @@ const mockCommentUpdate = vi.fn();
 const mockUserFindMany = vi.fn();
 const mockNotificationCreateMany = vi.fn();
 const mockTaskFindUnique = vi.fn();
+const mockUserFindUnique = vi.fn();
+const mockCaseMessageFindUnique = vi.fn();
+const mockHelpMessageFindUnique = vi.fn();
+const mockDmMessageFindUnique = vi.fn();
+const mockChatMessageFindUnique = vi.fn();
+const mockChatMemberFindUnique = vi.fn();
+const mockChatRoomFindUnique = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -33,6 +40,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     user: {
       findMany: (...args: unknown[]) => mockUserFindMany(...args),
+      findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
     },
     notification: {
       createMany: (...args: unknown[]) => mockNotificationCreateMany(...args),
@@ -40,6 +48,12 @@ vi.mock("@/lib/prisma", () => ({
     mutualAidTask: {
       findUnique: (...args: unknown[]) => mockTaskFindUnique(...args),
     },
+    message: { findUnique: (...args: unknown[]) => mockCaseMessageFindUnique(...args) },
+    helpChatMessage: { findUnique: (...args: unknown[]) => mockHelpMessageFindUnique(...args) },
+    dMMessage: { findUnique: (...args: unknown[]) => mockDmMessageFindUnique(...args) },
+    chatMessage: { findUnique: (...args: unknown[]) => mockChatMessageFindUnique(...args) },
+    chatRoomMember: { findUnique: (...args: unknown[]) => mockChatMemberFindUnique(...args) },
+    chatRoom: { findUnique: (...args: unknown[]) => mockChatRoomFindUnique(...args) },
   },
 }));
 
@@ -85,6 +99,13 @@ function setSession(id: string, role: string) {
 describe("POST /api/reports", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPostFindUnique.mockResolvedValue({
+      id: "post1",
+      authorId: "other-user",
+      visibility: "PUBLIC",
+      status: "PUBLISHED",
+      board: { zone: "PUBLIC" },
+    });
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -109,7 +130,7 @@ describe("POST /api/reports", () => {
     );
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toBe("必须且只能指定一个举报目标（用户、帖子、评论或互助任务）");
+    expect(data.error).toBe("必须且只能指定一个举报目标");
   });
 
   it("应返回 400 当举报自己", async () => {
@@ -189,7 +210,7 @@ describe("POST /api/reports", () => {
     mockTaskFindUnique.mockResolvedValue({
       status: "OPEN",
       requesterId: "requester",
-      helpSession: null,
+      helpSessions: [],
     });
     mockReportCreate.mockResolvedValue({
       id: "task-report",
@@ -216,6 +237,11 @@ describe("POST /api/reports", () => {
         targetPostId: null,
         targetCommentId: null,
         targetTaskId: taskId,
+        targetCaseMessageId: null,
+        targetHelpMessageId: null,
+        targetDmMessageId: null,
+        targetChatMessageId: null,
+        targetChatRoomId: null,
       },
     });
     expect(mockReportCreate).toHaveBeenCalledWith({
@@ -270,7 +296,7 @@ describe("POST /api/reports", () => {
     });
     // 3 reports on this post (threshold met)
     mockReportCount.mockResolvedValue(3);
-    mockPostFindUnique.mockResolvedValue({ id: postId, status: "PUBLISHED" });
+    mockPostFindUnique.mockResolvedValue({ id: postId, authorId: "author", visibility: "PUBLIC", status: "PUBLISHED", board: { zone: "PUBLIC" } });
     mockPostUpdate.mockResolvedValue({});
     mockUserFindMany.mockResolvedValue([{ id: "mod1" }]);
     mockNotificationCreateMany.mockResolvedValue({ count: 1 });
@@ -306,7 +332,12 @@ describe("POST /api/reports", () => {
       targetCommentId: commentId,
     });
     mockReportCount.mockResolvedValue(3);
-    mockCommentFindUnique.mockResolvedValue({ id: commentId, isDeleted: false });
+    mockCommentFindUnique.mockResolvedValue({
+      id: commentId,
+      authorId: "author",
+      isDeleted: false,
+      post: { authorId: "post-author", visibility: "PUBLIC", board: { zone: "PUBLIC" } },
+    });
     mockCommentUpdate.mockResolvedValue({});
     mockUserFindMany.mockResolvedValue([{ id: "mod1" }]);
     mockNotificationCreateMany.mockResolvedValue({ count: 1 });
@@ -327,6 +358,48 @@ describe("POST /api/reports", () => {
         data: { isDeleted: true },
       }),
     );
+  });
+
+  it("会话参与者可以举报对方私信", async () => {
+    const messageId = "clxxxxxxxxxxxxxxxxxx030";
+    setSession("user1", "USER");
+    mockDmMessageFindUnique.mockResolvedValue({
+      senderId: "user2",
+      thread: { participant1Id: "user1", participant2Id: "user2" },
+    });
+    mockReportFindFirst.mockResolvedValue(null);
+    mockReportCreate.mockResolvedValue({ id: "report-dm", targetDmMessageId: messageId });
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      makeRequest("POST", undefined, {
+        reason: "辱骂、骚扰或威胁",
+        targetDmMessageId: messageId,
+      }),
+      { params: {} },
+    );
+
+    expect(res.status).toBe(201);
+    expect(mockReportCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ targetDmMessageId: messageId, reporterId: "user1" }),
+    });
+  });
+
+  it("不能举报自己发送的群聊消息", async () => {
+    setSession("user1", "USER");
+    mockChatMessageFindUnique.mockResolvedValue({ senderId: "user1", roomId: "room1" });
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      makeRequest("POST", undefined, {
+        reason: "其他违规内容",
+        targetChatMessageId: "clxxxxxxxxxxxxxxxxxx031",
+      }),
+      { params: {} },
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("不能举报自己的消息");
   });
 
   it("应返回 400 当参数校验失败", async () => {
