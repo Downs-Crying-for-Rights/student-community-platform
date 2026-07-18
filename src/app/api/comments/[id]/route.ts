@@ -4,6 +4,7 @@ import { withAuth, hasMinimumRole, type AuthenticatedRequest } from "@/lib/rbac"
 import { commentContentSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
+import { anonymizePsychologyComment, checkPostAccess } from "@/lib/post-access";
 
 /**
  * PATCH /api/comments/[id]
@@ -18,7 +19,18 @@ export const PATCH = withAuth(async (
 
     const existing = await prisma.comment.findUnique({
       where: { id },
-      select: { id: true, authorId: true, isDeleted: true },
+      select: {
+        id: true,
+        authorId: true,
+        isDeleted: true,
+        post: {
+          select: {
+            authorId: true,
+            visibility: true,
+            board: { select: { zone: true } },
+          },
+        },
+      },
     });
 
     if (!existing || existing.isDeleted) {
@@ -27,6 +39,12 @@ export const PATCH = withAuth(async (
 
     if (existing.authorId !== req.user.id) {
       return NextResponse.json({ error: "只能编辑自己的评论" }, { status: 403 });
+    }
+
+    const post = existing.post ?? { board: { zone: "PUBLIC" as const } };
+    const access = await checkPostAccess(req.user, post);
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     const body = await req.json();
@@ -65,7 +83,11 @@ export const PATCH = withAuth(async (
       id,
     );
 
-    return NextResponse.json({ comment });
+    return NextResponse.json({
+      comment: post.board.zone === "PSYCHOLOGY"
+        ? anonymizePsychologyComment(comment)
+        : comment,
+    });
   } catch (error) {
     console.error("PATCH /api/comments/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
@@ -86,7 +108,19 @@ export const DELETE = withAuth(async (
 
     const existing = await prisma.comment.findUnique({
       where: { id },
-      select: { id: true, authorId: true, isDeleted: true, postId: true },
+      select: {
+        id: true,
+        authorId: true,
+        isDeleted: true,
+        postId: true,
+        post: {
+          select: {
+            authorId: true,
+            visibility: true,
+            board: { select: { zone: true } },
+          },
+        },
+      },
     });
 
     if (!existing) {
@@ -99,6 +133,14 @@ export const DELETE = withAuth(async (
 
     const isAuthor = existing.authorId === req.user.id;
     const isModerator = hasMinimumRole(req.user.role, "MODERATOR");
+
+    const access = await checkPostAccess(
+      req.user,
+      existing.post ?? { board: { zone: "PUBLIC" as const } },
+    );
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
+    }
 
     if (!isAuthor && !isModerator) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });

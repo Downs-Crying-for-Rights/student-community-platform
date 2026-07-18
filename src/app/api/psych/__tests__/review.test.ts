@@ -1,50 +1,67 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-// ==================== Mocks ====================
-
-const mockAccessApplicationFindUnique = vi.fn();
-const mockAccessApplicationUpdate = vi.fn();
-const mockUserUpdate = vi.fn();
-
-vi.mock("@/lib/prisma", () => ({
-  default: {
-    accessApplication: {
-      findUnique: (...args: unknown[]) => mockAccessApplicationFindUnique(...args),
-      update: (...args: unknown[]) => mockAccessApplicationUpdate(...args),
-    },
-    user: {
-      update: (...args: unknown[]) => mockUserUpdate(...args),
-    },
-  },
+const mocks = vi.hoisted(() => ({
+  findUnique: vi.fn(),
+  findUpdated: vi.fn(),
+  updateMany: vi.fn(),
+  userUpdate: vi.fn(),
+  auditCreate: vi.fn(),
+  transaction: vi.fn(),
+  createNotification: vi.fn(),
+  sendUserMail: vi.fn(),
 }));
 
-const mockLogAudit = vi.fn();
+vi.mock("@/lib/prisma", () => {
+  const tx = {
+    accessApplication: {
+      findUnique: vi.fn((...args: unknown[]) => {
+        const query = args[0] as { where?: { id?: string } };
+        return mocks.findUnique.mock.calls.length === 0
+          ? mocks.findUnique(...args)
+          : mocks.findUpdated(query);
+      }),
+      updateMany: (...args: unknown[]) => mocks.updateMany(...args),
+    },
+    user: { update: (...args: unknown[]) => mocks.userUpdate(...args) },
+    auditLog: { create: (...args: unknown[]) => mocks.auditCreate(...args) },
+  };
+  return {
+    default: {
+      $transaction: (operation: (client: typeof tx) => unknown) =>
+        mocks.transaction(operation, tx),
+    },
+  };
+});
+
 vi.mock("@/lib/audit", () => ({
-  logAudit: (...args: unknown[]) => mockLogAudit(...args),
-  AuditAction: { PSYCH_ACCESS_GRANT: "PSYCH_ACCESS_GRANT" },
+  AuditAction: {
+    PSYCH_ACCESS_GRANT: "PSYCH_ACCESS_GRANT",
+    PSYCH_ACCESS_REJECT: "PSYCH_ACCESS_REJECT",
+  },
   AuditTargetType: { APPLICATION: "APPLICATION" },
 }));
-
-const mockCreateNotification = vi.fn();
 vi.mock("@/lib/notification", () => ({
-  createNotification: (...args: unknown[]) => mockCreateNotification(...args),
+  createNotification: (...args: unknown[]) => mocks.createNotification(...args),
 }));
-
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/mail", () => ({
+  sendUserMail: (...args: unknown[]) => mocks.sendUserMail(...args),
 }));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
-}));
+vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
+vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 
 import { getServerSession } from "next-auth/next";
+
 const mockGetServerSession = vi.mocked(getServerSession);
+const pendingApplication = {
+  id: "app1",
+  type: "PSYCHOLOGY",
+  status: "PENDING",
+  applicantId: "user1",
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+};
 
-// ==================== Helpers ====================
-
-function makeRequest(body: Record<string, unknown>): NextRequest {
+function makeRequest(body: Record<string, unknown>) {
   return new NextRequest("http://localhost:3000/api/psych/apply/app1", {
     method: "PATCH",
     body: JSON.stringify(body),
@@ -52,224 +69,127 @@ function makeRequest(body: Record<string, unknown>): NextRequest {
   });
 }
 
-function setSession(id: string, role: string) {
+function setSession(role = "MODERATOR") {
   mockGetServerSession.mockResolvedValue({
-    user: { id, role },
-    expires: new Date(Date.now() + 86400000).toISOString(),
+    user: { id: "mod1", role },
+    expires: new Date(Date.now() + 86_400_000).toISOString(),
   } as never);
 }
-
-const pendingApplication = {
-  id: "app1",
-  type: "PSYCHOLOGY",
-  status: "PENDING",
-  applicantId: "user1",
-  createdAt: new Date(),
-};
-
-// ==================== PATCH /api/psych/apply/[id] Tests ====================
 
 describe("PATCH /api/psych/apply/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.transaction.mockImplementation(
+      (operation: (client: object) => unknown, client: object) => operation(client),
+    );
+    mocks.findUnique.mockResolvedValue(pendingApplication);
+    mocks.findUpdated.mockResolvedValue({ ...pendingApplication, status: "APPROVED" });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.userUpdate.mockResolvedValue({});
+    mocks.auditCreate.mockResolvedValue({});
+    mocks.createNotification.mockResolvedValue({});
+    mocks.sendUserMail.mockResolvedValue({ success: true });
   });
 
-  it("应返回 401 当用户未登录", async () => {
+  it("未登录返回 401，非 Moderator 返回 403", async () => {
+    const { PATCH } = await import("../apply/[id]/route");
     mockGetServerSession.mockResolvedValue(null);
-    const { PATCH } = await import("../apply/[id]/route");
-    const res = await PATCH(
-      makeRequest({ status: "APPROVED" }),
-      { params: { id: "app1" } },
-    );
-    expect(res.status).toBe(401);
+    expect((await PATCH(makeRequest({ status: "APPROVED" }), { params: { id: "app1" } })).status).toBe(401);
+
+    setSession("USER");
+    expect((await PATCH(makeRequest({ status: "APPROVED" }), { params: { id: "app1" } })).status).toBe(403);
   });
 
-  it("应返回 403 当非 Moderator 操作", async () => {
-    setSession("user1", "USER");
+  it("严格拒绝非 PSYCHOLOGY 申请且不修改任何状态", async () => {
+    setSession();
+    mocks.findUnique.mockResolvedValue({ ...pendingApplication, type: "DCR" });
     const { PATCH } = await import("../apply/[id]/route");
-    const res = await PATCH(
-      makeRequest({ status: "APPROVED" }),
-      { params: { id: "app1" } },
-    );
-    expect(res.status).toBe(403);
+    const response = await PATCH(makeRequest({ status: "APPROVED" }), { params: { id: "app1" } });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("APPLICATION_TYPE_INVALID");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
   });
 
-  it("应返回 400 当 status 无效", async () => {
-    setSession("mod1", "MODERATOR");
+  it("在同一事务中条件批准申请、授予权限并写入准确审计详情", async () => {
+    setSession();
     const { PATCH } = await import("../apply/[id]/route");
-    const res = await PATCH(
-      makeRequest({ status: "INVALID" }),
-      { params: { id: "app1" } },
-    );
-    expect(res.status).toBe(400);
-  });
+    const response = await PATCH(makeRequest({ status: "APPROVED" }), { params: { id: "app1" } });
 
-  it("应返回 404 当申请不存在", async () => {
-    setSession("mod1", "MODERATOR");
-    mockAccessApplicationFindUnique.mockResolvedValue(null);
-
-    const { PATCH } = await import("../apply/[id]/route");
-    const res = await PATCH(
-      makeRequest({ status: "APPROVED" }),
-      { params: { id: "nonexistent" } },
-    );
-    const data = await res.json();
-
-    expect(res.status).toBe(404);
-    expect(data.error).toBe("申请不存在");
-  });
-
-  it("应返回 409 当申请已被审核", async () => {
-    setSession("mod1", "MODERATOR");
-    mockAccessApplicationFindUnique.mockResolvedValue({
-      ...pendingApplication,
-      status: "APPROVED",
-    });
-
-    const { PATCH } = await import("../apply/[id]/route");
-    const res = await PATCH(
-      makeRequest({ status: "APPROVED" }),
-      { params: { id: "app1" } },
-    );
-    const data = await res.json();
-
-    expect(res.status).toBe(409);
-    expect(data.error).toBe("该申请已被审核");
-  });
-
-  it("应成功批准申请并设置 psychAccess", async () => {
-    setSession("mod1", "MODERATOR");
-    mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
-    mockAccessApplicationUpdate.mockResolvedValue({
-      ...pendingApplication,
-      status: "APPROVED",
-      reviewedAt: new Date(),
-    });
-    mockUserUpdate.mockResolvedValue({});
-    mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
-
-    const { PATCH } = await import("../apply/[id]/route");
-    const res = await PATCH(
-      makeRequest({ status: "APPROVED" }),
-      { params: { id: "app1" } },
-    );
-    const data = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(data.application.status).toBe("APPROVED");
-
-    // Verify psychAccess was set
-    expect(mockUserUpdate).toHaveBeenCalledWith({
+    expect(response.status).toBe(200);
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "app1", type: "PSYCHOLOGY", status: "PENDING" },
+      data: expect.objectContaining({ status: "APPROVED" }),
+    }));
+    expect(mocks.userUpdate).toHaveBeenCalledWith({
       where: { id: "user1" },
       data: { psychAccess: true },
     });
+    expect(mocks.auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        operatorId: "mod1",
+        action: "PSYCH_ACCESS_GRANT",
+        details: expect.objectContaining({
+          applicationType: "PSYCHOLOGY",
+          decision: "APPROVED",
+          psychAccessGranted: true,
+        }),
+      }),
+    });
   });
 
-  it("应成功拒绝申请", async () => {
-    setSession("mod1", "MODERATOR");
-    mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
-    mockAccessApplicationUpdate.mockResolvedValue({
-      ...pendingApplication,
-      status: "REJECTED",
-      reviewNote: "不符合条件",
-      reviewedAt: new Date(),
-    });
-    mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
-
+  it("拒绝申请时不改写已有 psychAccess，并记录拒绝审计", async () => {
+    setSession();
+    mocks.findUpdated.mockResolvedValue({ ...pendingApplication, status: "REJECTED" });
     const { PATCH } = await import("../apply/[id]/route");
-    const res = await PATCH(
+    const response = await PATCH(
       makeRequest({ status: "REJECTED", reviewNote: "不符合条件" }),
       { params: { id: "app1" } },
     );
-    const data = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(data.application.status).toBe("REJECTED");
-
-    // Should NOT set psychAccess for rejection
-    expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
+    expect(mocks.auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "PSYCH_ACCESS_REJECT",
+        details: expect.objectContaining({
+          decision: "REJECTED",
+          psychAccessGranted: false,
+          reviewNote: "不符合条件",
+        }),
+      }),
+    });
   });
 
-  it("应为申请人创建通知（批准）", async () => {
-    setSession("mod1", "MODERATOR");
-    mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
-    mockAccessApplicationUpdate.mockResolvedValue({
-      ...pendingApplication,
-      status: "APPROVED",
-    });
-    mockUserUpdate.mockResolvedValue({});
-    mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
-
+  it("条件更新未命中时返回 409，防止重复审核继续写权限", async () => {
+    setSession();
+    mocks.updateMany.mockResolvedValue({ count: 0 });
     const { PATCH } = await import("../apply/[id]/route");
-    await PATCH(
-      makeRequest({ status: "APPROVED" }),
-      { params: { id: "app1" } },
-    );
+    const response = await PATCH(makeRequest({ status: "APPROVED" }), { params: { id: "app1" } });
 
-    expect(mockCreateNotification).toHaveBeenCalledWith(
+    expect(response.status).toBe(409);
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
+  });
+
+  it("通知和邮件在事务提交后 best-effort，失败不改变核心成功响应", async () => {
+    setSession();
+    mocks.createNotification.mockRejectedValue(new Error("notification unavailable"));
+    mocks.sendUserMail.mockRejectedValue(new Error("mail unavailable"));
+    const { PATCH } = await import("../apply/[id]/route");
+    const response = await PATCH(makeRequest({ status: "APPROVED" }), { params: { id: "app1" } });
+
+    expect(response.status).toBe(200);
+    expect(mocks.createNotification).toHaveBeenCalledWith(
       "user1",
       "SYSTEM",
       "心理区准入申请已通过",
       expect.stringContaining("已通过审核"),
-      "/apply",
+      "/psych",
     );
-  });
-
-  it("应为申请人创建通知（拒绝）", async () => {
-    setSession("mod1", "MODERATOR");
-    mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
-    mockAccessApplicationUpdate.mockResolvedValue({
-      ...pendingApplication,
-      status: "REJECTED",
-      reviewNote: "不符合条件",
-    });
-    mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
-
-    const { PATCH } = await import("../apply/[id]/route");
-    await PATCH(
-      makeRequest({ status: "REJECTED", reviewNote: "不符合条件" }),
-      { params: { id: "app1" } },
-    );
-
-    expect(mockCreateNotification).toHaveBeenCalledWith(
-      "user1",
-      "SYSTEM",
-      "心理区准入申请未通过",
-      expect.stringContaining("不符合条件"),
-      undefined,
-    );
-  });
-
-  it("应记录审计日志", async () => {
-    setSession("mod1", "MODERATOR");
-    mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
-    mockAccessApplicationUpdate.mockResolvedValue({
-      ...pendingApplication,
-      status: "APPROVED",
-    });
-    mockUserUpdate.mockResolvedValue({});
-    mockCreateNotification.mockResolvedValue({});
-    mockLogAudit.mockResolvedValue({});
-
-    const { PATCH } = await import("../apply/[id]/route");
-    await PATCH(
-      makeRequest({ status: "APPROVED" }),
-      { params: { id: "app1" } },
-    );
-
-    expect(mockLogAudit).toHaveBeenCalledWith(
-      "mod1",
-      "PSYCH_ACCESS_GRANT",
-      "APPLICATION",
-      "app1",
-      expect.objectContaining({
-        applicantId: "user1",
-        decision: "APPROVED",
-      }),
-    );
+    expect(mocks.sendUserMail).toHaveBeenCalled();
   });
 });

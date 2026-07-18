@@ -55,7 +55,7 @@ describe("GET /api/dcr/tasks/[id]", () => {
     expect(res.status).toBe(403);
   });
 
-  it("有 DCR 权限的非参与者不能查看进行中任务", async () => {
+  it("有 DCR 权限的非参与者可查看进行中任务的稳定脱敏结构", async () => {
     session("outsider");
     mockTaskFindUnique.mockResolvedValue(task);
     mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
@@ -65,7 +65,7 @@ describe("GET /api/dcr/tasks/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(data.helpSession).toBeUndefined();
-    expect(data.helpSessions).toBeUndefined();
+    expect(data.helpSessions).toEqual([]);
     expect(data.timeline).toBeUndefined();
   });
 
@@ -91,6 +91,7 @@ describe("GET /api/dcr/tasks/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(data.helpSession).toBeUndefined();
+    expect(data.helpSessions).toEqual([]);
     expect(data.timeline).toBeUndefined();
     expect(data.requester.id).toBeUndefined();
     expect(data.requesterId).toBeUndefined();

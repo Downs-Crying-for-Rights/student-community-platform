@@ -51,6 +51,7 @@ interface PostData {
   board: PostBoard;
   tags: PostTag[];
   case_: { id: string; category: string; status: string; requestStatus: string } | null;
+  isAuthor?: boolean;
 }
 
 function PostDetailSkeleton() {
@@ -159,7 +160,8 @@ export default function PostDetailPage() {
     }
   }, [post?.title]);
 
-  const isAuthor = Boolean(session?.user?.id && post?.author.id === session.user.id);
+  const isAuthor = post?.isAuthor
+    ?? Boolean(session?.user?.id && post?.author.id === session.user.id);
 
   const handleDelete = useCallback(async () => {
     if (deleteLoading) return;

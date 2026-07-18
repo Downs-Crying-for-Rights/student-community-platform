@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Heart,
   ShieldCheck,
@@ -24,10 +25,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export function getApplicationStatusText(status: string): string {
   switch (status) {
     case "pending":
+    case "PENDING":
       return "您的申请正在审核中，请耐心等待";
     case "approved":
+    case "APPROVED":
       return "您已获得心理交流区访问权限";
     case "rejected":
+    case "REJECTED":
       return "您的申请未通过审核，如有疑问请联系管理员";
     case "hasAccess":
       return "您已拥有心理交流区访问权限";
@@ -42,11 +46,14 @@ export function getApplicationStatusText(status: string): string {
 export function getApplicationStatusColor(status: string): string {
   switch (status) {
     case "pending":
+    case "PENDING":
       return "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
     case "approved":
     case "hasAccess":
+    case "APPROVED":
       return "bg-green-50 text-green-800 dark:bg-green-950/40 dark:text-green-200";
     case "rejected":
+    case "REJECTED":
       return "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200";
     default:
       return "";
@@ -69,7 +76,7 @@ const ADMISSION_NOTES = [
   {
     icon: Users,
     title: "匿名同伴支持空间",
-    description: "这是一个安全的匿名交流空间，所有对话均使用随机匿名标识，保护您的隐私。",
+    description: "面向普通成员使用匿名标识展示；平台会为审核、安全处置和合规目的保留必要的账号关联。",
   },
   {
     icon: ShieldCheck,
@@ -78,8 +85,8 @@ const ADMISSION_NOTES = [
   },
   {
     icon: Eye,
-    title: "完全匿名交流",
-    description: "所有发帖和对话均为匿名，其他用户无法看到您的真实身份。",
+    title: "匿名展示与隐私边界",
+    description: "普通成员看不到发帖者的账号资料，但请勿在内容中主动透露姓名、学校、住址或联系方式。",
   },
   {
     icon: AlertTriangle,
@@ -98,9 +105,24 @@ const LISTENER_GUIDELINES = [
 /* ========== Page Component ========== */
 
 export default function PsychApplyPage() {
+  const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/psych/progress", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("申请状态加载失败");
+        return res.json();
+      })
+      .then((data) => {
+        if (data?.accessGranted) setStatus("APPROVED");
+        else if (data?.application?.status) setStatus(data.application.status);
+      })
+      .catch(() => setError("申请状态加载失败，请刷新页面重试"))
+      .finally(() => setChecking(false));
+  }, []);
 
   const handleApply = async () => {
     setLoading(true);
@@ -127,8 +149,8 @@ export default function PsychApplyPage() {
   };
 
   const canApply = isApplicationAllowed(
-    status === "hasAccess" || status === "approved",
-    status === "pending"
+    status === "hasAccess" || status === "approved" || status === "APPROVED",
+    status === "pending" || status === "PENDING"
   );
 
   return (
@@ -156,14 +178,15 @@ export default function PsychApplyPage() {
             role="status"
             className={`mb-6 flex items-center gap-2 rounded-2xl px-4 py-3 text-sm ${getApplicationStatusColor(status)}`}
           >
-            {status === "pending" && <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />}
-            {(status === "approved" || status === "hasAccess") && (
+             {(status === "pending" || status === "PENDING") && <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />}
+             {(status === "approved" || status === "APPROVED" || status === "hasAccess") && (
               <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
             )}
-            {status === "rejected" && (
+             {(status === "rejected" || status === "REJECTED") && (
               <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
             )}
-            <span>{getApplicationStatusText(status)}</span>
+             <span>{getApplicationStatusText(status)}</span>
+             {(status === "approved" || status === "APPROVED" || status === "hasAccess") && <Button asChild size="sm" className="ml-auto"><Link href="/psych">进入心理区</Link></Button>}
           </div>
         )}
 
@@ -235,7 +258,7 @@ export default function PsychApplyPage() {
             </span>
           </div>
           <p className="text-xs text-rose-700 dark:text-rose-300">
-            如需专业帮助，请拨打全国心理援助热线：
+             平台不是紧急服务，请勿分享 PII。紧急情况请拨打 110 或 120；专业帮助可联系心理援助热线：
             <a
               href="tel:400-161-9995"
               className="ml-1 font-medium underline"
@@ -260,12 +283,12 @@ export default function PsychApplyPage() {
         <Button
           className="w-full rounded-2xl bg-orange-600 hover:bg-orange-700 text-white dark:bg-orange-700 dark:hover:bg-orange-600"
           size="lg"
-          disabled={!canApply || loading}
+          disabled={checking || !canApply || loading}
           onClick={handleApply}
           aria-label="提交心理交流区准入申请"
         >
-          {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-          {loading ? "提交中..." : canApply ? "提交准入申请" : "申请已提交"}
+          {(checking || loading) && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+          {checking ? "正在读取申请状态..." : loading ? "提交中..." : canApply ? "提交准入申请" : "申请已提交"}
         </Button>
       </div>
     </div>

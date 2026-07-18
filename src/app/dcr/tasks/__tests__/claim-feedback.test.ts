@@ -11,6 +11,16 @@ describe("互助接取前端反馈", () => {
     expect(feed).not.toContain('fetch(`/api/dcr/tasks/${taskId}/claim`');
   });
 
+  it("已有互助人的任务仍允许其他人继续加入", () => {
+    const feed = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+    const detail = fs.readFileSync(path.resolve(__dirname, "../[id]/page.tsx"), "utf8");
+
+    expect(feed).toContain('["OPEN", "CLAIMED", "IN_PROGRESS"].includes(task.status)');
+    expect(feed).toContain("继续加入互助");
+    expect(detail).toContain('["OPEN", "CLAIMED", "IN_PROGRESS"].includes(status)');
+    expect(detail).toContain("task.helpSessions?.length ?? 0");
+  });
+
   it("自己的委托查询遵守接口最多 50 条的限制", () => {
     const detail = fs.readFileSync(path.resolve(__dirname, "../[id]/page.tsx"), "utf8");
 

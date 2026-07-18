@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Heart,
@@ -34,7 +34,7 @@ export function getPsychSections(): PsychSection[] {
       id: "tree-hole",
       title: "匿名树洞",
       description: "在安全的匿名空间中自由表达，所有发言均使用随机匿名标识",
-      href: "/dcr/posts?zone=PSYCHOLOGY",
+      href: "/psych/posts",
       iconName: "TreePine",
     },
     {
@@ -61,6 +61,13 @@ export function getPsychWelcomeMessage(): string {
   return "这里是一个温暖、安全的同伴支持空间。你可以匿名倾诉、寻求倾听，或查看求助资源。";
 }
 
+export function getPsychEntryAction(progress: unknown): { label: string; href: string } {
+  const data = progress as { accessGranted?: boolean; application?: { status?: string } } | null;
+  if (data?.accessGranted) return { label: "进入心理区", href: "/psych/posts" };
+  if (data?.application?.status === "PENDING") return { label: "查看申请状态", href: "/apply" };
+  return { label: "申请加入心理区", href: "/apply" };
+}
+
 /* ========== Icon Mapping ========== */
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -74,6 +81,14 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 export default function PsychMainPage() {
   const sections = getPsychSections();
   const hotlines = getCrisisHotlines();
+  const [progress, setProgress] = useState<unknown>(null);
+  useEffect(() => {
+    fetch("/api/psych/progress", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then(setProgress)
+      .catch(() => setProgress(null));
+  }, []);
+  const entryAction = getPsychEntryAction(progress);
 
   return (
     <div className="min-h-screen bg-background">
@@ -91,13 +106,17 @@ export default function PsychMainPage() {
           <p className="mt-2 text-sm text-muted-foreground">
             {getPsychWelcomeMessage()}
           </p>
+          <Button asChild className="mt-4 rounded-full bg-orange-600 text-white hover:bg-orange-700">
+            <Link href={entryAction.href}>{entryAction.label}</Link>
+          </Button>
         </div>
 
         {/* Section Cards */}
         <div className="space-y-4 mb-8">
           {sections.map((section) => {
             const Icon = ICON_MAP[section.iconName] ?? Heart;
-            const isAnchor = section.href.startsWith("#");
+            const href = section.id === "tree-hole" ? entryAction.href : section.href;
+            const isAnchor = href.startsWith("#");
 
             const cardContent = (
               <Card
@@ -124,14 +143,14 @@ export default function PsychMainPage() {
 
             if (isAnchor) {
               return (
-                <a key={section.id} href={section.href}>
+                <a key={section.id} href={href}>
                   {cardContent}
                 </a>
               );
             }
 
             return (
-              <Link key={section.id} href={section.href}>
+              <Link key={section.id} href={href}>
                 {cardContent}
               </Link>
             );
@@ -158,7 +177,7 @@ export default function PsychMainPage() {
             </CardHeader>
             <CardContent>
               <p className="mb-4 text-sm text-muted-foreground">
-                如果你或身边的人正在经历困难，请联系以下专业资源获取帮助。
+                 平台不是紧急服务，也不替代专业医疗帮助。请避免分享任何个人身份信息；紧急危险请拨打 110 或 120。
               </p>
               <ul className="space-y-3" role="list">
                 {hotlines.map((hotline) => (

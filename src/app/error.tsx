@@ -1,8 +1,26 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { reportClientTelemetry } from "@/components/providers/TelemetryProvider";
+
+export function ErrorReporter({ error }: { error: Error & { digest?: string } }) {
+  useEffect(() => {
+    reportClientTelemetry({
+      type: "error",
+      name: error.name || "react_error_boundary",
+      route: window.location.pathname,
+      metadata: {
+        message: error.message.slice(0, 2_000),
+        stack: (error.stack || "").slice(0, 8_000),
+        source: error.digest ? `next-digest:${error.digest}` : "next-error-boundary",
+      },
+    });
+  }, [error]);
+
+  return null;
+}
 
 /**
  * 500 Error page — Next.js error boundary for unhandled errors.
@@ -19,6 +37,7 @@ export default function ErrorPage({
 }) {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 px-4 text-center">
+      <ErrorReporter error={error} />
       <div className="text-6xl" aria-hidden="true">
         ⚠️
       </div>

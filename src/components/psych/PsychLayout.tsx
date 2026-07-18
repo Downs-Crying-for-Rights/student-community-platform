@@ -30,7 +30,7 @@ export function getCrisisHotlines(): CrisisHotline[] {
  * Returns the safety banner text displayed at the top of all psychology zone pages.
  */
 export function getSafetyBannerText(): string {
-  return "这是一个安全的同伴支持空间。如需专业帮助，请联系可信成人或拨打心理援助热线";
+  return "这是一个安全的同伴支持空间，但不是紧急服务。请勿发布真实姓名、学校、住址或联系方式等个人信息；遇到困难可联系可信成人或心理援助热线，紧急情况请拨打 110 或 120。";
 }
 
 /**

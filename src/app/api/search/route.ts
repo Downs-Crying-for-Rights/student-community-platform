@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withOptionalAuth, type OptionalAuthRequest } from "@/lib/rbac";
 import { searchQuerySchema, paginationSchema } from "@/lib/validators";
 import { canAccessZone, type ABACUserAttributes } from "@/lib/abac";
+import { anonymizePsychologyPost } from "@/lib/post-access";
 import { PostStatus } from "@prisma/client";
 import { z } from "zod";
 
@@ -121,6 +122,7 @@ async function searchPosts(
       { title: { contains: q, mode: "insensitive" } },
       { content: { contains: q, mode: "insensitive" } },
     ],
+    visibility: "PUBLIC",
   };
 
   if (boardId) {
@@ -142,7 +144,12 @@ async function searchPosts(
     prisma.post.count({ where }),
   ]);
 
-  return NextResponse.json({ results: posts, total, page, pageSize });
+  return NextResponse.json({
+    results: posts.map((post) => anonymizePsychologyPost(post)),
+    total,
+    page,
+    pageSize,
+  });
 }
 
 /**

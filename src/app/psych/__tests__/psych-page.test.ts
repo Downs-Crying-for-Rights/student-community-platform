@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
  * Validates: Requirements 35.1, 35.2, 35.3, 35.4, 8.7, 8.8
  */
 
-import { getPsychSections, getPsychWelcomeMessage } from "../page";
+import { getPsychSections, getPsychWelcomeMessage, getPsychEntryAction } from "../page";
 import {
   validateConfideSummary,
   getConfideStatusText,
@@ -42,6 +42,13 @@ describe("getPsychSections", () => {
     const treeHole = sections.find((s) => s.id === "tree-hole");
     expect(treeHole).toBeDefined();
     expect(treeHole!.title).toContain("匿名树洞");
+    expect(treeHole!.href).toBe("/psych/posts");
+  });
+
+  it("provides an entry action based on access and application status", () => {
+    expect(getPsychEntryAction({ accessGranted: true })).toEqual({ label: "进入心理区", href: "/psych/posts" });
+    expect(getPsychEntryAction({ application: { status: "PENDING" } })).toEqual({ label: "查看申请状态", href: "/apply" });
+    expect(getPsychEntryAction({ application: { status: "REJECTED" } })).toEqual({ label: "申请加入心理区", href: "/apply" });
   });
 
   it("倾诉匹配暂停时不再进入提交页面", () => {

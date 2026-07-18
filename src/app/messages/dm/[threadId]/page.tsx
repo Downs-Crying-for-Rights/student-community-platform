@@ -40,7 +40,9 @@ export default function DMThreadPage() {
     return () => clearInterval(timer);
   }, [load]);
 
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();

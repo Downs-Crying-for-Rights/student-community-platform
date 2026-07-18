@@ -11,8 +11,12 @@ const mockPostTagCreateMany = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
+    user: { findUnique: vi.fn() },
     post: {
-      findUnique: (...args: unknown[]) => mockPostFindUnique(...args),
+      findUnique: async (...args: unknown[]) => {
+        const post = await mockPostFindUnique(...args);
+        return post && { visibility: "PUBLIC", board: { zone: "PUBLIC" }, ...post };
+      },
       update: (...args: unknown[]) => mockPostUpdate(...args),
     },
     postEditHistory: {
@@ -205,6 +209,42 @@ describe("GET /api/posts/[id]", () => {
     const { GET } = await import("../../[id]/route");
     const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
     expect(res.status).toBe(200);
+  });
+
+  it("心理帖子响应应隐藏真实作者身份，包括对版主", async () => {
+    setSession("mod1", "MODERATOR");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      status: "PUBLISHED",
+      visibility: "PUBLIC",
+      authorId: "real-user",
+      anonymousId: "匿名用户_AB12",
+      author: { id: "real-user", nickname: "真实姓名", avatar: "real.png", isShadowBanned: false },
+      board: { id: "b1", name: "心理", zone: "PSYCHOLOGY" },
+      tags: [],
+      case_: null,
+    });
+
+    const { GET } = await import("../../[id]/route");
+    const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.post.authorId).toBe("匿名用户_AB12");
+    expect(data.post.author).toEqual({ id: "匿名用户_AB12", nickname: "匿名用户_AB12", avatar: null });
+  });
+
+  it("心理区 MATCHED 帖子即使作者也不可读取", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1", status: "PUBLISHED", visibility: "MATCHED", authorId: "user1",
+      author: { id: "user1", nickname: "用户", avatar: null, isShadowBanned: false },
+      board: { zone: "PSYCHOLOGY" }, tags: [], case_: null,
+    });
+
+    const { GET } = await import("../../[id]/route");
+    const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
+    expect(res.status).toBe(403);
   });
 });
 

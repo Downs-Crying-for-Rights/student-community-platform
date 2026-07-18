@@ -12,6 +12,13 @@ describe("站内一对一私信", () => {
     expect(thread).not.toContain("管理员正在查看");
   });
 
+  it("滚动 effect 不把浏览器 API 返回值注册为清理函数", () => {
+    const thread = fs.readFileSync(path.resolve(__dirname, "../[threadId]/page.tsx"), "utf8");
+
+    expect(thread).toContain('endRef.current?.scrollIntoView({ behavior: "smooth" });');
+    expect(thread).not.toContain('useEffect(() => endRef.current?.scrollIntoView');
+  });
+
   it("用户主页可以发起私信", () => {
     const profile = fs.readFileSync(path.resolve(__dirname, "../../../u/[id]/page.tsx"), "utf8");
     expect(profile).toContain('fetch("/api/dm"');

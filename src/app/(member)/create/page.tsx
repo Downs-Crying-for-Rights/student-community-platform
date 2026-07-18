@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -139,6 +139,8 @@ function generateImageId(): string {
 
 export default function CreatePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedZone = searchParams.get("zone");
 
   // Form state
   const [title, setTitle] = useState("");
@@ -181,13 +183,17 @@ export default function CreatePage() {
         if (boardsRes.ok) {
           const data = await boardsRes.json();
           setBoards(data.boards ?? []);
+          if (requestedZone === "PSYCHOLOGY") {
+            const psychBoard = (data.boards ?? []).find((board: Board) => board.zone === "PSYCHOLOGY");
+            if (psychBoard) setBoardId(psychBoard.id);
+          }
         }
       } catch {
         // Silently handle fetch errors
       }
     }
     loadData();
-  }, []);
+  }, [requestedZone]);
 
   useEffect(() => {
     if (!isDcrBoard) {
@@ -727,8 +733,10 @@ export default function CreatePage() {
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label="选择可见范围"
             >
-              <option value="PUBLIC">公开</option>
-              <option value="MATCHED">仅匹配方可见</option>
+              <option value="PUBLIC">{selectedBoard?.zone === "PSYCHOLOGY" ? "心理区成员可见" : "公开"}</option>
+              {selectedBoard?.zone !== "PSYCHOLOGY" && (
+                <option value="MATCHED">仅匹配方可见</option>
+              )}
               <option value="MODS_ONLY">仅版主可见</option>
             </select>
           </div>

@@ -4,6 +4,8 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { createCommentSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
+import { anonymizePsychologyComment, checkPostAccess } from "@/lib/post-access";
+import { generateAnonymousId } from "@/lib/utils";
 
 const authorSelect = { id: true, nickname: true, avatar: true } as const;
 
@@ -36,7 +38,7 @@ async function getCommentDepth(commentId: string): Promise<number> {
  * Filters out deleted comments.
  */
 export const GET = withAuth(async (
-  _req: AuthenticatedRequest,
+  req: AuthenticatedRequest,
   context: { params: Record<string, string> },
 ) => {
   try {
@@ -44,12 +46,15 @@ export const GET = withAuth(async (
 
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      select: { id: true },
+      select: { id: true, authorId: true, status: true, visibility: true, board: { select: { zone: true } } },
     });
 
     if (!post) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
+
+    const access = await checkPostAccess(req.user, post);
+    if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
 
     // Fetch top-level comments (no parent) with nested replies up to 2 levels
     const comments = await prisma.comment.findMany({
@@ -76,7 +81,12 @@ export const GET = withAuth(async (
       where: { postId, isDeleted: false },
     });
 
-    return NextResponse.json({ comments, total });
+    return NextResponse.json({
+      comments: post.board.zone === "PSYCHOLOGY"
+        ? comments.map(anonymizePsychologyComment)
+        : comments,
+      total,
+    });
   } catch (error) {
     console.error("GET /api/posts/[id]/comments error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
@@ -117,12 +127,15 @@ export const POST = withAuth(async (
     // Check post exists and status
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      select: { id: true, status: true, authorId: true, title: true },
+      select: { id: true, status: true, authorId: true, title: true, visibility: true, board: { select: { zone: true } } },
     });
 
     if (!post) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
+
+    const access = await checkPostAccess(req.user, post);
+    if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
 
     if (post.status === "PENDING") {
       return NextResponse.json({ error: "待审核帖子禁止评论" }, { status: 403 });
@@ -174,6 +187,9 @@ export const POST = withAuth(async (
         authorId: req.user.id,
         postId,
         parentId: parentId ?? null,
+        ...(post.board.zone === "PSYCHOLOGY"
+          ? { isAnonymous: true, anonymousId: generateAnonymousId() }
+          : {}),
       },
       include: { author: { select: authorSelect } },
     });
@@ -206,7 +222,11 @@ export const POST = withAuth(async (
       { postId, parentId: parentId ?? null },
     );
 
-    return NextResponse.json({ comment: created }, { status: 201 });
+    return NextResponse.json({
+      comment: post.board.zone === "PSYCHOLOGY"
+        ? anonymizePsychologyComment(created)
+        : created,
+    }, { status: 201 });
   } catch (error) {
     console.error("POST /api/posts/[id]/comments error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

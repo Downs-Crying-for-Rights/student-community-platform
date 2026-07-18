@@ -4,6 +4,7 @@ import { withAuth, withOptionalAuth, hasMinimumRole, type AuthenticatedRequest, 
 import { updatePostSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
+import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
 
 /**
  * GET /api/posts/[id]
@@ -35,7 +36,7 @@ export const GET = withOptionalAuth(async (
 
     // Unauthenticated users: only allow PUBLISHED posts in PUBLIC zone
     if (!req.user) {
-      if (post.status !== "PUBLISHED" || post.board.zone !== "PUBLIC") {
+      if (post.status !== "PUBLISHED" || post.board.zone !== "PUBLIC" || post.visibility !== "PUBLIC") {
         return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
       }
       if (post.author.isShadowBanned) {
@@ -49,27 +50,12 @@ export const GET = withOptionalAuth(async (
     const isAuthor = post.authorId === userId;
     const isModerator = hasMinimumRole(req.user.role, "MODERATOR");
 
-    if (post.board.zone === "DCR") {
-      const access = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { dcrAccess: true },
-      });
-      if (!access?.dcrAccess && !hasMinimumRole(req.user.role, "ADMIN")) {
-        return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
-      }
-      if (post.case_ && post.case_.requestStatus !== "APPROVED" && !isAuthor && !isModerator) {
-        return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
-      }
+    const access = await checkPostAccess(req.user, post);
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
     }
-
-    if (post.board.zone === "PSYCHOLOGY") {
-      const access = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { psychAccess: true },
-      });
-      if (!access?.psychAccess && !isModerator) {
-        return NextResponse.json({ error: "无心理区访问权限" }, { status: 403 });
-      }
+    if (post.board.zone === "DCR" && post.case_ && post.case_.requestStatus !== "APPROVED" && !isAuthor && !isModerator) {
+      return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
 
     // Don't show DELETED posts unless moderator
@@ -90,7 +76,12 @@ export const GET = withOptionalAuth(async (
     // Strip isShadowBanned from response
     const { isShadowBanned: _, ...authorData } = post.author;
 
-    return NextResponse.json({ post: { ...post, author: authorData } });
+    return NextResponse.json({
+      post: {
+        ...anonymizePsychologyPost({ ...post, author: authorData }),
+        isAuthor,
+      },
+    });
   } catch (error) {
     console.error("GET /api/posts/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
@@ -112,7 +103,7 @@ export const PATCH = withAuth(async (
 
     const existing = await prisma.post.findUnique({
       where: { id },
-      select: { id: true, authorId: true, title: true, content: true, status: true },
+      select: { id: true, authorId: true, title: true, content: true, status: true, visibility: true, board: { select: { zone: true } } },
     });
 
     if (!existing) {
@@ -121,6 +112,11 @@ export const PATCH = withAuth(async (
 
     if (existing.authorId !== req.user.id) {
       return NextResponse.json({ error: "只能编辑自己的帖子" }, { status: 403 });
+    }
+
+    if (existing.board.zone === "PSYCHOLOGY") {
+      const access = await checkPostAccess(req.user, existing);
+      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     if (existing.status === "DELETED") {
@@ -138,6 +134,10 @@ export const PATCH = withAuth(async (
     }
 
     const { title, content, summary, tagIds, images, visibility } = parsed.data;
+
+    if (existing.board.zone === "PSYCHOLOGY" && visibility === "MATCHED") {
+      return NextResponse.json({ error: "心理区暂不支持匹配可见帖子" }, { status: 400 });
+    }
 
     // Sensitive word scan on updated content
     const newTitle = title ?? existing.title;
@@ -197,7 +197,7 @@ export const PATCH = withAuth(async (
       { updatedFields: Object.keys(updateData) },
     );
 
-    return NextResponse.json({ post });
+    return NextResponse.json({ post: anonymizePsychologyPost(post) });
   } catch (error) {
     console.error("PATCH /api/posts/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
@@ -218,7 +218,7 @@ export const DELETE = withAuth(async (
 
     const existing = await prisma.post.findUnique({
       where: { id },
-      select: { id: true, authorId: true, status: true },
+      select: { id: true, authorId: true, status: true, visibility: true, board: { select: { zone: true } } },
     });
 
     if (!existing) {
@@ -231,6 +231,11 @@ export const DELETE = withAuth(async (
 
     const isAuthor = existing.authorId === req.user.id;
     const isModerator = hasMinimumRole(req.user.role, "MODERATOR");
+
+    if (existing.board.zone === "PSYCHOLOGY") {
+      const access = await checkPostAccess(req.user, existing);
+      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+    }
 
     if (!isAuthor && !isModerator) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });

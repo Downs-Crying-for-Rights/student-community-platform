@@ -7,11 +7,16 @@ const mockPostFindUnique = vi.fn();
 const mockBookmarkFindUnique = vi.fn();
 const mockBookmarkCreate = vi.fn();
 const mockBookmarkDelete = vi.fn();
+const mockUserFindUnique = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
+    user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
     post: {
-      findUnique: (...args: unknown[]) => mockPostFindUnique(...args),
+      findUnique: async (...args: unknown[]) => {
+        const post = await mockPostFindUnique(...args);
+        return post && { visibility: "PUBLIC", board: { zone: "PUBLIC" }, ...post };
+      },
     },
     bookmark: {
       findUnique: (...args: unknown[]) => mockBookmarkFindUnique(...args),
@@ -129,5 +134,24 @@ describe("POST /api/posts/[id]/bookmark", () => {
     const { POST } = await import("../../bookmark/route");
     const res = await POST(makeRequest(), { params: { id: "p1" } });
     expect(res.status).toBe(500);
+  });
+
+  it("心理区 MATCHED 帖子不得收藏", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({ id: "p1", status: "PUBLISHED", visibility: "MATCHED", authorId: "user1", board: { zone: "PSYCHOLOGY" } });
+    const { POST } = await import("../../bookmark/route");
+    const res = await POST(makeRequest(), { params: { id: "p1" } });
+    expect(res.status).toBe(403);
+    expect(mockBookmarkFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("无 psychAccess 不得收藏心理帖子", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({ id: "p1", status: "PUBLISHED", authorId: "author1", board: { zone: "PSYCHOLOGY" } });
+    mockUserFindUnique.mockResolvedValue({ psychAccess: false, dcrAccess: false });
+    const { POST } = await import("../../bookmark/route");
+    const res = await POST(makeRequest(), { params: { id: "p1" } });
+    expect(res.status).toBe(403);
+    expect(mockBookmarkFindUnique).not.toHaveBeenCalled();
   });
 });

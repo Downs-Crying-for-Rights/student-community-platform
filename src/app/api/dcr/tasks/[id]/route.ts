@@ -91,6 +91,7 @@ export const GET = withAuth(async (
       } = task as typeof task & { helpSession?: unknown };
       return NextResponse.json({
         ...publicTask,
+        helpSessions: [],
         requester: { nickname: task.requester.nickname, avatar: task.requester.avatar },
       });
     }

@@ -9,11 +9,16 @@ const mockLikeFindUnique = vi.fn();
 const mockLikeCreate = vi.fn();
 const mockLikeDelete = vi.fn();
 const mockTransaction = vi.fn();
+const mockUserFindUnique = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
+    user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
     post: {
-      findUnique: (...args: unknown[]) => mockPostFindUnique(...args),
+      findUnique: async (...args: unknown[]) => {
+        const post = await mockPostFindUnique(...args);
+        return post && { visibility: "PUBLIC", board: { zone: "PUBLIC" }, ...post };
+      },
       update: (...args: unknown[]) => mockPostUpdate(...args),
     },
     like: {
@@ -127,5 +132,24 @@ describe("POST /api/posts/[id]/like", () => {
     const { POST } = await import("../../like/route");
     const res = await POST(makeRequest(), { params: { id: "p1" } });
     expect(res.status).toBe(500);
+  });
+
+  it("无 psychAccess 不得点赞心理帖子", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({ id: "p1", status: "PUBLISHED", authorId: "author1", board: { zone: "PSYCHOLOGY" } });
+    mockUserFindUnique.mockResolvedValue({ psychAccess: false, dcrAccess: false });
+
+    const { POST } = await import("../../like/route");
+    const res = await POST(makeRequest(), { params: { id: "p1" } });
+    expect(res.status).toBe(403);
+    expect(mockLikeFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("非作者不得点赞 MODS_ONLY 帖子", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({ id: "p1", status: "PUBLISHED", visibility: "MODS_ONLY", authorId: "author1", board: { zone: "PUBLIC" } });
+    const { POST } = await import("../../like/route");
+    const res = await POST(makeRequest(), { params: { id: "p1" } });
+    expect(res.status).toBe(403);
   });
 });

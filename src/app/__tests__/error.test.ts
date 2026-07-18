@@ -12,6 +12,18 @@ describe("500 Error 页面", () => {
     const mod = await import("../error");
     expect(mod.default).toBeDefined();
     expect(typeof mod.default).toBe("function");
+    expect(typeof mod.ErrorReporter).toBe("function");
+  });
+
+  it("挂载客户端错误遥测上报组件", async () => {
+    const mod = await import("../error");
+    const error = new Error("render failed");
+    const result = mod.default({ error, reset: vi.fn() });
+    const children = (result as any).props.children as any[];
+    const reporter = children.find((child: any) => child?.type === mod.ErrorReporter);
+
+    expect(reporter).toBeDefined();
+    expect(reporter.props.error).toBe(error);
   });
 
   it("接受 error 和 reset props 并返回 JSX", async () => {

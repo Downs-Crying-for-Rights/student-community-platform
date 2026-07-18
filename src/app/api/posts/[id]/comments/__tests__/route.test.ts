@@ -10,11 +10,16 @@ const mockCommentFindUnique = vi.fn();
 const mockCommentCreate = vi.fn();
 const mockCommentCount = vi.fn();
 const mockNotificationCreate = vi.fn();
+const mockUserFindUnique = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
+    user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
     post: {
-      findUnique: (...args: unknown[]) => mockPostFindUnique(...args),
+      findUnique: async (...args: unknown[]) => {
+        const post = await mockPostFindUnique(...args);
+        return post && { visibility: "PUBLIC", board: { zone: "PUBLIC" }, ...post };
+      },
       update: (...args: unknown[]) => mockPostUpdate(...args),
     },
     comment: {
@@ -110,6 +115,45 @@ describe("GET /api/posts/[id]/comments", () => {
     expect(res.status).toBe(200);
     expect(data.comments).toHaveLength(1);
     expect(data.total).toBe(1);
+  });
+
+  it("无 psychAccess 不得读取心理评论", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({ id: "p1", authorId: "author1", visibility: "PUBLIC", board: { zone: "PSYCHOLOGY" } });
+    mockUserFindUnique.mockResolvedValue({ psychAccess: false, dcrAccess: false });
+
+    const { GET } = await import("../../comments/route");
+    const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
+    expect(res.status).toBe(403);
+    expect(mockCommentFindMany).not.toHaveBeenCalled();
+  });
+
+  it("非作者不得读取 MODS_ONLY 帖子的评论", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({ id: "p1", authorId: "author1", visibility: "MODS_ONLY", board: { zone: "PUBLIC" } });
+    const { GET } = await import("../../comments/route");
+    const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
+    expect(res.status).toBe(403);
+    expect(mockCommentFindMany).not.toHaveBeenCalled();
+  });
+
+  it("心理评论列表应递归隐藏真实作者身份", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({ id: "p1", authorId: "author1", visibility: "PUBLIC", board: { zone: "PSYCHOLOGY" } });
+    mockUserFindUnique.mockResolvedValue({ psychAccess: true, dcrAccess: false });
+    mockCommentFindMany.mockResolvedValue([{
+      id: "c1", authorId: "real-1", anonymousId: "匿名用户_AAAA",
+      author: { id: "real-1", nickname: "真名", avatar: "real.png" },
+      replies: [{ id: "c2", authorId: "real-2", anonymousId: "匿名用户_BBBB", author: { id: "real-2", nickname: "真名2", avatar: null }, replies: [] }],
+    }]);
+    mockCommentCount.mockResolvedValue(2);
+
+    const { GET } = await import("../../comments/route");
+    const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
+    const data = await res.json();
+    expect(data.comments[0].authorId).toBe("匿名用户_AAAA");
+    expect(data.comments[0].author.nickname).toBe("匿名用户_AAAA");
+    expect(data.comments[0].replies[0].authorId).toBe("匿名用户_BBBB");
   });
 });
 
@@ -332,5 +376,33 @@ describe("POST /api/posts/[id]/comments", () => {
     );
 
     expect(res.status).toBe(201);
+  });
+
+  it("心理评论应强制匿名写入并匿名返回", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1", status: "PUBLISHED", authorId: "author1", title: "心理帖子",
+      visibility: "PUBLIC", board: { zone: "PSYCHOLOGY" },
+    });
+    mockUserFindUnique.mockResolvedValue({ psychAccess: true, dcrAccess: false });
+    mockScanContent.mockResolvedValue([]);
+    mockCommentCreate.mockResolvedValue({
+      id: "c1", content: "评论", authorId: "user1", anonymousId: "匿名用户_TEST",
+      author: { id: "user1", nickname: "真实姓名", avatar: "real.png" }, replies: [],
+    });
+    mockPostUpdate.mockResolvedValue({});
+    mockNotificationCreate.mockResolvedValue({});
+    mockLogAudit.mockResolvedValue({});
+
+    const { POST } = await import("../../comments/route");
+    const res = await POST(makeRequest("POST", { content: "评论" }), { params: { id: "p1" } });
+    const data = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(mockCommentCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ isAnonymous: true, anonymousId: expect.stringContaining("匿名用户_") }),
+    }));
+    expect(data.comment.authorId).toBe("匿名用户_TEST");
+    expect(data.comment.author).toEqual({ id: "匿名用户_TEST", nickname: "匿名用户_TEST", avatar: null });
   });
 });

@@ -679,11 +679,11 @@ export default function TaskDetailPage() {
             </CardContent>
           </Card>
         )}
-        {userId === task.requesterId && task.helpSessions.length > 1 && (
+        {userId === task.requesterId && (task.helpSessions?.length ?? 0) > 1 && (
           <Card className="mb-6">
             <CardHeader><CardTitle className="text-lg">已建立的互助会话</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              {task.helpSessions.map((session, index) => (
+              {task.helpSessions?.map((session, index) => (
                 <div key={session.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
                   <span className="text-sm">互助人 {index + 1}（{session.helperId.slice(0, 8)}…）</span>
                   <div className="flex gap-2">

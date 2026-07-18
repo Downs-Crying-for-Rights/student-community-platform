@@ -128,6 +128,7 @@ describe("GET /api/posts", () => {
 
   it("应支持按板块筛选", async () => {
     setSession("user1", "USER");
+    mockBoardFindUnique.mockResolvedValue({ zone: "PUBLIC" });
     mockPostFindMany.mockResolvedValue([]);
     mockPostCount.mockResolvedValue(0);
 
@@ -375,7 +376,7 @@ describe("POST /api/posts", () => {
     mockCaseFindUnique.mockResolvedValue({ submitterId: "user1", requestStatus: "APPROVED", handlers: [] });
     mockPostCount.mockResolvedValue(0);
     mockScanContent.mockResolvedValue([]);
-    mockPostCreate.mockResolvedValue({ id: "p-case", caseId: "clxxxxxxxxxxxxxxxxxx009" });
+    mockPostCreate.mockResolvedValue({ id: "p-case", caseId: "clxxxxxxxxxxxxxxxxxx009", board: { zone: "DCR" } });
 
     const { POST } = await import("../route");
     const res = await POST(makeRequest("POST", undefined, {
@@ -404,8 +405,11 @@ describe("POST /api/posts", () => {
     mockLogAudit.mockResolvedValue({});
     mockPostCreate.mockResolvedValue({
       id: "p3",
+      authorId: "user1",
       isAnonymous: true,
       anonymousId: "匿名用户_ABCD",
+      author: { id: "user1", nickname: "真实姓名", avatar: "real.png" },
+      board: { id: "b3", name: "心理", zone: "PSYCHOLOGY" },
     });
 
     const { POST } = await import("../route");
@@ -419,6 +423,9 @@ describe("POST /api/posts", () => {
     );
 
     expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.post.authorId).toBe("匿名用户_ABCD");
+    expect(data.post.author).toEqual({ id: "匿名用户_ABCD", nickname: "匿名用户_ABCD", avatar: null });
     expect(mockPostCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -427,5 +434,59 @@ describe("POST /api/posts", () => {
         }),
       }),
     );
+  });
+
+  it("通过 boardId 查询心理区时仍校验数据库准入", async () => {
+    setSession("user1", "USER");
+    mockBoardFindUnique.mockResolvedValue({ zone: "PSYCHOLOGY" });
+    mockUserFindUnique.mockResolvedValue({ psychAccess: false, dcrAccess: false });
+
+    const { GET } = await import("../route");
+    const res = await GET(makeRequest("GET", "http://localhost:3000/api/posts?boardId=clxxxxxxxxxxxxxxxxxx001"), { params: {} });
+
+    expect(res.status).toBe(403);
+    expect(mockPostFindMany).not.toHaveBeenCalled();
+  });
+
+  it("心理区拒绝可识别用户身份的列表筛选", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ psychAccess: true, dcrAccess: false });
+    const { GET } = await import("../route");
+    const res = await GET(makeRequest("GET", "http://localhost:3000/api/posts?zone=PSYCHOLOGY&authorId=real-user"), { params: {} });
+    expect(res.status).toBe(400);
+  });
+
+  it("应拒绝创建心理区 MATCHED 帖子", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ ...defaultUserAttrs, psychAccess: true });
+    mockBoardFindUnique.mockResolvedValue({ id: "b3", zone: "PSYCHOLOGY", isActive: true });
+    const { POST } = await import("../route");
+    const res = await POST(makeRequest("POST", undefined, {
+      title: "匹配帖子",
+      content: "内容",
+      boardId: "clxxxxxxxxxxxxxxxxxx001",
+      visibility: "MATCHED",
+    }), { params: {} });
+
+    expect(res.status).toBe(400);
+    expect(mockPostCreate).not.toHaveBeenCalled();
+  });
+
+  it("版主无需 psychAccess 也可创建心理帖子", async () => {
+    setSession("mod1", "MODERATOR");
+    mockUserFindUnique.mockResolvedValue({ ...defaultUserAttrs, role: "MODERATOR", psychAccess: false });
+    mockBoardFindUnique.mockResolvedValue({ id: "b3", zone: "PSYCHOLOGY", isActive: true });
+    mockPostCount.mockResolvedValue(0);
+    mockScanContent.mockResolvedValue([]);
+    mockPostCreate.mockResolvedValue({
+      id: "p3", authorId: "mod1", anonymousId: "匿名用户_MOD1",
+      author: { id: "mod1", nickname: "版主", avatar: null }, board: { zone: "PSYCHOLOGY" },
+    });
+
+    const { POST } = await import("../route");
+    const res = await POST(makeRequest("POST", undefined, {
+      title: "心理帖子", content: "内容", boardId: "clxxxxxxxxxxxxxxxxxx003",
+    }), { params: {} });
+    expect(res.status).toBe(201);
   });
 });

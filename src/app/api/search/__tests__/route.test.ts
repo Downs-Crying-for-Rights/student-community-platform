@@ -233,6 +233,38 @@ describe("GET /api/search", () => {
       );
     });
 
+    it("心理区搜索结果不得泄露真实作者身份", async () => {
+      setSession("user1", "TRUSTED_USER");
+      mockUserFindUnique.mockResolvedValue({
+        ...defaultUserAttrs,
+        role: "TRUSTED_USER",
+        psychAccess: true,
+      });
+      mockPostFindMany.mockResolvedValue([{
+        id: "p-psych",
+        authorId: "real-user",
+        anonymousId: "匿名用户_AB12",
+        author: { id: "real-user", nickname: "真实姓名", avatar: "real.png" },
+        board: { id: "b-psych", name: "心理树洞", zone: "PSYCHOLOGY" },
+        tags: [],
+      }]);
+      mockPostCount.mockResolvedValue(1);
+
+      const { GET } = await import("../route");
+      const response = await GET(
+        makeRequest("http://localhost:3000/api/search?q=test&type=posts"),
+        { params: {} },
+      );
+      const data = await response.json();
+
+      expect(data.results[0].authorId).toBe("匿名用户_AB12");
+      expect(data.results[0].author).toEqual({
+        id: "匿名用户_AB12",
+        nickname: "匿名用户_AB12",
+        avatar: null,
+      });
+    });
+
     it("有 DCR 权限的用户应能搜索 DCR 区帖子", async () => {
       setSession("user1", "TRUSTED_USER");
       mockUserFindUnique.mockResolvedValue({

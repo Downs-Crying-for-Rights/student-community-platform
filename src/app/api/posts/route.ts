@@ -8,6 +8,7 @@ import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
 import { generateAnonymousId, truncateText } from "@/lib/utils";
 import { z } from "zod";
+import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
 
 // Query params schema for GET
 const listQuerySchema = paginationSchema.extend({
@@ -58,19 +59,20 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
     const userId = req.user?.id;
     const isModerator = req.user ? hasMinimumRole(req.user.role, "MODERATOR") : false;
 
-    if (zone === "DCR" || zone === "PSYCHOLOGY") {
-      if (!userId) return NextResponse.json({ error: "请先登录" }, { status: 401 });
-      const access = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { dcrAccess: true, psychAccess: true },
-      });
-      const isAdmin = req.user ? hasMinimumRole(req.user.role, "ADMIN") : false;
-      if (zone === "DCR" && !access?.dcrAccess && !isAdmin) {
-        return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
-      }
-      if (zone === "PSYCHOLOGY" && !access?.psychAccess && !isModerator) {
-        return NextResponse.json({ error: "无心理区访问权限" }, { status: 403 });
-      }
+    let requestedZone: BoardZone = zone ? BoardZone[zone] : BoardZone.PUBLIC;
+    if (boardId) {
+      const board = await prisma.board.findUnique({ where: { id: boardId }, select: { zone: true } });
+      if (!board) return NextResponse.json({ error: "板块不存在" }, { status: 404 });
+      requestedZone = board.zone;
+    } else if (caseIdsParam) {
+      requestedZone = BoardZone.DCR;
+    }
+    const zoneAccess = await checkPostAccess(req.user, { board: { zone: requestedZone } });
+    if (!zoneAccess.allowed) {
+      return NextResponse.json({ error: zoneAccess.error }, { status: zoneAccess.status });
+    }
+    if (requestedZone === BoardZone.PSYCHOLOGY && (authorId || bookmarkedBy || likedBy)) {
+      return NextResponse.json({ error: "心理区不支持按用户身份筛选" }, { status: 400 });
     }
 
     // Parse caseIds if provided (comma-separated)
@@ -136,6 +138,17 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
       where.likes = { some: { userId: likedBy } };
     }
 
+    if (requestedZone === BoardZone.PSYCHOLOGY) {
+      if (isModerator) {
+        where.visibility = { not: "MATCHED" };
+      } else {
+        where.AND = [
+          ...(where.AND as Record<string, unknown>[]),
+          { OR: [{ visibility: "PUBLIC" }, { visibility: "MODS_ONLY", authorId: userId }] },
+        ];
+      }
+    }
+
     // Determine sort order
     const orderBy =
       sort === "popular"
@@ -157,7 +170,12 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
       prisma.post.count({ where }),
     ]);
 
-    return NextResponse.json({ posts, total, page, pageSize });
+    return NextResponse.json({
+      posts: posts.map((post) => anonymizePsychologyPost(post)),
+      total,
+      page,
+      pageSize,
+    });
   } catch (error) {
     console.error("GET /api/posts error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
@@ -224,6 +242,10 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       return NextResponse.json({ error: "板块不存在或已停用" }, { status: 404 });
     }
 
+    if (board.zone === BoardZone.PSYCHOLOGY && visibility === "MATCHED") {
+      return NextResponse.json({ error: "心理区暂不支持匹配可见帖子" }, { status: 400 });
+    }
+
     if (caseId && board.zone !== BoardZone.DCR) {
       return NextResponse.json({ error: "只有 DCR 区帖子可以关联工单" }, { status: 400 });
     }
@@ -252,7 +274,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     // Check zone access
     const userAttrs: ABACUserAttributes = user;
-    const zoneCheck = canAccessZone(userAttrs, board.zone);
+    const zoneCheck = board.zone === BoardZone.PSYCHOLOGY && hasMinimumRole(req.user.role, "MODERATOR")
+      ? { allowed: true }
+      : canAccessZone(userAttrs, board.zone);
     if (!zoneCheck.allowed) {
       return NextResponse.json(
         { error: "权限不足", reason: zoneCheck.reason },
@@ -366,7 +390,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       { title, boardZone: board.zone, status, caseId: caseId ?? null },
     );
 
-    return NextResponse.json({ post }, { status: 201 });
+    return NextResponse.json({ post: anonymizePsychologyPost(post) }, { status: 201 });
   } catch (error) {
     console.error("POST /api/posts error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

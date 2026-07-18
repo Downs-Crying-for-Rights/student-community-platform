@@ -46,8 +46,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
 
 export const STATUS_LABELS: Record<string, string> = {
   OPEN: "待领取",
-  CLAIMED: "已领取",
-  IN_PROGRESS: "进行中",
+  CLAIMED: "已有互助人，可继续加入",
+  IN_PROGRESS: "互助中，可继续加入",
   EVIDENCE_PENDING: "待结案",
   COMPLETED: "已完成",
 };
@@ -249,14 +249,16 @@ export default function TaskFeedPage() {
 
                         {/* CTA area */}
                         <div className="flex shrink-0 items-center gap-2">
-                          {task.status === "OPEN" && (
+                          {["OPEN", "CLAIMED", "IN_PROGRESS"].includes(task.status) && (
                             <Button
                               size="sm"
                               variant="default"
                               className="rounded-2xl text-xs"
                               asChild
                             >
-                              <Link href={`/dcr/tasks/${task.id}`}>选择委托并接取</Link>
+                              <Link href={`/dcr/tasks/${task.id}`}>
+                                {task.status === "OPEN" ? "选择委托并接取" : "继续加入互助"}
+                              </Link>
                             </Button>
                           )}
                           <Link href={`/dcr/tasks/${task.id}`} aria-label={`查看 ${task.title} 详情`}>

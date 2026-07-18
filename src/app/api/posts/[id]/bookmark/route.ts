@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { checkPostAccess } from "@/lib/post-access";
 
 /**
  * POST /api/posts/[id]/bookmark
@@ -18,11 +19,17 @@ export const POST = withAuth(async (
     // Verify post exists and is not deleted
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, authorId: true, visibility: true, board: { select: { zone: true } } },
     });
 
     if (!post || post.status === "DELETED") {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
+    }
+
+    const access = await checkPostAccess(req.user, post);
+    if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+    if (post.status !== "PUBLISHED") {
+      return NextResponse.json({ error: "该帖子当前不可收藏" }, { status: 403 });
     }
 
     const existingBookmark = await prisma.bookmark.findUnique({
