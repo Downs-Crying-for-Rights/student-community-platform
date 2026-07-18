@@ -64,10 +64,14 @@ export const POST = withAuth(async (
         include: { helpChat: true, evidenceRoom: true },
       });
 
+      const systemMessage = claim.offeredTask
+        ? `双方已同意进入互助流程。互助人同时发送了自己的委托《${claim.offeredTask.title}》，请彼此查看并确认互助安排。`
+        : "双方已同意进入互助流程。互助人选择无偿帮助，未附带自己的委托。";
+
       await tx.helpChatMessage.create({
         data: {
           chatId: session.helpChat!.id,
-          content: `双方已同意进入互助流程。互助人同时发送了自己的委托《${claim.offeredTask.title}》，请彼此查看并确认互助安排。`,
+          content: systemMessage,
           isSystemMessage: true,
           senderId: claim.applicantId,
         },
@@ -89,7 +93,9 @@ export const POST = withAuth(async (
           action: "claim_accepted",
           oldStatus: claim.targetTask.status,
           newStatus: claim.targetTask.status === "OPEN" ? "CLAIMED" : claim.targetTask.status,
-          details: `双方确认，已交换委托 ${claim.offeredTask.id}`,
+          details: claim.offeredTask
+            ? `双方确认，已交换委托 ${claim.offeredTask.id}`
+            : "双方确认，互助人以无偿帮助方式加入",
           operatorId: req.user.id,
         },
       });

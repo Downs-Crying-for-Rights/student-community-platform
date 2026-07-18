@@ -18,11 +18,21 @@ describe("互助接取前端反馈", () => {
     expect(detail).not.toContain("scope=mine&pageSize=100");
   });
 
-  it("没有自己的委托时展示明确说明和发布入口", () => {
+  it("没有自己的委托时仍可作为大好人帮助", () => {
     const detail = fs.readFileSync(path.resolve(__dirname, "../[id]/page.tsx"), "utf8");
 
-    expect(detail).toContain("接取前请先发布一份自己的委托");
-    expect(detail).toContain('/dcr/delegate?source=claim');
+    expect(detail).toContain("作为大好人帮助");
+    expect(detail).toContain("offeredTaskId: offeredTaskId || null");
     expect(detail).toContain('role={actionNotice.type === "error" ? "alert" : "status"}');
+  });
+
+  it("详情与聊天界面同时展示双方委托和无偿帮助状态", () => {
+    const detail = fs.readFileSync(path.resolve(__dirname, "../[id]/page.tsx"), "utf8");
+    const chat = fs.readFileSync(path.resolve(__dirname, "../[id]/chat/page.tsx"), "utf8");
+
+    expect(detail).toContain("双方互助委托");
+    expect(chat).toContain("双方互助委托");
+    expect(detail).toContain("大好人无偿帮助");
+    expect(chat).toContain("大好人无偿帮助");
   });
 });

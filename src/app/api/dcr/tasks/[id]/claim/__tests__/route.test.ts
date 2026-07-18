@@ -30,7 +30,7 @@ vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 import { getServerSession } from "next-auth/next";
 import { POST } from "../route";
 
-function request(offeredTaskId = "cm0000000000000000000002") {
+function request(offeredTaskId: string | null = "cm0000000000000000000002") {
   return new NextRequest("http://localhost/api/dcr/tasks/cm0000000000000000000001/claim", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -73,11 +73,24 @@ describe("POST /api/dcr/tasks/[id]/claim", () => {
 
     const response = await POST(request(), context as never);
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(400);
     expect(mocks.taskFindFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ requesterId: "helper", status: { in: ["OPEN", "CLAIMED", "IN_PROGRESS"] } }),
     }));
     expect(mocks.claimCreate).not.toHaveBeenCalled();
+  });
+
+  it("allows a good Samaritan to help without offering a task", async () => {
+    mocks.claimCreate.mockResolvedValue({ id: "claim-1", status: "PENDING", offeredTaskId: null });
+
+    const response = await POST(request(null), context as never);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.message).toContain("无偿帮助");
+    expect(mocks.claimCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ offeredTaskId: null }),
+    }));
   });
 
   it("does not reset an accepted relationship back to pending", async () => {

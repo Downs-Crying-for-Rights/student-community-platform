@@ -1,6 +1,5 @@
 import { computeTrustLevel, type TrustLevel } from "@/lib/trust-level";
 
-export const DCR_MIN_ACCOUNT_AGE_DAYS = 7;
 export const DCR_MIN_TRUST_LEVEL: TrustLevel = 2;
 export const DCR_MAX_VIOLATION_COUNT_EXCLUSIVE = 3;
 export const DCR_COLD_START_LIMIT = 50;
@@ -15,7 +14,6 @@ export type DcrAdmissionStage =
 export type DcrAdmissionCode =
   | "PHONE_REQUIRED"
   | "QUIZ_REQUIRED"
-  | "ACCOUNT_TOO_NEW"
   | "TRUST_LEVEL_TOO_LOW"
   | "TOO_MANY_VIOLATIONS"
   | "CASE_REQUIRED"
@@ -84,7 +82,7 @@ const REQUIREMENTS = [
   "完成手机号验证",
   "通过 DCR 入频考核",
   "提交并通过委托审核",
-  "通过管理员准入审核",
+  "委托审核通过后自动完成准入",
 ];
 
 function allow(stage: DcrAdmissionStage): DcrAdmissionDecision {
@@ -102,13 +100,6 @@ function deny(
 
 function hasVerifiedPhone(user: DcrAdmissionUser): boolean {
   return user.phoneVerified === true || Boolean(user.phone);
-}
-
-function accountAgeDays(user: DcrAdmissionUser, now: Date): number {
-  if (!user.createdAt) return 0;
-  const createdAt = user.createdAt instanceof Date ? user.createdAt : new Date(user.createdAt);
-  if (Number.isNaN(createdAt.getTime())) return 0;
-  return Math.max(0, Math.floor((now.getTime() - createdAt.getTime()) / 86_400_000));
 }
 
 function requirePhoneAndQuiz(
@@ -154,7 +145,6 @@ function requireLinkedOwnedCase(
  */
 export function evaluateDcrAdmission(context: DcrAdmissionContext): DcrAdmissionDecision {
   const { stage, user, application, case: caseRecord } = context;
-  const now = context.now ?? new Date();
   const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
 
   if (stage === "USE_DCR") {
@@ -205,9 +195,6 @@ export function evaluateDcrAdmission(context: DcrAdmissionContext): DcrAdmission
   }
   if (!application.pledgeText?.trim()) {
     return deny(stage, "PLEDGE_NOT_SIGNED", "申请人尚未签署 DCR 私密区守则");
-  }
-  if (accountAgeDays(user, now) < DCR_MIN_ACCOUNT_AGE_DAYS) {
-    return deny(stage, "ACCOUNT_TOO_NEW", `申请人账号年龄不足 ${DCR_MIN_ACCOUNT_AGE_DAYS} 天`);
   }
   if ((user.violationCount ?? 0) >= DCR_MAX_VIOLATION_COUNT_EXCLUSIVE) {
     return deny(stage, "TOO_MANY_VIOLATIONS", "申请人违规记录过多");

@@ -93,6 +93,21 @@ describe("POST /api/dcr/claims/[claimId]", () => {
     expect(mocks.sessionCreate).not.toHaveBeenCalled();
   });
 
+  it("creates a session for a good Samaritan claim without an offered task", async () => {
+    mocks.claimFindUnique.mockResolvedValue({
+      ...claim,
+      offeredTaskId: null,
+      offeredTask: null,
+    });
+
+    const response = await POST(request("accept"), context as never);
+
+    expect(response.status).toBe(200);
+    expect(mocks.messageCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ content: expect.stringContaining("无偿帮助") }),
+    }));
+  });
+
   it("rejects without creating a session", async () => {
     const response = await POST(request("reject"), context as never);
 

@@ -55,7 +55,7 @@ export interface TaskDetail {
     applicantId: string;
     requesterId: string;
     sessionId: string | null;
-    offeredTask: { id: string; title: string; summary: string; expectedHelpType: string };
+    offeredTask: { id: string; title: string; summary: string; expectedHelpType: string } | null;
   }>;
   timeline: Array<{
     id: string;
@@ -320,17 +320,13 @@ export default function TaskDetailPage() {
   }, [task, userId]);
 
   const handleClaim = async () => {
-    if (!offeredTaskId) {
-      setActionNotice({ type: "error", message: "接取前请先发布一份自己的委托" });
-      return;
-    }
     setActionNotice(null);
     setActionLoading("claim");
     try {
       const res = await fetch(`/api/dcr/tasks/${id}/claim`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offeredTaskId }),
+        body: JSON.stringify({ offeredTaskId: offeredTaskId || null }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -460,6 +456,7 @@ export default function TaskDetailPage() {
   const hasActiveClaim = task.claimsAsTarget?.some(
     (claim) => claim.applicantId === userId && ["PENDING", "ACCEPTED"].includes(claim.status),
   );
+  const acceptedClaims = task.claimsAsTarget?.filter((claim) => claim.status === "ACCEPTED") ?? [];
   const statusCfg = STATUS_CONFIG[task.status];
   const urgencyCfg = URGENCY_CONFIG[task.urgencyLevel];
 
@@ -572,6 +569,49 @@ export default function TaskDetailPage() {
           </CardContent>
         </Card>
 
+        {/* ===== Mutual-aid pair ===== */}
+        {acceptedClaims.length > 0 && (
+          <Card className="mb-6 border-primary/30">
+            <CardHeader>
+              <CardTitle className="text-lg">双方互助委托</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {acceptedClaims.map((claim, index) => (
+                <div key={claim.id} className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-xl border bg-muted/20 p-4">
+                    <p className="text-xs font-medium text-muted-foreground">发起方委托</p>
+                    <Link href={`/dcr/tasks/${task.id}`} className="mt-1 block font-medium hover:underline">
+                      {task.title}
+                    </Link>
+                    <p className="mt-1 text-sm text-muted-foreground">{task.summary}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">期望帮助：{task.expectedHelpType}</p>
+                  </div>
+                  <div className="rounded-xl border bg-muted/20 p-4">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {acceptedClaims.length > 1 ? `互助人 ${index + 1} 的委托` : "互助方委托"}
+                    </p>
+                    {claim.offeredTask ? (
+                      <>
+                        <Link href={`/dcr/tasks/${claim.offeredTask.id}`} className="mt-1 block font-medium hover:underline">
+                          {claim.offeredTask.title}
+                        </Link>
+                        <p className="mt-1 text-sm text-muted-foreground">{claim.offeredTask.summary}</p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          期望帮助：{claim.offeredTask.expectedHelpType}
+                        </p>
+                      </>
+                    ) : (
+                      <div className="mt-2 rounded-lg bg-green-50 p-3 text-sm text-green-800 dark:bg-green-950/30 dark:text-green-200">
+                        大好人无偿帮助：互助方没有附带自己的委托。
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         {/* ===== 3. Risk flags ===== */}
         {task.riskFlags && Array.isArray(task.riskFlags) && task.riskFlags.length > 0 && (
           <Card className="mb-6 border-amber-200 dark:border-amber-800">
@@ -619,9 +659,17 @@ export default function TaskDetailPage() {
             <CardContent className="space-y-4">
               {task.claimsAsTarget.filter((claim) => claim.status === "PENDING").map((claim) => (
                 <div key={claim.id} className="rounded-xl border p-4">
-                  <p className="font-medium">对方发送的委托：{claim.offeredTask.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{claim.offeredTask.summary}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">期望互助：{claim.offeredTask.expectedHelpType}</p>
+                  {claim.offeredTask ? (
+                    <>
+                      <p className="font-medium">对方发送的委托：{claim.offeredTask.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{claim.offeredTask.summary}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">期望互助：{claim.offeredTask.expectedHelpType}</p>
+                    </>
+                  ) : (
+                    <p className="rounded-lg bg-green-50 p-3 text-sm text-green-800 dark:bg-green-950/30 dark:text-green-200">
+                      对方申请作为“大好人”无偿帮助你，没有附带自己的委托。
+                    </p>
+                  )}
                   <div className="mt-3 flex gap-2">
                     <Button disabled={actionLoading !== null} onClick={() => handleClaimDecision(claim.id, "accept")}>同意并进入互助</Button>
                     <Button variant="outline" disabled={actionLoading !== null} onClick={() => handleClaimDecision(claim.id, "reject")}>拒绝</Button>
@@ -661,12 +709,22 @@ export default function TaskDetailPage() {
                     正在加载你的委托…
                   </div>
                 ) : ownTasks.length === 0 ? (
-                  <div className="flex flex-wrap items-center gap-3" role="alert">
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
-                      接取前请先发布一份自己的委托，发布后再回来完成互助申请。
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-sm text-green-700 dark:text-green-300">
+                      你当前没有可交换的委托，仍可作为“大好人”无偿帮助对方。
                     </p>
-                    <Button size="sm" variant="outline" className="rounded-2xl" asChild>
-                      <Link href="/dcr/delegate?source=claim">去发布委托</Link>
+                    <Button
+                      size="sm"
+                      className="rounded-2xl"
+                      disabled={actionLoading === "claim"}
+                      onClick={handleClaim}
+                    >
+                      {actionLoading === "claim" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <HandHelping className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      作为大好人帮助
                     </Button>
                   </div>
                 ) : (
@@ -677,13 +735,14 @@ export default function TaskDetailPage() {
                       className="h-9 max-w-xs rounded-xl border bg-background px-3 text-sm"
                       aria-label="选择发送给对方的委托"
                     >
+                      <option value="">无偿帮助，不附带我的委托</option>
                       {ownTasks.map((item) => (
                         <option key={item.id} value={item.id}>{item.title}</option>
                       ))}
                     </select>
                     <Button
                       className="rounded-2xl"
-                      disabled={actionLoading === "claim" || !offeredTaskId}
+                      disabled={actionLoading === "claim"}
                       onClick={handleClaim}
                     >
                       {actionLoading === "claim" ? (
@@ -691,7 +750,7 @@ export default function TaskDetailPage() {
                       ) : (
                         <HandHelping className="h-4 w-4" aria-hidden="true" />
                       )}
-                      接下并发送我的委托
+                      {offeredTaskId ? "接下并发送我的委托" : "作为大好人帮助"}
                     </Button>
                   </div>
                 )}

@@ -278,7 +278,7 @@ describe("PATCH /api/dcr/apply/[id]", () => {
     expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 
-  it("应返回 403 当申请人账号年龄不足 7 天", async () => {
+  it("账号注册不足 7 天也可以通过准入审核", async () => {
     setSession("admin1", "ADMIN");
     mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
     mockUserCount.mockResolvedValue(10);
@@ -292,11 +292,10 @@ describe("PATCH /api/dcr/apply/[id]", () => {
       makeRequest({ status: "APPROVED" }),
       { params: { id: "app1" } },
     );
-    const data = await res.json();
-
-    expect(res.status).toBe(403);
-    expect(data.error).toContain("账号年龄不足");
-    expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockUserUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { dcrAccess: true, dcrPledgeSigned: true },
+    }));
   });
 
   it("应返回 403 当申请人违规记录过多", async () => {

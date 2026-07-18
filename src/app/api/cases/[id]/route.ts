@@ -160,28 +160,66 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         return NextResponse.json({ error: "仅管理员可修改审核状态" }, { status: 403 });
       }
 
-      const caseRecord = await prisma.case.findUnique({ where: { id } });
-      if (!caseRecord) {
+      const reviewResult = await prisma.$transaction(async (tx) => {
+        const caseRecord = await tx.case.findUnique({
+          where: { id },
+          include: {
+            accessApplication: {
+              select: { id: true, applicantId: true, type: true, status: true },
+            },
+          },
+        });
+        if (!caseRecord) return null;
+
+        const updated = await tx.case.update({
+          where: { id },
+          data: {
+            requestStatus: newRequestStatus,
+            reviewNote: reviewNote ?? null,
+          },
+        });
+
+        let autoApprovedApplicationId: string | null = null;
+        const application = caseRecord.accessApplication;
+        if (
+          newRequestStatus === "APPROVED"
+          && application?.type === "DCR"
+          && application.status === "PENDING"
+        ) {
+          await tx.accessApplication.update({
+            where: { id: application.id },
+            data: {
+              status: "APPROVED",
+              reviewNote: reviewNote ?? "委托表审核通过，准入申请自动通过",
+              reviewedAt: new Date(),
+            },
+          });
+          await tx.user.update({
+            where: { id: application.applicantId },
+            data: { dcrAccess: true, dcrPledgeSigned: true },
+          });
+          autoApprovedApplicationId = application.id;
+        }
+
+        await tx.timelineEvent.create({
+          data: {
+            caseId: id,
+            action: "委托审核",
+            oldStatus: String(caseRecord.requestStatus),
+            newStatus: newRequestStatus,
+            details: autoApprovedApplicationId
+              ? `${reviewNote ? `${reviewNote}；` : ""}委托审核通过，DCR 准入申请已自动通过`
+              : reviewNote ?? `管理员将审核状态更新为 ${newRequestStatus}`,
+          },
+        });
+
+        return { caseRecord, updated, autoApprovedApplicationId };
+      });
+
+      if (!reviewResult) {
         return NextResponse.json({ error: "委托不存在" }, { status: 404 });
       }
-
-      const updated = await prisma.case.update({
-        where: { id },
-        data: {
-          requestStatus: newRequestStatus,
-          reviewNote: reviewNote ?? null,
-        },
-      });
-
-      await prisma.timelineEvent.create({
-        data: {
-          caseId: id,
-          action: "委托审核",
-          oldStatus: String(caseRecord.requestStatus),
-          newStatus: newRequestStatus,
-          details: reviewNote ?? `管理员将审核状态更新为 ${newRequestStatus}`,
-        },
-      });
+      const { caseRecord, updated, autoApprovedApplicationId } = reviewResult;
 
       // Log audit
       await logAudit(
@@ -191,6 +229,15 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         id,
         { oldRequestStatus: caseRecord.requestStatus, newRequestStatus, reviewNote },
       );
+      if (autoApprovedApplicationId) {
+        await logAudit(
+          userId,
+          AuditAction.DCR_ACCESS_GRANT,
+          AuditTargetType.APPLICATION,
+          autoApprovedApplicationId,
+          { applicantId: caseRecord.submitterId, caseId: id, source: "CASE_REVIEW_APPROVED" },
+        );
+      }
 
       const reviewStatusLabels: Record<string, string> = {
         PENDING: "待审核",
@@ -204,7 +251,9 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         newRequestStatus === "APPROVED"
           ? "委托表审核已通过"
           : "委托表审核结果更新";
-      const notificationContent = `您的委托表${statusLabel}${reviewNote ? `，审核说明：${reviewNote}` : ""}`;
+      const notificationContent = autoApprovedApplicationId
+        ? `您的委托表${statusLabel}，DCR 准入申请已自动通过，现在可以进入 DCR 区${reviewNote ? `。审核说明：${reviewNote}` : ""}`
+        : `您的委托表${statusLabel}${reviewNote ? `，审核说明：${reviewNote}` : ""}`;
 
       // Notify the submitter in-app and by email after the review is recorded.
       await createNotification(
@@ -223,6 +272,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       return NextResponse.json({
         case: updated,
         requestStatus: newRequestStatus,
+        admissionAutoApproved: Boolean(autoApprovedApplicationId),
       });
     }
 

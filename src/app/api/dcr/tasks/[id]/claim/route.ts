@@ -7,7 +7,7 @@ import { enforceRateLimit } from "@/lib/rate-limiter";
 import { Prisma } from "@prisma/client";
 
 const claimSchema = z.object({
-  offeredTaskId: z.string().cuid().optional(),
+  offeredTaskId: z.string().cuid().nullable().optional(),
 });
 
 /**
@@ -62,6 +62,7 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "不能领取自己发起的任务" }, { status: 400 });
     }
 
+    const isGoodSamaritan = parsed.data.offeredTaskId === null;
     const offeredTask = parsed.data.offeredTaskId
       ? await prisma.mutualAidTask.findFirst({
           where: {
@@ -71,7 +72,9 @@ export const POST = withAuth(async (
           },
           select: { id: true, title: true, status: true },
         })
-      : await prisma.mutualAidTask.findFirst({
+      : isGoodSamaritan
+        ? null
+        : await prisma.mutualAidTask.findFirst({
           where: {
             requesterId: userId,
             id: { not: id },
@@ -81,8 +84,8 @@ export const POST = withAuth(async (
           select: { id: true, title: true, status: true },
         });
 
-    if (!offeredTask) {
-      return NextResponse.json({ error: "接取前请先发布一份自己的委托" }, { status: 409 });
+    if (parsed.data.offeredTaskId && !offeredTask) {
+      return NextResponse.json({ error: "所选委托不存在、已关闭或不属于你" }, { status: 400 });
     }
 
     const existingClaim = await prisma.helpClaim.findUnique({
@@ -96,12 +99,12 @@ export const POST = withAuth(async (
       );
     }
 
-    let claim: { id: string; status: string; offeredTaskId: string };
+    let claim: { id: string; status: string; offeredTaskId: string | null };
     if (existingClaim) {
       const updated = await prisma.helpClaim.updateMany({
         where: { id: existingClaim.id, status: { not: "ACCEPTED" } },
         data: {
-          offeredTaskId: offeredTask.id,
+          offeredTaskId: offeredTask?.id ?? null,
           status: "PENDING",
           applicantConfirmed: true,
           requesterConfirmed: false,
@@ -119,7 +122,7 @@ export const POST = withAuth(async (
       claim = await prisma.helpClaim.create({
         data: {
           targetTaskId: id,
-          offeredTaskId: offeredTask.id,
+          offeredTaskId: offeredTask?.id ?? null,
           applicantId: userId,
           requesterId: task.requesterId,
         },
@@ -133,17 +136,23 @@ export const POST = withAuth(async (
         action: "claim_requested",
         oldStatus: task.status,
         newStatus: task.status,
-        details: `已交换委托：${offeredTask.title}`,
+        details: offeredTask ? `已交换委托：${offeredTask.title}` : "互助人选择无偿帮助，未附带自己的委托",
         operatorId: userId,
       },
     });
 
     await logAudit(userId, "TASK_CLAIM_REQUEST", "TASK", id, {
       claimId: claim.id,
-      offeredTaskId: offeredTask.id,
+      offeredTaskId: offeredTask?.id ?? null,
+      mode: offeredTask ? "TASK_EXCHANGE" : "GOOD_SAMARITAN",
     });
 
-    return NextResponse.json({ claim, message: "接取申请已发送，等待对方同意" }, { status: 201 });
+    return NextResponse.json({
+      claim,
+      message: offeredTask
+        ? "接取申请已发送，等待对方同意"
+        : "无偿帮助申请已发送，等待对方同意",
+    }, { status: 201 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ error: "该委托的接取申请已存在" }, { status: 409 });

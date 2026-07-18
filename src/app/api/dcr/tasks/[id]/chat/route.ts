@@ -18,7 +18,17 @@ async function verifyAccess(
   userRole: string,
   sessionId?: string | null,
 ): Promise<
-  | { ok: true; session: { id: string; requesterId: string; helperId: string; helpChat: { id: string } | null; evidenceRoom: { id: string } | null } }
+  | { ok: true; session: {
+      id: string;
+      requesterId: string;
+      helperId: string;
+      helpChat: { id: string } | null;
+      evidenceRoom: { id: string } | null;
+      task: { id: string; title: string; summary: string; expectedHelpType: string };
+      claim: {
+        offeredTask: { id: string; title: string; summary: string; expectedHelpType: string } | null;
+      } | null;
+    } }
   | { ok: false; response: NextResponse }
 > {
   const session = await prisma.helpSession.findFirst({
@@ -29,6 +39,12 @@ async function verifyAccess(
     include: {
       helpChat: true,
       evidenceRoom: true,
+      task: { select: { id: true, title: true, summary: true, expectedHelpType: true } },
+      claim: {
+        select: {
+          offeredTask: { select: { id: true, title: true, summary: true, expectedHelpType: true } },
+        },
+      },
     },
   });
 
@@ -107,6 +123,11 @@ export const GET = withAuth(async (
 
     return NextResponse.json({
       messages,
+      mutualAid: {
+        targetTask: session.task,
+        offeredTask: session.claim?.offeredTask ?? null,
+        mode: session.claim?.offeredTask ? "TASK_EXCHANGE" : "GOOD_SAMARITAN",
+      },
       pagination: {
         page,
         pageSize,

@@ -35,6 +35,12 @@ interface TaskSummary {
   status: string;
 }
 
+interface MutualAidPair {
+  targetTask: { id: string; title: string; summary: string; expectedHelpType: string };
+  offeredTask: { id: string; title: string; summary: string; expectedHelpType: string } | null;
+  mode: "TASK_EXCHANGE" | "GOOD_SAMARITAN";
+}
+
 /* ========== Helpers ========== */
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -75,6 +81,7 @@ export default function HelpChatPage() {
   const chatApi = `/api/dcr/tasks/${taskId}/chat${sessionId ? `?sessionId=${sessionId}` : ""}`;
 
   const [task, setTask] = useState<TaskSummary | null>(null);
+  const [mutualAid, setMutualAid] = useState<MutualAidPair | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userId, setUserId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -125,6 +132,7 @@ export default function HelpChatPage() {
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages ?? []);
+        setMutualAid(data.mutualAid ?? null);
         setError(null);
       } else if (res.status === 403) {
         setError("无权访问此聊天");
@@ -290,6 +298,45 @@ export default function HelpChatPage() {
             dismissible
           />
         </div>
+
+        {/* ===== Both sides of this mutual-aid relationship ===== */}
+        {mutualAid && (
+          <Card className="mb-4 border-primary/30">
+            <CardHeader>
+              <CardTitle className="text-base">双方互助委托</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border bg-muted/20 p-3">
+                <p className="text-xs font-medium text-muted-foreground">发起方委托</p>
+                <Link href={`/dcr/tasks/${mutualAid.targetTask.id}`} className="mt-1 block font-medium hover:underline">
+                  {mutualAid.targetTask.title}
+                </Link>
+                <p className="mt-1 text-sm text-muted-foreground">{mutualAid.targetTask.summary}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  期望帮助：{mutualAid.targetTask.expectedHelpType}
+                </p>
+              </div>
+              <div className="rounded-xl border bg-muted/20 p-3">
+                <p className="text-xs font-medium text-muted-foreground">互助方委托</p>
+                {mutualAid.offeredTask ? (
+                  <>
+                    <Link href={`/dcr/tasks/${mutualAid.offeredTask.id}`} className="mt-1 block font-medium hover:underline">
+                      {mutualAid.offeredTask.title}
+                    </Link>
+                    <p className="mt-1 text-sm text-muted-foreground">{mutualAid.offeredTask.summary}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      期望帮助：{mutualAid.offeredTask.expectedHelpType}
+                    </p>
+                  </>
+                ) : (
+                  <div className="mt-2 rounded-lg bg-green-50 p-3 text-sm text-green-800 dark:bg-green-950/30 dark:text-green-200">
+                    大好人无偿帮助：互助方没有附带自己的委托。
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ===== Quick action buttons ===== */}
         <div className="mb-4 flex gap-2">

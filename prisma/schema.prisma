@@ -732,8 +732,8 @@ model HelpClaim {
   targetTaskId String
   targetTask   MutualAidTask @relation("ClaimTargetTask", fields: [targetTaskId], references: [id], onDelete: Cascade)
 
-  offeredTaskId String
-  offeredTask   MutualAidTask @relation("ClaimOfferedTask", fields: [offeredTaskId], references: [id], onDelete: Restrict)
+  offeredTaskId String?
+  offeredTask   MutualAidTask? @relation("ClaimOfferedTask", fields: [offeredTaskId], references: [id], onDelete: Restrict)
 
   applicantId String
   requesterId String
