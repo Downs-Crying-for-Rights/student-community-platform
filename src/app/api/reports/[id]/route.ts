@@ -65,6 +65,18 @@ function actionShadowHidesUser(action: ReportResolutionAction) {
   return action === "SHADOW_HIDE_RESPONSIBLE_USER" || action === "DELETE_TARGET_AND_SHADOW_HIDE_USER";
 }
 
+function actionLabel(action: ReportResolutionAction) {
+  const labels: Record<ReportResolutionAction, string> = {
+    NONE: "记录处理结论",
+    DELETE_TARGET: "删除被举报内容",
+    BAN_RESPONSIBLE_USER: "封禁责任用户",
+    SHADOW_HIDE_RESPONSIBLE_USER: "隐藏责任用户的帖子",
+    DELETE_TARGET_AND_BAN_USER: "删除内容并封禁责任用户",
+    DELETE_TARGET_AND_SHADOW_HIDE_USER: "删除内容并隐藏责任用户帖子",
+  };
+  return labels[action];
+}
+
 async function loadReport(client: typeof prisma, id: string) {
   return client.report.findUnique({
     where: { id },
@@ -87,18 +99,18 @@ export const PATCH = withAuth(async (
       return NextResponse.json({ error: "参数校验失败", details: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
     const { status: newStatus, resolution } = parsed.data;
-    const action = (parsed.data.action ?? "NONE") as ReportResolutionAction;
+    const requestedAction = parsed.data.action as ReportResolutionAction | undefined;
 
     if ((newStatus === "RESOLVED" || newStatus === "DISMISSED") && !resolution) {
       return NextResponse.json({ error: "完成处理前必须填写处理结论" }, { status: 400 });
     }
-    if (newStatus === "DISMISSED" && action !== "NONE") {
+    if (newStatus === "DISMISSED" && requestedAction !== undefined && requestedAction !== "NONE") {
       return NextResponse.json({ error: "驳回举报时不能执行处罚动作" }, { status: 400 });
     }
     if (newStatus === "IN_PROGRESS" && parsed.data.action !== undefined) {
       return NextResponse.json({ error: "接手举报时不能提前执行处罚动作" }, { status: 400 });
     }
-    if ((actionBansUser(action) || actionShadowHidesUser(action)) && !isAdminRole(req.user.role)) {
+    if (requestedAction && (actionBansUser(requestedAction) || actionShadowHidesUser(requestedAction)) && !isAdminRole(req.user.role)) {
       return NextResponse.json({ error: "封禁和影子隐藏仅限管理员执行" }, { status: 403 });
     }
 
@@ -108,6 +120,10 @@ export const PATCH = withAuth(async (
     if (!allowedTransitions?.includes(newStatus)) {
       return NextResponse.json({ error: "无效的状态流转", detail: `不能从 ${existing.status} 转换到 ${newStatus}` }, { status: 400 });
     }
+
+    const action = (newStatus === "RESOLVED"
+      ? requestedAction ?? (existing.targetPost || existing.targetComment ? "DELETE_TARGET" : "NONE")
+      : "NONE") as ReportResolutionAction;
 
     const responsibleId = responsibleUserId(existing);
     if (actionDeletesTarget(action) && !existing.targetPost && !existing.targetComment) {
@@ -128,8 +144,18 @@ export const PATCH = withAuth(async (
     }
 
     const report = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.report.updateMany({
+        where: { id, status: existing.status },
+        data: { status: newStatus },
+      });
+      if (claimed.count !== 1) throw new Error("REPORT_ALREADY_HANDLED");
+
       if (actionDeletesTarget(action) && existing.targetPost && existing.targetPost.status !== "DELETED") {
         await tx.post.update({ where: { id: existing.targetPost.id }, data: { status: "DELETED" } });
+        await tx.postRevision.updateMany({
+          where: { postId: existing.targetPost.id, status: "PENDING" },
+          data: { status: "SUPERSEDED", reviewedAt: new Date() },
+        });
       }
       if (actionDeletesTarget(action) && existing.targetComment && !existing.targetComment.isDeleted) {
         await tx.comment.update({ where: { id: existing.targetComment.id }, data: { isDeleted: true } });
@@ -139,7 +165,9 @@ export const PATCH = withAuth(async (
         const punishmentType = actionBansUser(action) ? "ACCOUNT_BAN" : "POST_SHADOW_HIDE";
         await tx.user.update({
           where: { id: responsibleId },
-          data: actionBansUser(action) ? { isBanned: true } : { isShadowBanned: true },
+          data: actionBansUser(action)
+            ? { isBanned: true, securityVersion: { increment: 1 } }
+            : { isShadowBanned: true },
         });
         await tx.userPunishment.create({
           data: {
@@ -172,7 +200,9 @@ export const PATCH = withAuth(async (
             userId: existing.reporterId,
             type: "REPORT_RESULT",
             title: newStatus === "RESOLVED" ? "举报已处理" : "举报未予支持",
-            content: newStatus === "RESOLVED" ? `处理结论：${resolution}` : `审核结论：${resolution}`,
+            content: newStatus === "RESOLVED"
+              ? `处理结论：${resolution}。平台处置：${actionLabel(action)}`
+              : `审核结论：${resolution}`,
             link: "/messages",
           },
         });
@@ -203,6 +233,9 @@ export const PATCH = withAuth(async (
 
     return NextResponse.json({ report, action });
   } catch (error) {
+    if (error instanceof Error && error.message === "REPORT_ALREADY_HANDLED") {
+      return NextResponse.json({ error: "该举报已被其他管理员处理，请刷新列表" }, { status: 409 });
+    }
     console.error("PATCH /api/reports/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

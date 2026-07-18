@@ -47,6 +47,9 @@ export const POST = withAuth(async (
     if (!post) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
+    if (post.status === "DELETED") {
+      return NextResponse.json({ error: "已删除的帖子不能继续审核" }, { status: 400 });
+    }
 
     const revision = await prisma.postRevision.findFirst({
       where: { postId: id, status: "PENDING" },

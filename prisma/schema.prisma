@@ -78,6 +78,7 @@ model User {
   // 举报
   reportsFiled    Report[] @relation("ReportFiler")
   reportsReceived Report[] @relation("ReportTarget")
+  reportsResolved Report[] @relation("ReportResolver")
 
   // DCR
   casesSubmitted Case[]        @relation("CaseSubmitter")
@@ -385,6 +386,7 @@ model Report {
   targetChatRoomId    String?
 
   reporter          User             @relation("ReportFiler", fields: [reporterId], references: [id])
+  resolvedBy        User?            @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
   targetUser        User?            @relation("ReportTarget", fields: [targetUserId], references: [id])
   targetPost        Post?            @relation("ReportedPost", fields: [targetPostId], references: [id])
   targetComment     Comment?         @relation("ReportedComment", fields: [targetCommentId], references: [id])

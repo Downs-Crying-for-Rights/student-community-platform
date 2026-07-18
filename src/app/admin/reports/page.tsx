@@ -37,6 +37,7 @@ interface ReportRecord {
   status: ReportStatus;
   createdAt: string;
   reporter: { id: string; nickname: string | null };
+  resolvedBy?: { id: string; nickname: string | null } | null;
   targetUser: ReportTargetRecord | null;
   targetPost: ReportTargetRecord | null;
   targetComment: ReportTargetRecord | null;
@@ -79,6 +80,10 @@ export function getReportActions(report: ReportRecord, isAdmin: boolean): Resolu
     if (canDelete) actions.push("DELETE_TARGET_AND_BAN_USER", "DELETE_TARGET_AND_SHADOW_HIDE_USER");
   }
   return actions;
+}
+
+export function getDefaultReportAction(report: ReportRecord): ResolutionAction {
+  return report.targetPost || report.targetComment ? "DELETE_TARGET" : "NONE";
 }
 
 export function getReportTarget(report: ReportRecord): { label: string; text: string; href?: string } {
@@ -147,7 +152,7 @@ export default function AdminReportsPage() {
         body: JSON.stringify({
           status: nextStatus,
           ...(resolution ? { resolution } : {}),
-          ...(nextStatus === "RESOLVED" ? { action: actionById[report.id] ?? "NONE" } : {}),
+          ...(nextStatus === "RESOLVED" ? { action: actionById[report.id] ?? getDefaultReportAction(report) } : {}),
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -223,7 +228,7 @@ export default function AdminReportsPage() {
                       <label className="block space-y-1 text-sm">
                         <span className="font-medium">快捷处置</span>
                         <select
-                          value={actionById[report.id] ?? "NONE"}
+                          value={actionById[report.id] ?? getDefaultReportAction(report)}
                           onChange={(event) => setActionById((current) => ({ ...current, [report.id]: event.target.value as ResolutionAction }))}
                           className="w-full rounded-md border bg-background px-3 py-2"
                         >
@@ -244,6 +249,7 @@ export default function AdminReportsPage() {
                   )}
                   {report.resolution && <p className="rounded-lg bg-muted/40 px-3 py-2 text-sm">处理结论：{report.resolution}</p>}
                   {report.resolutionAction && <p className="text-xs text-muted-foreground">已执行：{ACTION_LABELS[report.resolutionAction]}</p>}
+                  {report.resolvedBy && <p className="text-xs text-muted-foreground">处理人：{report.resolvedBy.nickname || report.resolvedBy.id}</p>}
                 </CardContent>
               </Card>
             );

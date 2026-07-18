@@ -236,6 +236,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         take: pageSize,
         include: {
           reporter: { select: { id: true, nickname: true } },
+          resolvedBy: { select: { id: true, nickname: true } },
           targetUser: { select: { id: true, nickname: true, role: true } },
           targetPost: { select: { id: true, title: true, status: true, authorId: true } },
           targetComment: { select: { id: true, content: true, isDeleted: true, authorId: true } },

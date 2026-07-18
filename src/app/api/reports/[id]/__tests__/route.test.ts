@@ -5,7 +5,9 @@ import { NextRequest } from "next/server";
 
 const mockReportFindUnique = vi.fn();
 const mockReportUpdate = vi.fn();
+const mockReportUpdateMany = vi.fn();
 const mockPostUpdate = vi.fn();
+const mockPostRevisionUpdateMany = vi.fn();
 const mockCommentUpdate = vi.fn();
 const mockUserUpdate = vi.fn();
 const mockUserFindUnique = vi.fn();
@@ -22,8 +24,12 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
     },
     $transaction: (callback: (tx: unknown) => unknown) => callback({
-      report: { update: (...args: unknown[]) => mockReportUpdate(...args) },
+      report: {
+        update: (...args: unknown[]) => mockReportUpdate(...args),
+        updateMany: (...args: unknown[]) => mockReportUpdateMany(...args),
+      },
       post: { update: (...args: unknown[]) => mockPostUpdate(...args) },
+      postRevision: { updateMany: (...args: unknown[]) => mockPostRevisionUpdateMany(...args) },
       comment: { update: (...args: unknown[]) => mockCommentUpdate(...args) },
       user: { update: (...args: unknown[]) => mockUserUpdate(...args) },
       userPunishment: { create: (...args: unknown[]) => mockPunishmentCreate(...args) },
@@ -76,6 +82,7 @@ describe("PATCH /api/reports/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNotificationCreate.mockResolvedValue({});
+    mockReportUpdateMany.mockResolvedValue({ count: 1 });
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -257,9 +264,39 @@ describe("PATCH /api/reports/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED" } });
+    expect(mockPostRevisionUpdateMany).toHaveBeenCalledWith({
+      where: { postId: "p1", status: "PENDING" },
+      data: { status: "SUPERSEDED", reviewedAt: expect.any(Date) },
+    });
     expect(mockNotificationCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ userId: "reporter1", type: "REPORT_RESULT", title: "举报已处理" }),
+      data: expect.objectContaining({
+        userId: "reporter1",
+        type: "REPORT_RESULT",
+        title: "举报已处理",
+        content: expect.stringContaining("删除被举报内容"),
+      }),
     }));
+  });
+
+  it("接受帖子举报但未显式传动作时默认删除帖子", async () => {
+    setSession("mod1", "MODERATOR");
+    mockReportFindUnique.mockResolvedValue({
+      id: "r1",
+      status: "IN_PROGRESS",
+      reporterId: "reporter1",
+      targetPost: { id: "p1", authorId: "author1", status: "PUBLISHED" },
+    });
+    mockReportUpdate.mockResolvedValue({ id: "r1", status: "RESOLVED", resolutionAction: "DELETE_TARGET" });
+    mockPostUpdate.mockResolvedValue({ id: "p1", status: "DELETED" });
+
+    const { PATCH } = await import("../route");
+    const res = await PATCH(
+      makeRequest("PATCH", undefined, { status: "RESOLVED", resolution: "帖子违反社区规范" }),
+      { params: { id: "r1" } },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED" } });
   });
 
   it("版主不能通过举报处理封禁责任用户", async () => {
@@ -273,5 +310,81 @@ describe("PATCH /api/reports/[id]", () => {
 
     expect(res.status).toBe(403);
     expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
+
+  it("举报已被其他管理员抢先处理时返回 409 且不执行目标处置", async () => {
+    setSession("mod1", "MODERATOR");
+    mockReportFindUnique.mockResolvedValue({
+      id: "r1",
+      status: "IN_PROGRESS",
+      reporterId: "reporter1",
+      targetPost: { id: "p1", authorId: "author1", status: "PUBLISHED" },
+    });
+    mockReportUpdateMany.mockResolvedValue({ count: 0 });
+
+    const { PATCH } = await import("../route");
+    const res = await PATCH(
+      makeRequest("PATCH", undefined, { status: "RESOLVED", resolution: "确认违规", action: "DELETE_TARGET" }),
+      { params: { id: "r1" } },
+    );
+
+    expect(res.status).toBe(409);
+    expect(mockPostUpdate).not.toHaveBeenCalled();
+    expect(mockNotificationCreate).not.toHaveBeenCalled();
+  });
+
+  it("删除评论时只执行一次软删除并减少帖子评论数", async () => {
+    setSession("mod1", "MODERATOR");
+    mockReportFindUnique.mockResolvedValue({
+      id: "r1",
+      status: "IN_PROGRESS",
+      reporterId: "reporter1",
+      targetComment: { id: "c1", authorId: "author1", postId: "p1", isDeleted: false },
+    });
+    mockReportUpdate.mockResolvedValue({ id: "r1", status: "RESOLVED", resolutionAction: "DELETE_TARGET" });
+
+    const { PATCH } = await import("../route");
+    const res = await PATCH(
+      makeRequest("PATCH", undefined, { status: "RESOLVED", resolution: "评论违反社区规范", action: "DELETE_TARGET" }),
+      { params: { id: "r1" } },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockCommentUpdate).toHaveBeenCalledWith({ where: { id: "c1" }, data: { isDeleted: true } });
+    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { commentCount: { decrement: 1 } } });
+  });
+
+  it("管理员可删除帖子并封禁责任用户且记录处罚历史", async () => {
+    setSession("admin1", "ADMIN");
+    mockReportFindUnique.mockResolvedValue({
+      id: "r1",
+      status: "IN_PROGRESS",
+      reporterId: "reporter1",
+      targetPost: { id: "p1", authorId: "author1", status: "PUBLISHED" },
+    });
+    mockUserFindUnique.mockResolvedValue({ role: "USER" });
+    mockReportUpdate.mockResolvedValue({ id: "r1", status: "RESOLVED", resolutionAction: "DELETE_TARGET_AND_BAN_USER" });
+
+    const { PATCH } = await import("../route");
+    const res = await PATCH(
+      makeRequest("PATCH", undefined, { status: "RESOLVED", resolution: "多次发布严重违规内容", action: "DELETE_TARGET_AND_BAN_USER" }),
+      { params: { id: "r1" } },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED" } });
+    expect(mockUserUpdate).toHaveBeenCalledWith({
+      where: { id: "author1" },
+      data: { isBanned: true, securityVersion: { increment: 1 } },
+    });
+    expect(mockPunishmentCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: "author1",
+        operatorId: "admin1",
+        type: "ACCOUNT_BAN",
+        action: "APPLIED",
+        reason: "多次发布严重违规内容",
+      }),
+    });
   });
 });

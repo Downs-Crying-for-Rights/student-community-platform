@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getReportActions, getReportTarget } from "../page";
+import { getDefaultReportAction, getReportActions, getReportTarget } from "../page";
 
 const base = {
   id: "report1",
@@ -9,6 +9,7 @@ const base = {
   status: "PENDING" as const,
   createdAt: new Date().toISOString(),
   reporter: { id: "user1", nickname: "用户一" },
+  resolvedBy: null,
   targetUser: null,
   targetPost: null,
   targetComment: null,
@@ -54,5 +55,10 @@ describe("举报处理页面", () => {
       ...base,
       targetComment: { id: "comment1", content: "违规评论", authorId: "author1" },
     }, false)).toEqual(["NONE", "DELETE_TARGET"]);
+  });
+
+  it("帖子和评论举报默认删除目标，其他举报默认只记录结论", () => {
+    expect(getDefaultReportAction({ ...base, targetPost: { id: "post1", title: "违规帖子" } })).toBe("DELETE_TARGET");
+    expect(getDefaultReportAction({ ...base, targetUser: { id: "user2", nickname: "用户二" } })).toBe("NONE");
   });
 });
