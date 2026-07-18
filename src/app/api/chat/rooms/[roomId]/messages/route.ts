@@ -72,8 +72,21 @@ export const GET = withAuth(async (
     const sliced = messages.slice(0, take);
     const result = isAfterMode ? sliced : sliced.reverse();
 
+    const senders = await prisma.user.findMany({
+      where: { id: { in: [...new Set(result.map((message) => message.senderId))] } },
+      select: { id: true, nickname: true, avatar: true },
+    });
+    const senderById = new Map(senders.map((sender) => [sender.id, sender]));
+
     return NextResponse.json({
-      messages: result,
+      messages: result.map((message) => ({
+        ...message,
+        sender: senderById.get(message.senderId) ?? {
+          id: message.senderId,
+          nickname: null,
+          avatar: null,
+        },
+      })),
       hasMore,
     });
   } catch (error) {
@@ -147,7 +160,17 @@ export const POST = withAuth(async (
       }),
     ]);
 
-    return NextResponse.json({ message }, { status: 201 });
+    const sender = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, nickname: true, avatar: true },
+    });
+
+    return NextResponse.json({
+      message: {
+        ...message,
+        sender: sender ?? { id: userId, nickname: null, avatar: null },
+      },
+    }, { status: 201 });
   } catch (error) {
     console.error("POST /api/chat/rooms/[roomId]/messages error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

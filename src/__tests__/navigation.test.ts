@@ -275,6 +275,7 @@ describe("全局路由与导航集成", () => {
         "/admin/chat-rooms",
         "/admin/disputes",
         "/admin/tasks",
+        "/admin/dcr/cycles",
         "/admin/logs",
         "/admin/telemetry",
         "/admin/system",

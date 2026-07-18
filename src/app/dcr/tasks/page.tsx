@@ -180,7 +180,7 @@ export default function TaskFeedPage() {
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-xl font-bold text-foreground">互助任务</h1>
           <Button asChild className="rounded-2xl" size="sm">
-            <Link href="/dcr/tasks/new">
+            <Link href="/dcr/delegate?source=task">
               <Plus className="h-4 w-4" aria-hidden="true" />
               发起求助
             </Link>
@@ -223,7 +223,7 @@ export default function TaskFeedPage() {
             title="暂无任务"
             description="当前没有互助任务，快来发起第一个求助吧"
             actionLabel="发起求助"
-            actionHref="/dcr/tasks/new"
+            actionHref="/dcr/delegate?source=task"
           />
         ) : (
           <>

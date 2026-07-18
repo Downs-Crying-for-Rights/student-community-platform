@@ -20,6 +20,7 @@ const adminLinks = [
   { href: "/admin/chat-rooms", label: "群聊审核", icon: MessagesSquare },
   { href: "/admin/disputes", label: "争议处理", icon: Scale },
   { href: "/admin/tasks", label: "任务管理", icon: ListTodo },
+  { href: "/admin/dcr/cycles", label: "互助循环管理", icon: RefreshCw },
   { href: "/admin/logs", label: "系统日志", icon: Terminal },
 ];
 

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { ArrowLeft, Send, LogIn, Users, Hash, Lock, Settings, UserX, BellOff, Bell, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,7 @@ interface Message {
   content: string;
   senderId: string;
   createdAt: string;
+  sender: { id: string; nickname: string | null; avatar: string | null };
 }
 
 interface Member {
@@ -180,7 +182,15 @@ export default function ChatRoomPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: input.trim() }),
       });
-      if (res.ok) { setInput(""); pollNewMessages(); isNearBottomRef.current = true; }
+      if (res.ok) {
+        const data = await res.json();
+        setInput("");
+        setMessages((current) => current.some((message) => message.id === data.message.id)
+          ? current
+          : [...current, data.message]);
+        setLastRead(roomId, data.message.id);
+        isNearBottomRef.current = true;
+      }
       else { const data = await res.json(); alert(data.error || "发送失败"); }
     } catch { /* ignore */ } finally { setSending(false); }
   }
@@ -267,6 +277,12 @@ export default function ChatRoomPage() {
           messages.map((msg) => (
             <div key={msg.id} className={`flex ${isOwnMessage(msg) ? "justify-end" : "justify-start"}`}>
               <Card className={`max-w-[75%] px-3 py-1.5 ${isOwnMessage(msg) ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                <Link
+                  href={`/u/${msg.sender.id}`}
+                  className={`mb-0.5 block text-[11px] font-medium hover:underline ${isOwnMessage(msg) ? "text-primary-foreground/80" : "text-foreground/70"}`}
+                >
+                  {isOwnMessage(msg) ? "我" : msg.sender.nickname?.trim() || "未命名用户"}
+                </Link>
                 <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                 <p className={`text-[10px] mt-0.5 ${isOwnMessage(msg) ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
                   {new Date(msg.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}

@@ -88,6 +88,7 @@ export const adminNavItems: readonly NavigationItem[] = [
   { href: "/admin/chat-rooms", label: "群聊审核", icon: "messages", minRole: "ADMIN" },
   { href: "/admin/disputes", label: "争议处理", icon: "scale", minRole: "ADMIN" },
   { href: "/admin/tasks", label: "任务管理", icon: "list-todo", minRole: "ADMIN" },
+  { href: "/admin/dcr/cycles", label: "互助循环管理", icon: "refresh", minRole: "ADMIN" },
   { href: "/admin/logs", label: "系统日志", icon: "terminal", minRole: "ADMIN" },
   { href: "/admin/telemetry", label: "应用遥测", icon: "activity", minRole: "SUPER_ADMIN" },
   { href: "/admin/system", label: "系统维护", icon: "refresh", minRole: "SUPER_ADMIN" },

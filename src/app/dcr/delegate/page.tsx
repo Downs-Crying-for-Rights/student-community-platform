@@ -248,7 +248,12 @@ export default function DelegatePage() {
             <PrivacyBanner message="请勿在委托表中包含真实姓名、教师姓名等可识别个人信息" />
           </div>
 
-          <h1 className="mb-6 text-2xl font-bold text-foreground">填写委托表</h1>
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-foreground">统一互助委托表</h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              DCR 委托与发起互助现已合并。提交后由管理员审核，审核通过后才进入工单与互助分配流程。
+            </p>
+          </div>
 
         {/* Sensitive content warning */}
         {sensitiveMatches.length > 0 && (
