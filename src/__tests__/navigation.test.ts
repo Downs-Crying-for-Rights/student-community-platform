@@ -262,6 +262,7 @@ describe("全局路由与导航集成", () => {
         expect.objectContaining({ href: "/moderation", minRole: "MODERATOR" }),
       ]);
       expect(adminNavItems.map((item) => item.href)).toEqual([
+        "/admin/reports",
         "/admin/users",
         "/admin/content",
         "/admin/invites",
