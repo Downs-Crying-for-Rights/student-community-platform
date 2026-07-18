@@ -248,6 +248,8 @@ export default function TaskDetailPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [ownTasks, setOwnTasks] = useState<OwnTaskOption[]>([]);
   const [offeredTaskId, setOfferedTaskId] = useState("");
+  const [ownTasksLoading, setOwnTasksLoading] = useState(false);
+  const [actionNotice, setActionNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const fetchTask = async () => {
     setLoading(true);
@@ -292,8 +294,13 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     if (!userId || !task || userId === task.requesterId) return;
-    fetch("/api/dcr/tasks?scope=mine&pageSize=100")
-      .then((res) => res.ok ? res.json() : Promise.reject())
+    setOwnTasksLoading(true);
+    fetch("/api/dcr/tasks?scope=mine&pageSize=50")
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? `加载自己的委托失败 (${res.status})`);
+        return data;
+      })
       .then((data) => {
         const eligible = (data.tasks ?? []).filter((item: OwnTaskOption) =>
           item.id !== task.id && ["OPEN", "CLAIMED", "IN_PROGRESS"].includes(item.status),
@@ -301,10 +308,23 @@ export default function TaskDetailPage() {
         setOwnTasks(eligible);
         setOfferedTaskId((current) => current || eligible[0]?.id || "");
       })
-      .catch(() => setOwnTasks([]));
+      .catch((fetchError: unknown) => {
+        setOwnTasks([]);
+        setOfferedTaskId("");
+        setActionNotice({
+          type: "error",
+          message: fetchError instanceof Error ? fetchError.message : "加载自己的委托失败，请稍后重试",
+        });
+      })
+      .finally(() => setOwnTasksLoading(false));
   }, [task, userId]);
 
   const handleClaim = async () => {
+    if (!offeredTaskId) {
+      setActionNotice({ type: "error", message: "接取前请先发布一份自己的委托" });
+      return;
+    }
+    setActionNotice(null);
     setActionLoading("claim");
     try {
       const res = await fetch(`/api/dcr/tasks/${id}/claim`, {
@@ -313,31 +333,44 @@ export default function TaskDetailPage() {
         body: JSON.stringify({ offeredTaskId }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionNotice({ type: "success", message: data.message ?? "接取申请已发送，等待对方同意" });
         await fetchTask();
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "领取失败");
+        setActionNotice({ type: "error", message: data.error ?? `领取失败 (${res.status})` });
       }
     } catch {
-      setError("操作失败，请稍后重试");
+      setActionNotice({ type: "error", message: "网络错误，接取申请未能发送，请稍后重试" });
     } finally {
       setActionLoading(null);
     }
   };
 
   const handleClaimDecision = async (claimId: string, action: "accept" | "reject") => {
+    setActionNotice(null);
     setActionLoading(`${action}-${claimId}`);
-    const res = await fetch(`/api/dcr/claims/${claimId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
-    if (res.ok) await fetchTask();
-    else {
+    try {
+      const res = await fetch(`/api/dcr/claims/${claimId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
       const data = await res.json().catch(() => ({}));
-      setError(data.error || "处理申请失败");
+      if (res.ok) {
+        setActionNotice({
+          type: "success",
+          message: action === "accept" ? "已同意，双方已进入互助流程" : "已拒绝该接取申请",
+        });
+        await fetchTask();
+      } else {
+        setActionNotice({ type: "error", message: data.error ?? `处理申请失败 (${res.status})` });
+      }
+    } catch {
+      setActionNotice({ type: "error", message: "网络错误，申请处理失败，请稍后重试" });
+    } finally {
+      setActionLoading(null);
     }
-    setActionLoading(null);
   };
 
   const handleStart = async () => {
@@ -452,6 +485,19 @@ export default function TaskDetailPage() {
         {error && (
           <div role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">
             {error}
+          </div>
+        )}
+        {actionNotice && (
+          <div
+            role={actionNotice.type === "error" ? "alert" : "status"}
+            aria-live="polite"
+            className={`mb-4 rounded-lg px-4 py-3 text-sm ${
+              actionNotice.type === "error"
+                ? "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200"
+                : "bg-green-50 text-green-800 dark:bg-green-950/40 dark:text-green-200"
+            }`}
+          >
+            {actionNotice.message}
           </div>
         )}
 
@@ -608,31 +654,47 @@ export default function TaskDetailPage() {
         {userId && (
           <div className="mb-6 flex flex-wrap gap-3">
             {actions.canClaim && !hasActiveClaim && (
-              <div className="flex flex-wrap items-center gap-2 rounded-2xl border p-2">
-                <select
-                  value={offeredTaskId}
-                  onChange={(event) => setOfferedTaskId(event.target.value)}
-                  className="h-9 max-w-xs rounded-xl border bg-background px-3 text-sm"
-                  aria-label="选择发送给对方的委托"
-                >
-                  {ownTasks.length === 0 ? (
-                    <option value="">请先发布自己的委托</option>
-                  ) : ownTasks.map((item) => (
-                    <option key={item.id} value={item.id}>{item.title}</option>
-                  ))}
-                </select>
-                <Button
-                  className="rounded-2xl"
-                  disabled={actionLoading === "claim" || !offeredTaskId}
-                  onClick={handleClaim}
-                >
-                  {actionLoading === "claim" ? (
+              <div className="rounded-2xl border p-3">
+                {ownTasksLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <HandHelping className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  接下并发送我的委托
-                </Button>
+                    正在加载你的委托…
+                  </div>
+                ) : ownTasks.length === 0 ? (
+                  <div className="flex flex-wrap items-center gap-3" role="alert">
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                      接取前请先发布一份自己的委托，发布后再回来完成互助申请。
+                    </p>
+                    <Button size="sm" variant="outline" className="rounded-2xl" asChild>
+                      <Link href="/dcr/delegate?source=claim">去发布委托</Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={offeredTaskId}
+                      onChange={(event) => setOfferedTaskId(event.target.value)}
+                      className="h-9 max-w-xs rounded-xl border bg-background px-3 text-sm"
+                      aria-label="选择发送给对方的委托"
+                    >
+                      {ownTasks.map((item) => (
+                        <option key={item.id} value={item.id}>{item.title}</option>
+                      ))}
+                    </select>
+                    <Button
+                      className="rounded-2xl"
+                      disabled={actionLoading === "claim" || !offeredTaskId}
+                      onClick={handleClaim}
+                    >
+                      {actionLoading === "claim" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <HandHelping className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      接下并发送我的委托
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 

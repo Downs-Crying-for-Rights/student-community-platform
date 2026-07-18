@@ -98,7 +98,6 @@ export default function TaskFeedPage() {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [claiming, setClaiming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTasks = useCallback(
@@ -149,23 +148,6 @@ export default function TaskFeedPage() {
 
   const handleTabChange = (tab: TaskTab) => {
     if (tab !== activeTab) setActiveTab(tab);
-  };
-
-  const handleClaim = async (taskId: string) => {
-    setClaiming(taskId);
-    try {
-      const res = await fetch(`/api/dcr/tasks/${taskId}/claim`, { method: "POST" });
-      if (res.ok) {
-        // Refresh the list to reflect the status change
-        setTasks([]);
-        setPage(1);
-        fetchTasks(1, activeTab, false);
-      }
-    } catch {
-      // silently ignore
-    } finally {
-      setClaiming(null);
-    }
   };
 
   return (
@@ -272,17 +254,9 @@ export default function TaskFeedPage() {
                               size="sm"
                               variant="default"
                               className="rounded-2xl text-xs"
-                              disabled={claiming === task.id}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleClaim(task.id);
-                              }}
+                              asChild
                             >
-                              {claiming === task.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                              ) : (
-                                "接下互助"
-                              )}
+                              <Link href={`/dcr/tasks/${task.id}`}>选择委托并接取</Link>
                             </Button>
                           )}
                           <Link href={`/dcr/tasks/${task.id}`} aria-label={`查看 ${task.title} 详情`}>
