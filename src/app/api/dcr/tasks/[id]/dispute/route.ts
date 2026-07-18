@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { disputeTaskSchema } from "@/lib/validators";
@@ -40,20 +40,20 @@ export const POST = withAuth(async (
     // Load task with helpSession
     const task = await prisma.mutualAidTask.findUnique({
       where: { id },
-      include: { helpSession: true },
+      include: { helpSessions: true },
     });
 
     if (!task) {
       return NextResponse.json({ error: "任务不存在" }, { status: 404 });
     }
 
-    if (!task.helpSession) {
+    if (task.helpSessions.length === 0) {
       return NextResponse.json({ error: "互助会话不存在" }, { status: 404 });
     }
 
     // Verify user is requester or helper
     const isRequester = task.requesterId === userId;
-    const isHelper = task.helpSession.helperId === userId;
+    const isHelper = task.helpSessions.some((session) => session.helperId === userId);
 
     if (!isRequester && !isHelper) {
       return NextResponse.json({ error: "仅互助双方可发起争议" }, { status: 403 });

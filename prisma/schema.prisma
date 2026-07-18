@@ -96,8 +96,9 @@ model User {
   cycleMatchRequest MutualAidMatchRequest?
 
   // 站内私信
-  dmThreadsAsP1 DMThread[] @relation("DMThreadP1")
-  dmThreadsAsP2 DMThread[] @relation("DMThreadP2")
+  dmThreadsAsP1  DMThread[]  @relation("DMThreadP1")
+  dmThreadsAsP2  DMThread[]  @relation("DMThreadP2")
+  dmMessagesSent DMMessage[] @relation("DMSender")
 
   // 群聊
   chatRooms        ChatRoom[]            @relation("ChatRoomCreator")
@@ -636,6 +637,13 @@ enum EvidenceItemType {
   FOLLOW_UP
 }
 
+enum HelpClaimStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
 // ==================== 互助任务 ====================
 
 model MutualAidTask {
@@ -663,9 +671,11 @@ model MutualAidTask {
   caseId String?
   case_  Case?   @relation(fields: [caseId], references: [id], onDelete: Restrict)
 
-  helpSession HelpSession?
-  timeline    TaskTimelineEvent[]
-  reports     Report[]            @relation("ReportedTask")
+  helpSessions   HelpSession[]
+  claimsAsTarget HelpClaim[]         @relation("ClaimTargetTask")
+  claimsAsOffer  HelpClaim[]         @relation("ClaimOfferedTask")
+  timeline       TaskTimelineEvent[]
+  reports        Report[]            @relation("ReportedTask")
 
   @@index([status])
   @@index([requesterId])
@@ -696,7 +706,7 @@ model HelpSession {
   createdAt DateTime  @default(now())
   closedAt  DateTime?
 
-  taskId String        @unique
+  taskId String
   task   MutualAidTask @relation(fields: [taskId], references: [id])
 
   helperId    String
@@ -704,6 +714,36 @@ model HelpSession {
 
   helpChat     HelpChat?
   evidenceRoom EvidenceRoom?
+
+  claim HelpClaim?
+
+  @@unique([taskId, helperId])
+  @@index([taskId])
+}
+
+model HelpClaim {
+  id                 String          @id @default(cuid())
+  status             HelpClaimStatus @default(PENDING)
+  applicantConfirmed Boolean         @default(true)
+  requesterConfirmed Boolean         @default(false)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  targetTaskId String
+  targetTask   MutualAidTask @relation("ClaimTargetTask", fields: [targetTaskId], references: [id], onDelete: Cascade)
+
+  offeredTaskId String
+  offeredTask   MutualAidTask @relation("ClaimOfferedTask", fields: [offeredTaskId], references: [id], onDelete: Restrict)
+
+  applicantId String
+  requesterId String
+
+  sessionId String?      @unique
+  session   HelpSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@unique([targetTaskId, applicantId])
+  @@index([requesterId, status])
+  @@index([applicantId, status])
 }
 
 // ==================== 私聊 ====================
@@ -810,8 +850,10 @@ model DMMessage {
   thread   DMThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   senderId String
+  sender   User   @relation("DMSender", fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([threadId, createdAt])
+  @@index([senderId])
 }
 
 // ==================== 系统日志 ====================

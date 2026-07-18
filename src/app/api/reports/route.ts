@@ -55,7 +55,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         select: {
           status: true,
           requesterId: true,
-          helpSession: { select: { helperId: true } },
+          helpSessions: { select: { helperId: true } },
         },
       });
 
@@ -64,7 +64,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       }
 
       const isPrivileged = hasMinimumRole(req.user.role, "MODERATOR");
-      const isParticipant = task.requesterId === reporterId || task.helpSession?.helperId === reporterId;
+      const isParticipant = task.requesterId === reporterId || (task.helpSessions ?? []).some((session) => session.helperId === reporterId);
       if (task.status !== "OPEN" && !isParticipant && !isPrivileged) {
         return NextResponse.json({ error: "无权举报此任务" }, { status: 403 });
       }

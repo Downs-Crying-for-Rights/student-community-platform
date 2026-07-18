@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { closeTaskSchema } from "@/lib/validators";
@@ -53,7 +53,7 @@ export const POST = withAuth(async (
     const task = await prisma.mutualAidTask.findUnique({
       where: { id },
       include: {
-        helpSession: {
+        helpSessions: {
           include: {
             evidenceRoom: {
               include: { items: { select: { type: true } } },
@@ -67,12 +67,12 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "任务不存在" }, { status: 404 });
     }
 
-    if (!task.helpSession) {
+    if (task.helpSessions.length === 0) {
       return NextResponse.json({ error: "互助会话不存在" }, { status: 404 });
     }
 
     const isRequester = task.requesterId === userId;
-    const isHelper = task.helpSession.helperId === userId;
+    const isHelper = task.helpSessions.some((session) => session.helperId === userId);
     const isModerator = MODERATOR_ROLES.includes(
       userRole as (typeof MODERATOR_ROLES)[number],
     );
@@ -124,7 +124,7 @@ export const POST = withAuth(async (
       });
 
       // Award reputation to helper
-      await awardHelperReputation(task.helpSession.helperId);
+      await Promise.all(task.helpSessions.map((session) => awardHelperReputation(session.helperId)));
 
       await logAudit(userId, "TASK_FORCE_CLOSE", "TASK", id, {
         oldStatus: task.status,
@@ -279,7 +279,7 @@ async function completeTask(
   currentStatus: string,
 ): Promise<NextResponse> {
   // Check evidence completeness
-  const evidenceItems = task.helpSession?.evidenceRoom?.items ?? [];
+  const evidenceItems = task.helpSessions?.flatMap((session: any) => session.evidenceRoom?.items ?? []) ?? [];
   const check = checkCompletionRequirements(evidenceItems);
 
   if (!check.canComplete) {
@@ -330,7 +330,7 @@ async function completeTask(
   });
 
   // Award reputation to helper (+10)
-  await awardHelperReputation(task.helpSession.helperId);
+  await Promise.all(task.helpSessions.map((session: any) => awardHelperReputation(session.helperId)));
 
   await logAudit(userId, "TASK_COMPLETE", "TASK", taskId, {
     oldStatus: currentStatus,
@@ -350,7 +350,7 @@ function generateCompletionReport(
   closeType: "mutual" | "force",
   reason: string | undefined,
 ) {
-  const evidenceItems = task.helpSession?.evidenceRoom?.items ?? [];
+  const evidenceItems = task.helpSessions?.flatMap((session: any) => session.evidenceRoom?.items ?? []) ?? [];
   return {
     taskId: task.id,
     title: task.title,

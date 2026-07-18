@@ -33,7 +33,7 @@ export const GET = withAuth(async (
     const task = await prisma.mutualAidTask.findUnique({
       where: { id },
       include: {
-        helpSession: {
+        helpSessions: {
           include: {
             evidenceRoom: {
               include: {
@@ -61,12 +61,12 @@ export const GET = withAuth(async (
       return NextResponse.json({ error: "任务不存在" }, { status: 404 });
     }
 
-    if (!task.helpSession?.evidenceRoom) {
+    const evidenceRooms = task.helpSessions.flatMap((session) => session.evidenceRoom ? [session.evidenceRoom] : []);
+    if (evidenceRooms.length === 0) {
       return NextResponse.json({ error: "该任务暂无证据数据" }, { status: 404 });
     }
 
-    const evidenceRoom = task.helpSession.evidenceRoom;
-    const items = evidenceRoom.items || [];
+    const items = evidenceRooms.flatMap((room) => room.items || []);
 
     // Build export payload
     const exportData = {
@@ -92,7 +92,7 @@ export const GET = withAuth(async (
       userId,
       "EXPORT_EVIDENCE",
       "EVIDENCE_ROOM",
-      evidenceRoom.id,
+      task.id,
       { taskId: task.id, itemCount: items.length },
     );
 

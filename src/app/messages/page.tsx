@@ -41,10 +41,56 @@ interface ChatRoom {
   updatedAt: string;
 }
 
-type MessagesTab = "all" | "interactive" | "system" | "chat";
+type MessagesTab = "all" | "interactive" | "system" | "dm" | "chat";
 
 export function getMessagesTab(value: string | null): MessagesTab {
-  return value === "interactive" || value === "system" || value === "chat" ? value : "all";
+  return value === "interactive" || value === "system" || value === "dm" || value === "chat" ? value : "all";
+}
+
+interface DMThread {
+  id: string;
+  other: { id: string; nickname: string | null; avatar: string | null };
+  lastMessage: { content: string; createdAt: string; senderId: string } | null;
+  updatedAt: string;
+}
+
+function DMThreadList() {
+  const [threads, setThreads] = useState<DMThread[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/dm")
+      .then((res) => res.ok ? res.json() : Promise.reject())
+      .then((data) => setThreads(data.threads ?? []))
+      .catch(() => setThreads([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <ListSkeleton count={4} />;
+  if (threads.length === 0) {
+    return <EmptyState title="暂无私信" description="可从用户主页或互助关系中发起一对一私信" actionLabel="去发现" actionHref="/discover" />;
+  }
+
+  return (
+    <div className="space-y-2">
+      {threads.map((thread) => (
+        <Link key={thread.id} href={`/messages/dm/${thread.id}`} className="block">
+          <Card className="transition-colors hover:bg-muted/50">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                <MessageCircle className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{thread.other.nickname || "平台用户"}</p>
+                <p className="truncate text-xs text-muted-foreground">{thread.lastMessage?.content || "开始一对一交流"}</p>
+              </div>
+              <span className="text-xs text-muted-foreground">{formatTime(thread.updatedAt)}</span>
+            </CardContent>
+          </Card>
+        </Link>
+      ))}
+    </div>
+  );
 }
 
 export interface Notification {
@@ -509,7 +555,7 @@ function MessagesPageContent() {
 
         {/* Content */}
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="mb-4 grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
+            <TabsList className="mb-4 grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5">
               <TabsTrigger value="all" className="flex-1">
                 全部
               </TabsTrigger>
@@ -518,6 +564,9 @@ function MessagesPageContent() {
               </TabsTrigger>
               <TabsTrigger value="system" className="flex-1">
                 系统通知
+              </TabsTrigger>
+              <TabsTrigger value="dm" className="flex-1">
+                私信
               </TabsTrigger>
               <TabsTrigger value="chat" className="flex-1">
                 群聊
@@ -566,6 +615,9 @@ function MessagesPageContent() {
 
             <TabsContent value="chat">
               <ChatRoomList />
+            </TabsContent>
+            <TabsContent value="dm">
+              <DMThreadList />
             </TabsContent>
           </Tabs>
       </main>

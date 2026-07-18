@@ -52,7 +52,7 @@ export const POST = withAuth(async (
     // Load the task
     const task = await prisma.mutualAidTask.findUnique({
       where: { id },
-      include: { helpSession: true },
+      include: { helpSessions: true },
     });
 
     if (!task) {
@@ -105,11 +105,11 @@ export const POST = withAuth(async (
         newStatus = TaskStatus.OPEN;
         await prisma.$transaction(async (tx) => {
           // Delete helpSession (cascades to HelpChat, EvidenceRoom)
-          if (task.helpSession) {
-            await tx.helpSession.delete({
-              where: { id: task.helpSession.id },
-            });
-          }
+          await tx.helpSession.deleteMany({ where: { taskId: id } });
+          await tx.helpClaim.updateMany({
+            where: { targetTaskId: id, status: "ACCEPTED" },
+            data: { status: "CANCELLED", requesterConfirmed: false, sessionId: null },
+          });
           await tx.mutualAidTask.update({
             where: { id },
             data: {

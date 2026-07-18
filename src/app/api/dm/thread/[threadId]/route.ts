@@ -3,6 +3,8 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { scanContent } from "@/lib/sensitive-engine";
 import { z } from "zod";
+import { enforceRateLimit } from "@/lib/rate-limiter";
+import { logAudit } from "@/lib/audit";
 
 const sendMessageSchema = z.object({
   content: z.string().min(1, "消息不能为空").max(5000, "消息不能超过 5000 字"),
@@ -61,7 +63,7 @@ export const GET = withAuth(async (
     console.error("GET /api/dm/thread/[threadId] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });
 
 /**
  * POST /api/dm/thread/[threadId]
@@ -89,6 +91,9 @@ export const POST = withAuth(async (
     }
 
     const { content } = parsed.data;
+
+    const rateLimited = await enforceRateLimit(`dm-message-send:${userId}`, 30, 60_000);
+    if (rateLimited) return rateLimited.response as unknown as NextResponse;
 
     // Verify user is participant
     const thread = await prisma.dMThread.findUnique({
@@ -132,9 +137,11 @@ export const POST = withAuth(async (
       }),
     ]);
 
+    await logAudit(userId, "DM_MESSAGE_SEND", "DM_THREAD", threadId, { messageId: message.id });
+
     return NextResponse.json({ message }, { status: 201 });
   } catch (error) {
     console.error("POST /api/dm/thread/[threadId] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });

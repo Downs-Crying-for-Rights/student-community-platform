@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { paginationSchema } from "@/lib/validators";
@@ -50,7 +50,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
               avatar: true,
             },
           },
-          helpSession: {
+          helpSessions: {
             select: {
               id: true,
               helperId: true,
@@ -70,7 +70,11 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     ]);
 
     return NextResponse.json({
-      disputes,
+      disputes: disputes.map((item) => ({
+        ...item,
+        // Keep the existing admin UI contract while exposing all sessions for newer clients.
+        helpSession: item.helpSessions[0] ?? null,
+      })),
       total,
       page,
       pageSize,

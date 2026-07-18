@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { z } from "zod";
+import { enforceRateLimit } from "@/lib/rate-limiter";
+import { Prisma } from "@prisma/client";
+
+const claimSchema = z.object({
+  offeredTaskId: z.string().cuid().optional(),
+});
 
 /**
  * POST /api/dcr/tasks/[id]/claim
@@ -32,14 +39,22 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
     }
 
-    // Find the task
+    const rateLimited = await enforceRateLimit(`dcr-task-claim:${userId}`, 10, 60_000);
+    if (rateLimited) return rateLimited.response as unknown as NextResponse;
+
+    const body = await req.json().catch(() => ({}));
+    const parsed = claimSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "参数校验失败" }, { status: 400 });
+    }
+
     const task = await prisma.mutualAidTask.findUnique({ where: { id } });
 
     if (!task) {
       return NextResponse.json({ error: "任务不存在" }, { status: 404 });
     }
 
-    if (task.status !== "OPEN") {
+    if (!["OPEN", "CLAIMED", "IN_PROGRESS"].includes(task.status)) {
       return NextResponse.json({ error: "任务当前状态不可领取" }, { status: 400 });
     }
 
@@ -47,91 +62,93 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "不能领取自己发起的任务" }, { status: 400 });
     }
 
-    // Use transaction with optimistic lock for mutual exclusion
-    try {
-      const result = await prisma.$transaction(async (tx) => {
-        // Optimistic lock: only update if status is still OPEN
-        const updated = await tx.mutualAidTask.updateMany({
-          where: { id, status: "OPEN" },
-          data: { status: "CLAIMED" },
-        });
-
-        if (updated.count === 0) {
-          throw new Error("CONFLICT");
-        }
-
-        // Create HelpSession
-        const session = await tx.helpSession.create({
-          data: {
-            taskId: id,
-            helperId: userId,
-            requesterId: task.requesterId,
+    const offeredTask = parsed.data.offeredTaskId
+      ? await prisma.mutualAidTask.findFirst({
+          where: {
+            id: parsed.data.offeredTaskId,
+            requesterId: userId,
+            status: { in: ["OPEN", "CLAIMED", "IN_PROGRESS"] },
           },
-        });
-
-        // Create HelpChat
-        const chat = await tx.helpChat.create({
-          data: {
-            sessionId: session.id,
+          select: { id: true, title: true, status: true },
+        })
+      : await prisma.mutualAidTask.findFirst({
+          where: {
+            requesterId: userId,
+            id: { not: id },
+            status: { in: ["OPEN", "CLAIMED", "IN_PROGRESS"] },
           },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, title: true, status: true },
         });
 
-        // Create system privacy prompt message
-        await tx.helpChatMessage.create({
-          data: {
-            chatId: chat.id,
-            content: "请注意保护隐私，不要发送实名、手机号、精确学校地址等敏感信息",
-            isSystemMessage: true,
-            senderId: userId,
-          },
-        });
-
-        // Create EvidenceRoom
-        const evidenceRoom = await tx.evidenceRoom.create({
-          data: {
-            sessionId: session.id,
-          },
-        });
-
-        // Record timeline event
-        await tx.taskTimelineEvent.create({
-          data: {
-            taskId: id,
-            action: "claim",
-            oldStatus: "OPEN",
-            newStatus: "CLAIMED",
-            operatorId: userId,
-          },
-        });
-
-        await tx.user.updateMany({
-          where: { id: { in: [userId, task.requesterId] } },
-          data: { dcrHelperAccess: true },
-        });
-
-        return {
-          sessionId: session.id,
-          chatId: chat.id,
-          evidenceRoomId: evidenceRoom.id,
-        };
-      });
-
-      // Audit log
-      await logAudit(userId, "TASK_CLAIM", "TASK", id, {
-        sessionId: result.sessionId,
-        chatId: result.chatId,
-        evidenceRoomId: result.evidenceRoomId,
-      });
-
-      return NextResponse.json(result);
-    } catch (error) {
-      if (error instanceof Error && error.message === "CONFLICT") {
-        return NextResponse.json({ error: "任务已被领取" }, { status: 409 });
-      }
-      throw error;
+    if (!offeredTask) {
+      return NextResponse.json({ error: "接取前请先发布一份自己的委托" }, { status: 409 });
     }
+
+    const existingClaim = await prisma.helpClaim.findUnique({
+      where: { targetTaskId_applicantId: { targetTaskId: id, applicantId: userId } },
+      select: { id: true, status: true, sessionId: true },
+    });
+    if (existingClaim?.status === "ACCEPTED") {
+      return NextResponse.json(
+        { error: "你已与该委托建立互助关系", claim: existingClaim },
+        { status: 409 },
+      );
+    }
+
+    let claim: { id: string; status: string; offeredTaskId: string };
+    if (existingClaim) {
+      const updated = await prisma.helpClaim.updateMany({
+        where: { id: existingClaim.id, status: { not: "ACCEPTED" } },
+        data: {
+          offeredTaskId: offeredTask.id,
+          status: "PENDING",
+          applicantConfirmed: true,
+          requesterConfirmed: false,
+          sessionId: null,
+        },
+      });
+      if (updated.count === 0) {
+        return NextResponse.json({ error: "该互助关系已建立，不能重复申请" }, { status: 409 });
+      }
+      claim = (await prisma.helpClaim.findUnique({
+        where: { id: existingClaim.id },
+        select: { id: true, status: true, offeredTaskId: true },
+      }))!;
+    } else {
+      claim = await prisma.helpClaim.create({
+        data: {
+          targetTaskId: id,
+          offeredTaskId: offeredTask.id,
+          applicantId: userId,
+          requesterId: task.requesterId,
+        },
+        select: { id: true, status: true, offeredTaskId: true },
+      });
+    }
+
+    await prisma.taskTimelineEvent.create({
+      data: {
+        taskId: id,
+        action: "claim_requested",
+        oldStatus: task.status,
+        newStatus: task.status,
+        details: `已交换委托：${offeredTask.title}`,
+        operatorId: userId,
+      },
+    });
+
+    await logAudit(userId, "TASK_CLAIM_REQUEST", "TASK", id, {
+      claimId: claim.id,
+      offeredTaskId: offeredTask.id,
+    });
+
+    return NextResponse.json({ claim, message: "接取申请已发送，等待对方同意" }, { status: 201 });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "该委托的接取申请已存在" }, { status: 409 });
+    }
     console.error("POST /api/dcr/tasks/[id]/claim error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });

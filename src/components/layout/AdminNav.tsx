@@ -18,6 +18,7 @@ const adminLinks = [
   { href: "/admin/dcr/questions", label: "DCR 入频考核题库", icon: BookOpen },
   { href: "/admin/quiz", label: "平台新手指引题库", icon: BookOpen },
   { href: "/admin/chat-rooms", label: "群聊审核", icon: MessagesSquare },
+  { href: "/admin/dm", label: "私信审查", icon: MessageSquare },
   { href: "/admin/disputes", label: "争议处理", icon: Scale },
   { href: "/admin/tasks", label: "任务管理", icon: ListTodo },
   { href: "/admin/dcr/cycles", label: "互助循环管理", icon: RefreshCw },

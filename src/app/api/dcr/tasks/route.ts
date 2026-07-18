@@ -142,6 +142,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       page: searchParams.get("page") ?? undefined,
       pageSize: searchParams.get("pageSize") ?? undefined,
       tab: searchParams.get("tab") ?? undefined,
+      scope: searchParams.get("scope") ?? undefined,
     });
 
     if (!parsed.success) {

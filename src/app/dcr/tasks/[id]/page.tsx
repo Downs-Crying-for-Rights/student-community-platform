@@ -43,12 +43,20 @@ export interface TaskDetail {
   updatedAt: string;
   requesterId: string;
   requester: { id: string; nickname: string | null; avatar: string | null };
-  helpSession: {
+  helpSessions: Array<{
     id: string;
     helperId: string;
     helpChat: { id: string } | null;
     evidenceRoom: { id: string } | null;
-  } | null;
+  }>;
+  claimsAsTarget: Array<{
+    id: string;
+    status: string;
+    applicantId: string;
+    requesterId: string;
+    sessionId: string | null;
+    offeredTask: { id: string; title: string; summary: string; expectedHelpType: string };
+  }>;
   timeline: Array<{
     id: string;
     action: string;
@@ -59,6 +67,12 @@ export interface TaskDetail {
     taskId: string;
     operatorId: string | null;
   }>;
+}
+
+interface OwnTaskOption {
+  id: string;
+  title: string;
+  status: string;
 }
 
 /* ========== Pure Functions (exported for testing) ========== */
@@ -211,7 +225,7 @@ export function getAvailableActions(
   const isParticipant = userId === requesterId || userId === helperId;
   const isHelper = userId === helperId;
   return {
-    canClaim: status === "OPEN" && userId !== requesterId,
+    canClaim: ["OPEN", "CLAIMED", "IN_PROGRESS"].includes(status) && userId !== requesterId,
     canStart: status === "CLAIMED" && isHelper,
     canChat: ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING"].includes(status) && isParticipant,
     canEvidence: ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING"].includes(status) && isParticipant,
@@ -232,6 +246,8 @@ export default function TaskDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [ownTasks, setOwnTasks] = useState<OwnTaskOption[]>([]);
+  const [offeredTaskId, setOfferedTaskId] = useState("");
 
   const fetchTask = async () => {
     setLoading(true);
@@ -274,10 +290,28 @@ export default function TaskDetailPage() {
     fetchSession();
   }, [id]);
 
+  useEffect(() => {
+    if (!userId || !task || userId === task.requesterId) return;
+    fetch("/api/dcr/tasks?scope=mine&pageSize=100")
+      .then((res) => res.ok ? res.json() : Promise.reject())
+      .then((data) => {
+        const eligible = (data.tasks ?? []).filter((item: OwnTaskOption) =>
+          item.id !== task.id && ["OPEN", "CLAIMED", "IN_PROGRESS"].includes(item.status),
+        );
+        setOwnTasks(eligible);
+        setOfferedTaskId((current) => current || eligible[0]?.id || "");
+      })
+      .catch(() => setOwnTasks([]));
+  }, [task, userId]);
+
   const handleClaim = async () => {
     setActionLoading("claim");
     try {
-      const res = await fetch(`/api/dcr/tasks/${id}/claim`, { method: "POST" });
+      const res = await fetch(`/api/dcr/tasks/${id}/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offeredTaskId }),
+      });
       if (res.ok) {
         await fetchTask();
       } else {
@@ -289,6 +323,21 @@ export default function TaskDetailPage() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const handleClaimDecision = async (claimId: string, action: "accept" | "reject") => {
+    setActionLoading(`${action}-${claimId}`);
+    const res = await fetch(`/api/dcr/claims/${claimId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    if (res.ok) await fetchTask();
+    else {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "处理申请失败");
+    }
+    setActionLoading(null);
   };
 
   const handleStart = async () => {
@@ -372,8 +421,12 @@ export default function TaskDetailPage() {
 
   if (!task) return null;
 
-  const helperId = task.helpSession?.helperId ?? null;
+  const mySession = task.helpSessions?.find((session) => session.helperId === userId) ?? task.helpSessions?.[0] ?? null;
+  const helperId = mySession?.helperId ?? null;
   const actions = getAvailableActions(task.status, userId, task.requesterId, helperId);
+  const hasActiveClaim = task.claimsAsTarget?.some(
+    (claim) => claim.applicantId === userId && ["PENDING", "ACCEPTED"].includes(claim.status),
+  );
   const statusCfg = STATUS_CONFIG[task.status];
   const urgencyCfg = URGENCY_CONFIG[task.urgencyLevel];
 
@@ -514,21 +567,73 @@ export default function TaskDetailPage() {
         </Card>
 
         {/* ===== 5. CTA buttons ===== */}
+        {userId === task.requesterId && task.claimsAsTarget?.some((claim) => claim.status === "PENDING") && (
+          <Card className="mb-6">
+            <CardHeader><CardTitle className="text-lg">待确认的互助申请</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              {task.claimsAsTarget.filter((claim) => claim.status === "PENDING").map((claim) => (
+                <div key={claim.id} className="rounded-xl border p-4">
+                  <p className="font-medium">对方发送的委托：{claim.offeredTask.title}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{claim.offeredTask.summary}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">期望互助：{claim.offeredTask.expectedHelpType}</p>
+                  <div className="mt-3 flex gap-2">
+                    <Button disabled={actionLoading !== null} onClick={() => handleClaimDecision(claim.id, "accept")}>同意并进入互助</Button>
+                    <Button variant="outline" disabled={actionLoading !== null} onClick={() => handleClaimDecision(claim.id, "reject")}>拒绝</Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+        {userId === task.requesterId && task.helpSessions.length > 1 && (
+          <Card className="mb-6">
+            <CardHeader><CardTitle className="text-lg">已建立的互助会话</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {task.helpSessions.map((session, index) => (
+                <div key={session.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
+                  <span className="text-sm">互助人 {index + 1}（{session.helperId.slice(0, 8)}…）</span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/dcr/tasks/${id}/chat?sessionId=${session.id}`}>私聊</Link>
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/dcr/tasks/${id}/evidence?sessionId=${session.id}`}>证据区</Link>
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
         {userId && (
           <div className="mb-6 flex flex-wrap gap-3">
-            {actions.canClaim && (
-              <Button
-                className="rounded-2xl"
-                disabled={actionLoading === "claim"}
-                onClick={handleClaim}
-              >
-                {actionLoading === "claim" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <HandHelping className="h-4 w-4" aria-hidden="true" />
-                )}
-                接下互助
-              </Button>
+            {actions.canClaim && !hasActiveClaim && (
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border p-2">
+                <select
+                  value={offeredTaskId}
+                  onChange={(event) => setOfferedTaskId(event.target.value)}
+                  className="h-9 max-w-xs rounded-xl border bg-background px-3 text-sm"
+                  aria-label="选择发送给对方的委托"
+                >
+                  {ownTasks.length === 0 ? (
+                    <option value="">请先发布自己的委托</option>
+                  ) : ownTasks.map((item) => (
+                    <option key={item.id} value={item.id}>{item.title}</option>
+                  ))}
+                </select>
+                <Button
+                  className="rounded-2xl"
+                  disabled={actionLoading === "claim" || !offeredTaskId}
+                  onClick={handleClaim}
+                >
+                  {actionLoading === "claim" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <HandHelping className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  接下并发送我的委托
+                </Button>
+              </div>
             )}
 
             {actions.canStart && (
@@ -548,7 +653,7 @@ export default function TaskDetailPage() {
 
             {actions.canChat && (
               <Button variant="outline" className="rounded-2xl" asChild>
-                <Link href={`/dcr/tasks/${id}/chat`}>
+                <Link href={`/dcr/tasks/${id}/chat?sessionId=${mySession?.id ?? ""}`}>
                   <MessageCircle className="h-4 w-4" aria-hidden="true" />
                   进入私聊
                 </Link>
@@ -557,7 +662,7 @@ export default function TaskDetailPage() {
 
             {actions.canEvidence && (
               <Button variant="outline" className="rounded-2xl" asChild>
-                <Link href={`/dcr/tasks/${id}/evidence`}>
+                <Link href={`/dcr/tasks/${id}/evidence?sessionId=${mySession?.id ?? ""}`}>
                   <FolderOpen className="h-4 w-4" aria-hidden="true" />
                   进入证据区
                 </Link>

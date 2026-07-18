@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -71,6 +71,8 @@ export function formatChatTime(dateStr: string): string {
 export default function HelpChatPage() {
   const params = useParams();
   const taskId = params?.id as string;
+  const sessionId = useSearchParams().get("sessionId");
+  const chatApi = `/api/dcr/tasks/${taskId}/chat${sessionId ? `?sessionId=${sessionId}` : ""}`;
 
   const [task, setTask] = useState<TaskSummary | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -119,7 +121,7 @@ export default function HelpChatPage() {
   /* ---- Fetch messages ---- */
   const fetchMessages = useCallback(async () => {
     try {
-      const res = await fetch(`/api/dcr/tasks/${taskId}/chat?pageSize=50`);
+      const res = await fetch(`${chatApi}${chatApi.includes("?") ? "&" : "?"}pageSize=50`);
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages ?? []);
@@ -136,7 +138,7 @@ export default function HelpChatPage() {
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  }, [chatApi]);
 
   useEffect(() => {
     if (!taskId) return;
@@ -172,7 +174,7 @@ export default function HelpChatPage() {
     setSendError(null);
 
     try {
-      const res = await fetch(`/api/dcr/tasks/${taskId}/chat`, {
+      const res = await fetch(chatApi, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: trimmed }),

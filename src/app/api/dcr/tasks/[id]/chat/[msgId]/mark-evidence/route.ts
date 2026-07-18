@@ -24,30 +24,24 @@ export const POST = withAuth(async (
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    // Find task with helpSession (including helpChat and evidenceRoom)
-    const task = await prisma.mutualAidTask.findUnique({
-      where: { id: taskId },
+    const message = await prisma.helpChatMessage.findFirst({
+      where: { id: msgId, chat: { session: { taskId } } },
       include: {
-        helpSession: {
+        chat: {
           include: {
-            helpChat: true,
-            evidenceRoom: true,
+            session: { include: { evidenceRoom: true } },
           },
         },
       },
     });
 
-    if (!task) {
-      return NextResponse.json({ error: "任务不存在" }, { status: 404 });
+    if (!message) {
+      return NextResponse.json({ error: "消息不存在" }, { status: 404 });
     }
 
-    if (!task.helpSession) {
-      return NextResponse.json({ error: "互助会话不存在" }, { status: 404 });
-    }
-
-    // Verify access: requester, helper, or privileged role
-    const isRequester = task.helpSession.requesterId === userId;
-    const isHelper = task.helpSession.helperId === userId;
+    const session = message.chat.session;
+    const isRequester = session.requesterId === userId;
+    const isHelper = session.helperId === userId;
     const isPrivileged = PRIVILEGED_ROLES.includes(
       userRole as (typeof PRIVILEGED_ROLES)[number],
     );
@@ -56,24 +50,9 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "无权访问此聊天" }, { status: 403 });
     }
 
-    const chat = task.helpSession.helpChat;
-    const evidenceRoom = task.helpSession.evidenceRoom;
-
-    if (!chat) {
-      return NextResponse.json({ error: "聊天通道不存在" }, { status: 404 });
-    }
-
+    const evidenceRoom = session.evidenceRoom;
     if (!evidenceRoom) {
       return NextResponse.json({ error: "证据空间不存在" }, { status: 404 });
-    }
-
-    // Find the message by msgId in the helpChat
-    const message = await prisma.helpChatMessage.findFirst({
-      where: { id: msgId, chatId: chat.id },
-    });
-
-    if (!message) {
-      return NextResponse.json({ error: "消息不存在" }, { status: 404 });
     }
 
     // Transaction: mark message as evidence + create EvidenceRoom NOTE entry

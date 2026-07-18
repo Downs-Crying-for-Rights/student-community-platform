@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { createEvidenceItemSchema } from "@/lib/validators";
@@ -16,31 +16,27 @@ async function verifyAccess(
   taskId: string,
   userId: string,
   userRole: string,
+  sessionId?: string | null,
 ): Promise<
   | { ok: true; session: { id: string; requesterId: string; helperId: string; evidenceRoom: { id: string } | null } }
   | { ok: false; response: NextResponse }
 > {
-  const task = await prisma.mutualAidTask.findUnique({
-    where: { id: taskId },
+  const session = await prisma.helpSession.findFirst({
+    where: {
+      taskId,
+      ...(sessionId ? { id: sessionId } : { helperId: userId }),
+    },
     include: {
-      helpSession: {
-        include: {
-          evidenceRoom: true,
-        },
-      },
+      evidenceRoom: true,
     },
   });
 
-  if (!task) {
-    return { ok: false, response: NextResponse.json({ error: "任务不存在" }, { status: 404 }) };
-  }
-
-  if (!task.helpSession) {
+  if (!session) {
     return { ok: false, response: NextResponse.json({ error: "互助会话不存在" }, { status: 404 }) };
   }
 
-  const isRequester = task.helpSession.requesterId === userId;
-  const isHelper = task.helpSession.helperId === userId;
+  const isRequester = session.requesterId === userId;
+  const isHelper = session.helperId === userId;
   const isPrivileged = PRIVILEGED_ROLES.includes(
     userRole as (typeof PRIVILEGED_ROLES)[number],
   );
@@ -49,7 +45,7 @@ async function verifyAccess(
     return { ok: false, response: NextResponse.json({ error: "无权访问证据空间" }, { status: 403 }) };
   }
 
-  return { ok: true, session: task.helpSession };
+  return { ok: true, session };
 }
 
 
@@ -72,7 +68,7 @@ export const GET = withAuth(async (
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    const access = await verifyAccess(id, userId, userRole);
+    const access = await verifyAccess(id, userId, userRole, new URL(req.url).searchParams.get("sessionId"));
     if (!access.ok) return access.response;
 
     const { session } = access;
@@ -147,7 +143,7 @@ export const POST = withAuth(async (
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    const access = await verifyAccess(id, userId, userRole);
+    const access = await verifyAccess(id, userId, userRole, new URL(req.url).searchParams.get("sessionId"));
     if (!access.ok) return access.response;
 
     const { session } = access;

@@ -24,13 +24,32 @@ export const GET = withAuth(async (
       include: {
         timeline: { orderBy: { createdAt: "asc" } },
         requester: { select: { id: true, nickname: true, avatar: true } },
-        helpSession: {
+        helpSessions: {
           select: {
             id: true,
             helperId: true,
             helpChat: { select: { id: true } },
             evidenceRoom: { select: { id: true } },
           },
+        },
+        claimsAsTarget: {
+          where: {
+            OR: [
+              { requesterId: req.user.id },
+              { applicantId: req.user.id },
+            ],
+          },
+          select: {
+            id: true,
+            status: true,
+            applicantId: true,
+            requesterId: true,
+            applicantConfirmed: true,
+            requesterConfirmed: true,
+            offeredTask: { select: { id: true, title: true, summary: true, expectedHelpType: true } },
+            sessionId: true,
+          },
+          orderBy: { createdAt: "desc" },
         },
       },
     });
@@ -43,7 +62,9 @@ export const GET = withAuth(async (
       req.user.role as (typeof MODERATOR_ROLES)[number],
     );
     const isRequester = task.requesterId === req.user.id;
-    const isHelper = task.helpSession?.helperId === req.user.id;
+    const legacySession = (task as typeof task & { helpSession?: { helperId: string } | null }).helpSession;
+    const helpSessions = task.helpSessions ?? (legacySession ? [legacySession] : []);
+    const isHelper = helpSessions.some((session) => session.helperId === req.user.id);
 
     if (!isPrivileged && !isRequester && !isHelper) {
       const access = await prisma.user.findUnique({
@@ -55,18 +76,19 @@ export const GET = withAuth(async (
       }
 
       // 任务被领取后包含会话、证据和时间线信息，仅参与者和管理人员可见。
-      if (task.status !== "OPEN") {
+      if (!["OPEN", "CLAIMED", "IN_PROGRESS"].includes(task.status)) {
         return NextResponse.json({ error: "无权访问此任务详情" }, { status: 403 });
       }
 
       const {
-        helpSession: _,
+        helpSessions: _,
         timeline: __,
         requesterId: ___,
         completionReport: ____,
         riskFlags: _____,
+        helpSession: _______legacy,
         ...publicTask
-      } = task;
+      } = task as typeof task & { helpSession?: unknown };
       return NextResponse.json({
         ...publicTask,
         requester: { nickname: task.requester.nickname, avatar: task.requester.avatar },

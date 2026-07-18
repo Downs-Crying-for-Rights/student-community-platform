@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
+import { enforceRateLimit } from "@/lib/rate-limiter";
+import { logAudit } from "@/lib/audit";
 
 const createThreadSchema = z.object({
-  participantId: z.string().cuid("无效的用户 ID"),
+  participantId: z.string().trim().min(1, "无效的用户 ID").max(191, "用户 ID 过长"),
 });
 
 /**
@@ -12,7 +14,7 @@ const createThreadSchema = z.object({
  * Create or get a DM thread between the current user and another user.
  * - Requires auth
  * - Returns existing thread if one exists, otherwise creates a new one
- * - Checks trustLevel: sender must have trustLevel ≥ 1
+ * - Any authenticated, non-banned user can start a one-to-one thread
  */
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   try {
@@ -29,28 +31,12 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     const { participantId } = parsed.data;
 
+    const rateLimited = await enforceRateLimit(`dm-thread-create:${userId}`, 20, 60_000);
+    if (rateLimited) return rateLimited.response as unknown as NextResponse;
+
     // Cannot DM self
     if (participantId === userId) {
       return NextResponse.json({ error: "不能给自己发私信" }, { status: 400 });
-    }
-
-    // Check trustLevel for DM
-    const sender = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { reputationScore: true, createdAt: true },
-    });
-    if (!sender) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
-    }
-    const { computeTrustLevel, canSendDM } = await import("@/lib/trust-level");
-    const { getAccountAgeDays } = await import("@/lib/utils");
-    const trustLevel = computeTrustLevel(sender.reputationScore);
-    const accountAgeDays = getAccountAgeDays(sender.createdAt);
-    if (!canSendDM(trustLevel, accountAgeDays)) {
-      return NextResponse.json(
-        { error: `信任等级不足 (当前 L${trustLevel})，无法发送私信` },
-        { status: 403 },
-      );
     }
 
     // Check recipient exists
@@ -65,27 +51,27 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     // Find existing thread (order-independent)
     const [p1, p2] = userId < participantId ? [userId, participantId] : [participantId, userId];
 
-    const existing = await prisma.dMThread.findUnique({
-      where: { participant1Id_participant2Id: p1, participant2Id: p2 } as any,
-    });
-
-    if (existing) {
-      return NextResponse.json({ thread: existing });
-    }
-
-    const thread = await prisma.dMThread.create({
-      data: {
+    const thread = await prisma.dMThread.upsert({
+      where: {
+        participant1Id_participant2Id: {
+          participant1Id: p1,
+          participant2Id: p2,
+        },
+      },
+      update: {},
+      create: {
         participant1Id: p1,
         participant2Id: p2,
       },
     });
 
-    return NextResponse.json({ thread }, { status: 201 });
+    await logAudit(userId, "DM_THREAD_OPEN", "DM_THREAD", thread.id, { participantId });
+    return NextResponse.json({ thread });
   } catch (error) {
     console.error("POST /api/dm error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });
 
 /**
  * GET /api/dm
@@ -132,4 +118,4 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     console.error("GET /api/dm error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });

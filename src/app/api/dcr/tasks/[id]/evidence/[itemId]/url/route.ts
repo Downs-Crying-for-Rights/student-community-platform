@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
@@ -26,29 +26,19 @@ export const GET = withAuth(async (
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    // Find task with helpSession and evidenceRoom
-    const task = await prisma.mutualAidTask.findUnique({
-      where: { id: taskId },
+    const item = await prisma.evidenceItem.findFirst({
+      where: { id: itemId, room: { session: { taskId } } },
       include: {
-        helpSession: {
-          include: {
-            evidenceRoom: true,
-          },
-        },
+        room: { include: { session: true } },
       },
     });
 
-    if (!task) {
-      return NextResponse.json({ error: "任务不存在" }, { status: 404 });
+    if (!item) {
+      return NextResponse.json({ error: "证据条目不存在" }, { status: 404 });
     }
 
-    if (!task.helpSession) {
-      return NextResponse.json({ error: "互助会话不存在" }, { status: 404 });
-    }
-
-    // Verify access: requester, helper, or privileged role
-    const isRequester = task.helpSession.requesterId === userId;
-    const isHelper = task.helpSession.helperId === userId;
+    const isRequester = item.room.session.requesterId === userId;
+    const isHelper = item.room.session.helperId === userId;
     const isPrivileged = PRIVILEGED_ROLES.includes(
       userRole as (typeof PRIVILEGED_ROLES)[number],
     );
@@ -57,22 +47,6 @@ export const GET = withAuth(async (
       return NextResponse.json({ error: "无权访问证据空间" }, { status: 403 });
     }
 
-    const evidenceRoom = task.helpSession.evidenceRoom;
-    if (!evidenceRoom) {
-      return NextResponse.json({ error: "证据空间不存在" }, { status: 404 });
-    }
-
-    // Find the evidence item
-    const item = await prisma.evidenceItem.findFirst({
-      where: {
-        id: itemId,
-        roomId: evidenceRoom.id,
-      },
-    });
-
-    if (!item) {
-      return NextResponse.json({ error: "证据条目不存在" }, { status: 404 });
-    }
 
     if (!item.fileUrl) {
       return NextResponse.json({ error: "该条目没有关联文件" }, { status: 400 });

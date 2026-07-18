@@ -61,8 +61,12 @@ describe("GET /api/dcr/tasks/[id]", () => {
     mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
 
     const res = await GET(request(), { params: { id: "task1" } });
+    const data = await res.json();
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(data.helpSession).toBeUndefined();
+    expect(data.helpSessions).toBeUndefined();
+    expect(data.timeline).toBeUndefined();
   });
 
   it("请求者可以查看完整任务", async () => {

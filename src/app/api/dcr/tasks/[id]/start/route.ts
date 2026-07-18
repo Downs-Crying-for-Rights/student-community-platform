@@ -20,18 +20,18 @@ export const POST = withAuth(async (
 
     const task = await prisma.mutualAidTask.findUnique({
       where: { id },
-      include: { helpSession: { select: { helperId: true } } } as any,
+      include: { helpSessions: { select: { helperId: true } } },
     });
 
     if (!task) {
       return NextResponse.json({ error: "任务不存在" }, { status: 404 });
     }
 
-    if ((task as any).helpSession?.helperId !== userId) {
+    if (!task.helpSessions.some((session) => session.helperId === userId)) {
       return NextResponse.json({ error: "只有领取该任务的互助人才能开始处理" }, { status: 403 });
     }
 
-    if (!canTransition(task.status as any, "IN_PROGRESS")) {
+    if (!(["CLAIMED", "IN_PROGRESS"].includes(task.status)) && !canTransition(task.status as any, "IN_PROGRESS")) {
       return NextResponse.json({ error: `当前状态 ${task.status} 不允许开始处理` }, { status: 400 });
     }
 
@@ -44,7 +44,7 @@ export const POST = withAuth(async (
         data: {
           taskId: id,
           action: "start",
-          oldStatus: TaskStatus.CLAIMED,
+          oldStatus: task.status,
           newStatus: TaskStatus.IN_PROGRESS,
           operatorId: userId,
         },

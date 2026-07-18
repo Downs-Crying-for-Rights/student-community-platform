@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -111,6 +111,8 @@ const SENSITIVE_CONFIRM_MESSAGE =
 export default function EvidenceRoomPage() {
   const params = useParams();
   const taskId = params?.id as string;
+  const sessionId = useSearchParams().get("sessionId");
+  const evidenceApi = `/api/dcr/tasks/${taskId}/evidence${sessionId ? `?sessionId=${sessionId}` : ""}`;
 
   const [data, setData] = useState<EvidenceData | null>(null);
   const [userRole, setUserRole] = useState<string>("");
@@ -129,7 +131,7 @@ export default function EvidenceRoomPage() {
   /* ---- Fetch evidence ---- */
   const fetchEvidence = useCallback(async () => {
     try {
-      const res = await fetch(`/api/dcr/tasks/${taskId}/evidence`);
+      const res = await fetch(evidenceApi);
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -146,7 +148,7 @@ export default function EvidenceRoomPage() {
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  }, [evidenceApi]);
 
   /* ---- Fetch session for role ---- */
   useEffect(() => {
@@ -200,7 +202,7 @@ export default function EvidenceRoomPage() {
     setSubmitError(null);
 
     try {
-      const res = await fetch(`/api/dcr/tasks/${taskId}/evidence`, {
+      const res = await fetch(evidenceApi, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

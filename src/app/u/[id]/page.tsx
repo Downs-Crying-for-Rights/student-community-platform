@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
-import { User, CalendarDays } from "lucide-react";
+import { User, CalendarDays, MessageCircle, Loader2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PostCard, type PostCardProps } from "@/components/feed/PostCard";
 import { WaterfallGrid } from "@/components/feed/WaterfallGrid";
 import { CardSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 /* ---------- Types ---------- */
 
@@ -121,6 +122,7 @@ function PostGrid({
 
 export default function ProfilePage() {
   const params = useParams();
+  const router = useRouter();
   const rawId = params.id as string;
   const { data: session } = useSession();
   // Resolve "me" to the actual user ID
@@ -140,6 +142,8 @@ export default function ProfilePage() {
   const [likesLoading, setLikesLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
+  const [startingDM, setStartingDM] = useState(false);
+  const [dmError, setDmError] = useState("");
   const bookmarksFetched = useRef(false);
   const likesFetched = useRef(false);
 
@@ -228,6 +232,29 @@ export default function ProfilePage() {
     }
   }, [activeTab, fetchBookmarks, fetchLikes]);
 
+  const startDirectMessage = async () => {
+    if (!user || isOwnProfile || startingDM) return;
+    setStartingDM(true);
+    setDmError("");
+    try {
+      const response = await fetch("/api/dm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantId: user.id }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setDmError(data.error || "无法发起私信");
+        return;
+      }
+      router.push(`/messages/dm/${data.thread.id}`);
+    } catch {
+      setDmError("网络错误，请稍后重试");
+    } finally {
+      setStartingDM(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
 
@@ -269,6 +296,13 @@ export default function ProfilePage() {
               <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{formatJoinDate(user.createdAt)} 加入</span>
             </div>
+            {!isOwnProfile && session?.user?.id && (
+              <Button type="button" variant="outline" onClick={startDirectMessage} disabled={startingDM}>
+                {startingDM ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                发私信
+              </Button>
+            )}
+            {dmError && <p className="text-sm text-destructive" role="alert">{dmError}</p>}
           </div>
         ) : (
           <EmptyState title="用户不存在" description="该用户可能已被删除" />

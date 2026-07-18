@@ -36,7 +36,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const taskOwnership = {
       OR: [
         { requesterId: userId },
-        { helpSession: { is: { OR: [{ requesterId: userId }, { helperId: userId }] } } },
+        { helpSessions: { some: { OR: [{ requesterId: userId }, { helperId: userId }] } } },
       ],
     };
     const cycleOwnership = {
