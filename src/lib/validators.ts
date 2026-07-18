@@ -319,8 +319,8 @@ export const sendChatMessageSchema = z.object({
 export const createEvidenceItemSchema = z.object({
   type: evidenceItemTypeSchema,
   description: z.string().min(1, '描述不能为空').max(5000),
-  fileUrl: z.string().optional(),
-  fileName: z.string().optional(),
+  fileUrl: z.string().url().optional(),
+  fileName: z.string().trim().min(1).max(255).optional(),
   fileSize: z.number().int().positive().optional(),
   sensitiveConfirmed: z.literal(true, { errorMap: () => ({ message: '请确认敏感信息声明' }) }),
 });

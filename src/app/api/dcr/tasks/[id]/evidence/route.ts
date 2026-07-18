@@ -4,9 +4,25 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { createEvidenceItemSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit } from "@/lib/audit";
+import { enforceRateLimit } from "@/lib/rate-limiter";
+import { generateObjectKey, uploadToOSS } from "@/lib/oss";
 
 /** Roles that can access EvidenceRoom alongside A and B */
 const PRIVILEGED_ROLES = ["MODERATOR", "ADMIN", "SUPER_ADMIN"] as const;
+const MAX_EVIDENCE_FILE_SIZE = 20 * 1024 * 1024;
+const EVIDENCE_FILE_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "application/pdf": "pdf",
+  "text/plain": "txt",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/zip": "zip",
+};
 
 /**
  * Verify the current user has access to the EvidenceRoom for a given task.
@@ -153,8 +169,24 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "证据空间不存在" }, { status: 404 });
     }
 
-    // Parse and validate body
-    const body = await req.json();
+    const isMultipart = req.headers.get("content-type")?.includes("multipart/form-data") === true;
+    let file: File | null = null;
+    let body: unknown;
+
+    if (isMultipart) {
+      const formData = await req.formData();
+      const candidate = formData.get("file");
+      file = candidate instanceof File ? candidate : null;
+      body = {
+        type: formData.get("type"),
+        description: formData.get("description"),
+        sensitiveConfirmed: formData.get("sensitiveConfirmed") === "true",
+        ...(file ? { fileName: file.name, fileSize: file.size } : {}),
+      };
+    } else {
+      body = await req.json();
+    }
+
     const parsed = createEvidenceItemSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -164,7 +196,25 @@ export const POST = withAuth(async (
       );
     }
 
-    const { type, description, fileUrl, fileName, fileSize } = parsed.data;
+    const { type, description, fileName, fileSize } = parsed.data;
+    let fileUrl = parsed.data.fileUrl;
+
+    if (!isMultipart && (fileUrl || fileName || fileSize)) {
+      return NextResponse.json({ error: "附件必须通过证据区上传接口提交" }, { status: 400 });
+    }
+
+    if (isMultipart && !file) {
+      return NextResponse.json({ error: "请选择要上传的附件" }, { status: 400 });
+    }
+
+    if (file) {
+      if (!EVIDENCE_FILE_EXTENSIONS[file.type]) {
+        return NextResponse.json({ error: "不支持该附件格式" }, { status: 400 });
+      }
+      if (file.size <= 0 || file.size > MAX_EVIDENCE_FILE_SIZE) {
+        return NextResponse.json({ error: "附件大小必须在 20MB 以内" }, { status: 400 });
+      }
+    }
 
     // Sensitive word detection on description
     const descMatches = await scanContent(description);
@@ -184,6 +234,16 @@ export const POST = withAuth(async (
           { status: 400 },
         );
       }
+    }
+
+    if (file) {
+      const limited = await enforceRateLimit(`evidence-upload:${userId}`, 20, 60_000);
+      if (limited) return limited.response as unknown as NextResponse;
+      if (!process.env.OSS_BUCKET || !process.env.OSS_ACCESS_KEY_ID || !process.env.OSS_ACCESS_KEY_SECRET) {
+        return NextResponse.json({ error: "文件存储服务未配置" }, { status: 503 });
+      }
+      const key = generateObjectKey(EVIDENCE_FILE_EXTENSIONS[file.type]);
+      fileUrl = await uploadToOSS(Buffer.from(await file.arrayBuffer()), key, file.type);
     }
 
     // Create evidence item
@@ -215,4 +275,4 @@ export const POST = withAuth(async (
     console.error("POST /api/dcr/tasks/[id]/evidence error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-});
+}, undefined, { captureAllTelemetry: true });

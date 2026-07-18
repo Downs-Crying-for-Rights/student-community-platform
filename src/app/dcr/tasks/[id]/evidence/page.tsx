@@ -11,6 +11,8 @@ import {
   FileText,
   ClipboardList,
   StickyNote,
+  Paperclip,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -124,7 +126,9 @@ export default function EvidenceRoomPage() {
   const [formType, setFormType] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formSensitiveConfirmed, setFormSensitiveConfirmed] = useState(false);
+  const [formFile, setFormFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
@@ -176,12 +180,14 @@ export default function EvidenceRoomPage() {
     setFormType(defaultType);
     setFormDescription("");
     setFormSensitiveConfirmed(false);
+    setFormFile(null);
     setSubmitError(null);
     setShowConfirmDialog(false);
   };
 
   const closeAddForm = () => {
     setActiveColumn(null);
+    setFormFile(null);
     setShowConfirmDialog(false);
   };
 
@@ -202,14 +208,24 @@ export default function EvidenceRoomPage() {
     setSubmitError(null);
 
     try {
+      const requestBody = formFile
+        ? (() => {
+            const formData = new FormData();
+            formData.append("type", formType);
+            formData.append("description", formDescription.trim());
+            formData.append("sensitiveConfirmed", "true");
+            formData.append("file", formFile);
+            return formData;
+          })()
+        : JSON.stringify({
+            type: formType,
+            description: formDescription.trim(),
+            sensitiveConfirmed: true,
+          });
       const res = await fetch(evidenceApi, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: formType,
-          description: formDescription.trim(),
-          sensitiveConfirmed: true,
-        }),
+        ...(formFile ? {} : { headers: { "Content-Type": "application/json" } }),
+        body: requestBody,
       });
 
       if (res.ok) {
@@ -223,6 +239,26 @@ export default function EvidenceRoomPage() {
       setSubmitError("网络错误，请稍后重试");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDownload = async (item: EvidenceItem) => {
+    setDownloadingId(item.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/dcr/tasks/${taskId}/evidence/${item.id}/url`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? "附件下载失败");
+      const anchor = document.createElement("a");
+      anchor.href = json.url;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.download = item.fileName ?? "evidence-attachment";
+      anchor.click();
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : "附件下载失败");
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -301,6 +337,12 @@ export default function EvidenceRoomPage() {
           </span>
         </div>
 
+        {error && (
+          <div role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">
+            {error}
+          </div>
+        )}
+
         {/* Audit prompt for Moderator/Admin */}
         {isPrivileged && (
           <div className="mb-6 flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2.5 text-sm text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
@@ -343,10 +385,22 @@ export default function EvidenceRoomPage() {
                           <p className="text-foreground whitespace-pre-wrap break-words">
                             {item.description}
                           </p>
-                          {item.fileName && (
-                            <p className="mt-1 text-xs text-muted-foreground truncate">
-                              📎 {item.fileName}
-                            </p>
+                          {item.fileName && item.fileUrl && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="mt-1 h-auto max-w-full justify-start px-0 text-xs text-muted-foreground"
+                              disabled={downloadingId === item.id}
+                              onClick={() => handleDownload(item)}
+                            >
+                              {downloadingId === item.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                              ) : (
+                                <Download className="h-3 w-3" aria-hidden="true" />
+                              )}
+                              <span className="truncate">{item.fileName}</span>
+                            </Button>
                           )}
                           <p className="mt-1 text-xs text-muted-foreground">
                             {formatEvidenceDate(item.createdAt)}
@@ -423,6 +477,29 @@ export default function EvidenceRoomPage() {
                           className="w-full resize-none rounded-md border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                           aria-label="证据描述"
                         />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor={`file-${col.key}`}
+                          className="mb-1 block text-xs font-medium text-muted-foreground"
+                        >
+                          附件（可选，最大 20MB）
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md border bg-background px-2 py-2 text-xs text-muted-foreground hover:bg-muted/50">
+                          <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
+                          <span className="truncate">{formFile?.name ?? "选择图片、PDF、文档、表格或 ZIP"}</span>
+                          <input
+                            id={`file-${col.key}`}
+                            type="file"
+                            className="sr-only"
+                            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,.doc,.docx,.xls,.xlsx,.zip"
+                            onChange={(event) => {
+                              setFormFile(event.target.files?.[0] ?? null);
+                              if (submitError) setSubmitError(null);
+                            }}
+                          />
+                        </label>
                       </div>
 
                       {/* Sensitive confirmed checkbox */}
