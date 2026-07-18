@@ -384,6 +384,7 @@ model Case {
   posts             Post[]
   timeline          TimelineEvent[]
   messages          Message[]
+  mutualAidTasks    MutualAidTask[]
 }
 
 model TimelineEvent {
@@ -659,12 +660,16 @@ model MutualAidTask {
   requesterId String
   requester   User   @relation("TaskRequester", fields: [requesterId], references: [id])
 
+  caseId String?
+  case_  Case?   @relation(fields: [caseId], references: [id], onDelete: Restrict)
+
   helpSession HelpSession?
   timeline    TaskTimelineEvent[]
   reports     Report[]            @relation("ReportedTask")
 
   @@index([status])
   @@index([requesterId])
+  @@index([caseId])
   @@index([urgencyLevel])
   @@index([createdAt])
 }

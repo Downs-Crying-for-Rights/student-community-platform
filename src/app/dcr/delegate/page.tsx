@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { z } from "zod";
-import { Loader2, ChevronDown, ChevronUp, ShieldAlert, CheckCircle2, Clock3 } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, ShieldAlert, CheckCircle2, Clock3, FileCheck2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,16 @@ import {
 
 type FormValues = z.infer<typeof delegationFormSchema>;
 
+type ApprovedCase = {
+  id: string;
+  schoolName: string;
+  contentType: string;
+  description: string;
+  reviewNote: string | null;
+  approvedAt: string;
+  activeTask: { id: string; status: string } | null;
+};
+
 const CONTENT_TYPES = Object.keys(CONTENT_TYPE_MAP);
 const SCHOOL_CATEGORIES = Object.keys(SCHOOL_TYPE_OPTIONS);
 const FEE_OPTIONS = [
@@ -43,12 +54,16 @@ const textareaClass =
   "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export default function DelegatePage() {
+  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sensitiveMatches, setSensitiveMatches] = useState<SensitiveMatch[]>([]);
   const [sensitiveText, setSensitiveText] = useState("");
   const [showTemplate, setShowTemplate] = useState(false);
   const [submittedCaseId, setSubmittedCaseId] = useState<string | null>(null);
+  const [approvedCases, setApprovedCases] = useState<ApprovedCase[]>([]);
+  const [approvedCasesLoading, setApprovedCasesLoading] = useState(true);
+  const [publishingCaseId, setPublishingCaseId] = useState<string | null>(null);
 
   const {
     register,
@@ -91,6 +106,25 @@ export default function DelegatePage() {
       setValue("schoolType", "");
     }
   }, [schoolCategory, setValue]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/dcr/tasks/from-case")
+      .then(async (res) => {
+        if (!res.ok) return { cases: [] as ApprovedCase[] };
+        return res.json() as Promise<{ cases: ApprovedCase[] }>;
+      })
+      .then((data) => {
+        if (!cancelled) setApprovedCases(data.cases ?? []);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setApprovedCasesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Find matching template key for current content type
   const templateKey = contentType
@@ -214,6 +248,28 @@ export default function DelegatePage() {
     });
   };
 
+  const publishApprovedCase = async (caseId: string) => {
+    setError(null);
+    setPublishingCaseId(caseId);
+    try {
+      const res = await fetch("/api/dcr/tasks/from-case", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "发布失败，请稍后重试");
+        return;
+      }
+      router.push(`/dcr/tasks/${data.task.id}`);
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    } finally {
+      setPublishingCaseId(null);
+    }
+  };
+
   if (submittedCaseId) {
     return (
       <div className="mx-auto flex min-h-[70vh] max-w-2xl items-center px-4 py-8">
@@ -251,9 +307,63 @@ export default function DelegatePage() {
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-foreground">统一互助委托表</h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              DCR 委托与发起互助现已合并。提交后由管理员审核，审核通过后才进入工单与互助分配流程。
+              首次提交由管理员审核；已在入频时通过审核的委托表可在下方直接发布，无须再次审核。
             </p>
           </div>
+
+          {(approvedCasesLoading || approvedCases.length > 0) && (
+            <Card className="mb-6 border-green-200 bg-green-50/40 dark:border-green-900 dark:bg-green-950/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <FileCheck2 className="h-5 w-5 text-green-700 dark:text-green-300" aria-hidden="true" />
+                  使用已审核委托表
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {approvedCasesLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    正在读取已审核委托表...
+                  </div>
+                ) : (
+                  approvedCases.map((approvedCase) => (
+                    <div key={approvedCase.id} className="rounded-xl border bg-background p-4">
+                      <div className="font-medium text-foreground">
+                        {approvedCase.schoolName} · {approvedCase.contentType}
+                      </div>
+                      {approvedCase.description && (
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                          {approvedCase.description}
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {approvedCase.activeTask ? (
+                          <Button size="sm" asChild>
+                            <Link href={`/dcr/tasks/${approvedCase.activeTask.id}`}>查看进行中的互助</Link>
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            type="button"
+                            disabled={publishingCaseId !== null}
+                            onClick={() => publishApprovedCase(approvedCase.id)}
+                          >
+                            {publishingCaseId === approvedCase.id && (
+                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                            )}
+                            直接发布委托
+                          </Button>
+                        )}
+                        <span className="text-xs text-green-700 dark:text-green-300">
+                          管理员已审核，无须重复提交
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          )}
 
         {/* Sensitive content warning */}
         {sensitiveMatches.length > 0 && (
