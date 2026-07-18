@@ -15,7 +15,7 @@ import * as fc from "fast-check";
 /* ---------- adminLinks configuration (mirrors component) ---------- */
 
 const adminLinks = [
-  { href: "/moderation", label: "审核看板" },
+  { href: "/admin/moderation", label: "审核看板" },
   { href: "/admin/users", label: "用户管理" },
   { href: "/admin/content", label: "内容管理" },
   { href: "/admin/invites", label: "邀请码" },
@@ -50,7 +50,7 @@ describe("AdminNav original navigation items", () => {
   ];
 
   it("includes 审核看板 as the first nav item", () => {
-    expect(adminLinks[0].href).toBe("/moderation");
+    expect(adminLinks[0].href).toBe("/admin/moderation");
     expect(adminLinks[0].label).toBe("审核看板");
   });
 

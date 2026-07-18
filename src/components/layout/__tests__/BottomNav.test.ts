@@ -25,7 +25,7 @@ describe("BottomNav navigation contract", () => {
       ["群聊", "/messages?tab=chat"],
       ["DCR 互助", "/dcr"],
       ["心理区", "/psych"],
-      ["审核", "/moderation"],
+      ["审核", "/admin/moderation"],
     ]);
   });
 
@@ -48,7 +48,7 @@ describe("BottomNav navigation contract", () => {
       "/messages?tab=chat",
       "/dcr",
       "/psych",
-      "/moderation",
+      "/admin/moderation",
     ]);
   });
 

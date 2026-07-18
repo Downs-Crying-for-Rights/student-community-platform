@@ -81,7 +81,7 @@ const EXPECTED_ROUTES: { route: string; description: string }[] = [
   { route: "/dcr", description: "DCR 入口" },
   { route: "/dcr/tickets", description: "工单列表" },
   { route: "/dcr/tickets/new", description: "新建工单" },
-  { route: "/moderation", description: "审核看板" },
+  { route: "/admin/moderation", description: "审核看板" },
   { route: "/admin/users", description: "用户管理" },
   { route: "/admin/invites", description: "邀请码管理" },
   { route: "/admin/audit", description: "审计日志" },
@@ -217,7 +217,7 @@ describe("全局路由与导航集成", () => {
         "/messages?tab=chat",
         "/dcr",
         "/psych",
-        "/moderation",
+        "/admin/moderation",
       ]);
     });
 
@@ -259,7 +259,7 @@ describe("全局路由与导航集成", () => {
 
     it("审核与管理端入口配置保持不变", () => {
       expect(moderationNavItems).toEqual([
-        expect.objectContaining({ href: "/moderation", minRole: "MODERATOR" }),
+        expect.objectContaining({ href: "/admin/moderation", minRole: "MODERATOR" }),
       ]);
       expect(adminNavItems.map((item) => item.href)).toEqual([
         "/admin/reports",

@@ -30,7 +30,7 @@ const NON_WHITELISTED_PREFIXES = [
   "/messages",
   "/settings",
   "/admin",
-  "/moderation",
+  "/admin/moderation",
   "/dcr",
   "/apply",
   "/u",

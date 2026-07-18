@@ -6,7 +6,7 @@ import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquar
 import { cn } from "@/lib/utils";
 
 const adminLinks = [
-  { href: "/moderation", label: "审核看板", icon: Shield },
+  { href: "/admin/moderation", label: "审核看板", icon: Shield },
   { href: "/admin/reports", label: "举报处理", icon: Flag },
   { href: "/admin/users", label: "用户管理", icon: Users },
   { href: "/admin/content", label: "内容管理", icon: MessageSquare },

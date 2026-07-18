@@ -71,7 +71,7 @@ export const sidebarZoneNavItems: readonly NavigationItem[] = [
 ];
 
 export const moderationNavItems: readonly NavigationItem[] = [
-  { href: "/moderation", label: "审核", icon: "shield", minRole: "MODERATOR" },
+  { href: "/admin/moderation", label: "审核", icon: "shield", minRole: "MODERATOR" },
 ];
 
 /** Admin destinations intentionally remain unchanged. */
@@ -111,7 +111,7 @@ export const bottomMoreNavItems: readonly NavigationItem[] = [
   { href: "/messages?tab=chat", label: "群聊", icon: "messages" },
   { href: "/dcr", label: "DCR 互助", icon: "shield-check" },
   { href: "/psych", label: "心理区", icon: "heart", requirePsychAccess: true },
-  { href: "/moderation", label: "审核", icon: "shield", minRole: "MODERATOR" },
+  { href: "/admin/moderation", label: "审核", icon: "shield", minRole: "MODERATOR" },
 ];
 
 export function hasMinRole(userRole: string, minRole: string): boolean {

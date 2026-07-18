@@ -77,7 +77,7 @@ describe("Sidebar navigation contract", () => {
 
   it("preserves moderation and all admin destinations", () => {
     expect(moderationNavItems).toEqual([
-      expect.objectContaining({ href: "/moderation", minRole: "MODERATOR" }),
+      expect.objectContaining({ href: "/admin/moderation", minRole: "MODERATOR" }),
     ]);
     expect(adminNavItems).toHaveLength(20);
     expect(adminNavItems.map((item) => item.href)).toEqual([
