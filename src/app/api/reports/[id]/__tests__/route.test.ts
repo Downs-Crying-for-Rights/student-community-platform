@@ -5,6 +5,12 @@ import { NextRequest } from "next/server";
 
 const mockReportFindUnique = vi.fn();
 const mockReportUpdate = vi.fn();
+const mockPostUpdate = vi.fn();
+const mockCommentUpdate = vi.fn();
+const mockUserUpdate = vi.fn();
+const mockUserFindUnique = vi.fn();
+const mockPunishmentCreate = vi.fn();
+const mockNotificationCreate = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -12,13 +18,25 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockReportFindUnique(...args),
       update: (...args: unknown[]) => mockReportUpdate(...args),
     },
+    user: {
+      findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
+    },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      report: { update: (...args: unknown[]) => mockReportUpdate(...args) },
+      post: { update: (...args: unknown[]) => mockPostUpdate(...args) },
+      comment: { update: (...args: unknown[]) => mockCommentUpdate(...args) },
+      user: { update: (...args: unknown[]) => mockUserUpdate(...args) },
+      userPunishment: { create: (...args: unknown[]) => mockPunishmentCreate(...args) },
+      notification: { create: (...args: unknown[]) => mockNotificationCreate(...args) },
+      auditLog: { create: vi.fn() },
+    }),
   },
 }));
 
 const mockLogAudit = vi.fn();
 vi.mock("@/lib/audit", () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),
-  AuditAction: { REPORT_RESOLVE: "REPORT_RESOLVE", REPORT_DISMISS: "REPORT_DISMISS" },
+  AuditAction: { REPORT_CLAIM: "REPORT_CLAIM", REPORT_RESOLVE: "REPORT_RESOLVE", REPORT_DISMISS: "REPORT_DISMISS" },
   AuditTargetType: { REPORT: "REPORT" },
 }));
 
@@ -57,6 +75,7 @@ function setSession(id: string, role: string) {
 describe("PATCH /api/reports/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockNotificationCreate.mockResolvedValue({});
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -93,7 +112,7 @@ describe("PATCH /api/reports/[id]", () => {
 
   it("应成功将 PENDING 转为 IN_PROGRESS", async () => {
     setSession("mod1", "MODERATOR");
-    mockReportFindUnique.mockResolvedValue({ id: "r1", status: "PENDING" });
+    mockReportFindUnique.mockResolvedValue({ id: "r1", status: "PENDING", reporterId: "reporter1" });
     mockReportUpdate.mockResolvedValue({ id: "r1", status: "IN_PROGRESS" });
     mockLogAudit.mockResolvedValue({});
 
@@ -108,19 +127,21 @@ describe("PATCH /api/reports/[id]", () => {
     expect(data.report.status).toBe("IN_PROGRESS");
     expect(mockLogAudit).toHaveBeenCalledWith(
       "mod1",
-      "REPORT_RESOLVE",
+      "REPORT_CLAIM",
       "REPORT",
       "r1",
       expect.objectContaining({
         previousStatus: "PENDING",
         newStatus: "IN_PROGRESS",
       }),
+      undefined,
+      expect.anything(),
     );
   });
 
   it("应成功将 IN_PROGRESS 转为 RESOLVED", async () => {
     setSession("mod1", "MODERATOR");
-    mockReportFindUnique.mockResolvedValue({ id: "r1", status: "IN_PROGRESS" });
+    mockReportFindUnique.mockResolvedValue({ id: "r1", status: "IN_PROGRESS", reporterId: "reporter1" });
     mockReportUpdate.mockResolvedValue({ id: "r1", status: "RESOLVED", resolution: "已处理" });
     mockLogAudit.mockResolvedValue({});
 
@@ -137,13 +158,13 @@ describe("PATCH /api/reports/[id]", () => {
 
   it("应成功将 IN_PROGRESS 转为 DISMISSED", async () => {
     setSession("mod1", "MODERATOR");
-    mockReportFindUnique.mockResolvedValue({ id: "r1", status: "IN_PROGRESS" });
+    mockReportFindUnique.mockResolvedValue({ id: "r1", status: "IN_PROGRESS", reporterId: "reporter1" });
     mockReportUpdate.mockResolvedValue({ id: "r1", status: "DISMISSED" });
     mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../route");
     const res = await PATCH(
-      makeRequest("PATCH", undefined, { status: "DISMISSED" }),
+      makeRequest("PATCH", undefined, { status: "DISMISSED", resolution: "未发现违规" }),
       { params: { id: "r1" } },
     );
     const data = await res.json();
@@ -159,6 +180,8 @@ describe("PATCH /api/reports/[id]", () => {
         previousStatus: "IN_PROGRESS",
         newStatus: "DISMISSED",
       }),
+      undefined,
+      expect.anything(),
     );
   });
 
@@ -168,7 +191,7 @@ describe("PATCH /api/reports/[id]", () => {
 
     const { PATCH } = await import("../route");
     const res = await PATCH(
-      makeRequest("PATCH", undefined, { status: "RESOLVED" }),
+      makeRequest("PATCH", undefined, { status: "RESOLVED", resolution: "确认违规" }),
       { params: { id: "r1" } },
     );
     const data = await res.json();
@@ -213,5 +236,42 @@ describe("PATCH /api/reports/[id]", () => {
       { params: { id: "r1" } },
     );
     expect(res.status).toBe(400);
+  });
+
+  it("接受帖子举报时删除帖子并通知举报人", async () => {
+    setSession("mod1", "MODERATOR");
+    mockReportFindUnique.mockResolvedValue({
+      id: "r1",
+      status: "IN_PROGRESS",
+      reporterId: "reporter1",
+      targetPost: { id: "p1", authorId: "author1", status: "PUBLISHED" },
+    });
+    mockReportUpdate.mockResolvedValue({ id: "r1", status: "RESOLVED", resolutionAction: "DELETE_TARGET" });
+    mockPostUpdate.mockResolvedValue({ id: "p1", status: "DELETED" });
+
+    const { PATCH } = await import("../route");
+    const res = await PATCH(
+      makeRequest("PATCH", undefined, { status: "RESOLVED", resolution: "帖子违反社区规范", action: "DELETE_TARGET" }),
+      { params: { id: "r1" } },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED" } });
+    expect(mockNotificationCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ userId: "reporter1", type: "REPORT_RESULT", title: "举报已处理" }),
+    }));
+  });
+
+  it("版主不能通过举报处理封禁责任用户", async () => {
+    setSession("mod1", "MODERATOR");
+
+    const { PATCH } = await import("../route");
+    const res = await PATCH(
+      makeRequest("PATCH", undefined, { status: "RESOLVED", resolution: "确认违规", action: "BAN_RESPONSIBLE_USER" }),
+      { params: { id: "r1" } },
+    );
+
+    expect(res.status).toBe(403);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 });

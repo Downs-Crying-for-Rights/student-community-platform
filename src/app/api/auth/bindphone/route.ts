@@ -3,6 +3,7 @@ import { getToken } from "next-auth/jwt";
 import { bindPhoneSchema } from "@/lib/validators";
 import { verifyCode } from "@/lib/sms/verification";
 import { prisma } from "@/lib/prisma";
+import { logAudit, AuditTargetType } from "@/lib/audit";
 
 export async function POST(request: NextRequest) {
   try {
@@ -51,9 +52,15 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. 更新用户手机号
-    await prisma.user.update({
-      where: { id: userId },
-      data: { phone },
+    const current = existingUser?.id === userId ? { phone: existingUser.phone } : null;
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { phone, securityVersion: { increment: 1 } },
+      });
+      await logAudit(userId, "PHONE_VERIFIED_CHANGE", AuditTargetType.USER, userId, {
+        hadPreviousPhone: Boolean(current?.phone),
+      }, undefined, tx);
     });
 
     return NextResponse.json({ success: true });

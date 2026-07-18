@@ -6,6 +6,7 @@ import { z } from "zod";
 
 const roleChangeSchema = z.object({
   role: z.enum(["USER", "TRUSTED_USER", "MODERATOR", "ADMIN", "DCR_HELPER", "SUPER_ADMIN"]),
+  reason: z.string().trim().min(1, "必须填写角色变更原因").max(500),
 });
 
 export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
@@ -22,7 +23,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       );
     }
 
-    const { role: newRole } = parsed.data;
+    const { role: newRole, reason } = parsed.data;
 
     const targetUser = await prisma.user.findUnique({ where: { id } });
     if (!targetUser) {
@@ -31,6 +32,10 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
     if (targetUser.role === newRole) {
       return NextResponse.json({ error: "角色未变更" }, { status: 400 });
+    }
+
+    if (targetUser.role === "SUPER_ADMIN" && req.user.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "仅超级管理员可修改超级管理员账号" }, { status: 403 });
     }
 
     // 仅 SUPER_ADMIN 可将用户角色设为 SUPER_ADMIN
@@ -49,37 +54,32 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       );
     }
 
+    if (targetUser.role === "SUPER_ADMIN" && newRole !== "SUPER_ADMIN") {
+      const superAdminCount = await prisma.user.count({ where: { role: "SUPER_ADMIN", isBanned: false } });
+      if (superAdminCount <= 1) {
+        return NextResponse.json({ error: "不能移除最后一个有效超级管理员" }, { status: 400 });
+      }
+    }
+
     const oldRole = targetUser.role;
 
-    const updatedUser = await prisma.user.update({
-      where: { id },
-      data: { role: newRole },
-      select: {
-        id: true,
-        email: true,
-        nickname: true,
-        role: true,
-      },
-    });
-
-    await logAudit(
-      req.user.id,
-      AuditAction.ROLE_CHANGE,
-      AuditTargetType.USER,
-      id,
-      { oldRole, newRole },
-    );
-
-    // SUPER_ADMIN 角色变更记录高优先级审计日志
-    if (newRole === "SUPER_ADMIN" || oldRole === "SUPER_ADMIN") {
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id },
+        data: { role: newRole, securityVersion: { increment: 1 } },
+        select: { id: true, email: true, nickname: true, role: true },
+      });
       await logAudit(
         req.user.id,
-        AuditAction.SUPER_ADMIN_OVERRIDE,
+        AuditAction.ROLE_CHANGE,
         AuditTargetType.USER,
         id,
-        { oldRole, newRole, priority: "HIGH" },
+        { oldRole, newRole, reason, priority: newRole === "SUPER_ADMIN" || oldRole === "SUPER_ADMIN" ? "HIGH" : "NORMAL" },
+        undefined,
+        tx,
       );
-    }
+      return updated;
+    });
 
     return NextResponse.json({ user: updatedUser });
   } catch {

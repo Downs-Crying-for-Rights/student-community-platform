@@ -5,13 +5,19 @@ import { NextRequest } from "next/server";
 
 const mockUserFindUnique = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockUserCount = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
+      count: (...args: unknown[]) => mockUserCount(...args),
     },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      user: { update: (...args: unknown[]) => mockUserUpdate(...args) },
+      auditLog: { create: vi.fn() },
+    }),
   },
 }));
 
@@ -41,9 +47,12 @@ const mockGetServerSession = vi.mocked(getServerSession);
 // ==================== Helpers ====================
 
 function makeRequest(body: unknown): NextRequest {
+  const requestBody = body && typeof body === "object" && !Array.isArray(body)
+    ? { reason: "测试角色变更", ...body as Record<string, unknown> }
+    : body;
   return new NextRequest("http://localhost:3000/api/admin/users/u1/role", {
     method: "PATCH",
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
     headers: { "Content-Type": "application/json" },
   });
 }
@@ -60,6 +69,7 @@ function setSession(id: string, role: string) {
 describe("PATCH /api/admin/users/[id]/role", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUserCount.mockResolvedValue(2);
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -137,7 +147,10 @@ describe("PATCH /api/admin/users/[id]/role", () => {
     expect(mockUserUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "u1" },
-        data: { role: "MODERATOR" },
+        data: expect.objectContaining({
+          role: "MODERATOR",
+          securityVersion: { increment: 1 },
+        }),
       }),
     );
     expect(mockLogAudit).toHaveBeenCalledWith(
@@ -145,8 +158,27 @@ describe("PATCH /api/admin/users/[id]/role", () => {
       "ROLE_CHANGE",
       "USER",
       "u1",
-      { oldRole: "USER", newRole: "MODERATOR" },
+      expect.objectContaining({
+        oldRole: "USER",
+        newRole: "MODERATOR",
+        reason: "测试角色变更",
+        priority: "NORMAL",
+      }),
+      undefined,
+      expect.anything(),
     );
+  });
+
+  it("应返回 400 当未填写变更原因", async () => {
+    setSession("admin1", "ADMIN");
+
+    const { PATCH } = await import("../[id]/role/route");
+    const res = await PATCH(makeRequest({ role: "MODERATOR", reason: undefined }), {
+      params: Promise.resolve({ id: "u1" }) as any,
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 
   // ==================== SUPER_ADMIN 角色变更保护测试 ====================
@@ -211,22 +243,20 @@ describe("PATCH /api/admin/users/[id]/role", () => {
       params: Promise.resolve({ id: "u1" }) as any,
     });
 
-    // 应记录常规 ROLE_CHANGE 日志
     expect(mockLogAudit).toHaveBeenCalledWith(
       "sa1",
       "ROLE_CHANGE",
       "USER",
       "u1",
-      { oldRole: "ADMIN", newRole: "SUPER_ADMIN" },
+      expect.objectContaining({
+        oldRole: "ADMIN",
+        newRole: "SUPER_ADMIN",
+        reason: "测试角色变更",
+        priority: "HIGH",
+      }),
+      undefined,
+      expect.anything(),
     );
-    // 应额外记录高优先级 SUPER_ADMIN_OVERRIDE 审计日志
-    expect(mockLogAudit).toHaveBeenCalledWith(
-      "sa1",
-      "SUPER_ADMIN_OVERRIDE",
-      "USER",
-      "u1",
-      { oldRole: "ADMIN", newRole: "SUPER_ADMIN", priority: "HIGH" },
-    );
-    expect(mockLogAudit).toHaveBeenCalledTimes(2);
+    expect(mockLogAudit).toHaveBeenCalledTimes(1);
   });
 });

@@ -7,7 +7,7 @@ import { z } from "zod";
 const banSchema = z.object({
   action: z.enum(["ban", "unban"]),
   shadowBan: z.boolean().optional().default(false),
-  reason: z.string().max(500).optional(),
+  reason: z.string().trim().min(1, "必须填写操作原因").max(500),
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
@@ -35,29 +35,41 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
     if (id === req.user.id) {
       return NextResponse.json({ error: "不能封禁自己" }, { status: 400 });
     }
+    if (targetUser.role === "SUPER_ADMIN" && req.user.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "仅超级管理员可处罚超级管理员账号" }, { status: 403 });
+    }
+    if (targetUser.role === "SUPER_ADMIN" && action === "ban") {
+      const activeSuperAdmins = await prisma.user.count({ where: { role: "SUPER_ADMIN", isBanned: false } });
+      if (activeSuperAdmins <= 1) {
+        return NextResponse.json({ error: "不能封禁最后一个有效超级管理员" }, { status: 400 });
+      }
+    }
 
     let updateData: Record<string, boolean>;
     let auditAction: string;
-    const punishmentReason = reason?.trim() || (action === "unban" ? "管理员解除处罚" : "管理员未填写处罚原因");
+    const punishmentReason = reason;
 
     if (action === "ban") {
       if (shadowBan) {
         updateData = { isShadowBanned: true };
         auditAction = AuditAction.SHADOW_BAN;
       } else {
-        updateData = { isBanned: true };
+        updateData = { isBanned: true, securityVersion: true };
         auditAction = AuditAction.USER_BAN;
       }
     } else {
       // unban — clear both flags
-      updateData = { isBanned: false, isShadowBanned: false };
+      updateData = { isBanned: false, isShadowBanned: false, securityVersion: true };
       auditAction = AuditAction.USER_UNBAN;
     }
 
     const updatedUser = await prisma.$transaction(async (tx) => {
       const updated = await tx.user.update({
         where: { id },
-        data: updateData,
+        data: {
+          ...updateData,
+          ...(Object.prototype.hasOwnProperty.call(updateData, "securityVersion") ? { securityVersion: { increment: 1 } } : {}),
+        },
         select: {
           id: true,
           email: true,

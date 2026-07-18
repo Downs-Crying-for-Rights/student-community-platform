@@ -8,6 +8,9 @@ const mockPostUpdate = vi.fn();
 const mockPostEditHistoryCreate = vi.fn();
 const mockPostTagDeleteMany = vi.fn();
 const mockPostTagCreateMany = vi.fn();
+const mockRevisionCreate = vi.fn();
+const mockRevisionUpdateMany = vi.fn();
+const mockTagCount = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -26,6 +29,24 @@ vi.mock("@/lib/prisma", () => ({
       deleteMany: (...args: unknown[]) => mockPostTagDeleteMany(...args),
       createMany: (...args: unknown[]) => mockPostTagCreateMany(...args),
     },
+    postRevision: {
+      create: (...args: unknown[]) => mockRevisionCreate(...args),
+      updateMany: (...args: unknown[]) => mockRevisionUpdateMany(...args),
+    },
+    tag: { count: (...args: unknown[]) => mockTagCount(...args) },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      postRevision: {
+        create: (...args: unknown[]) => mockRevisionCreate(...args),
+        updateMany: (...args: unknown[]) => mockRevisionUpdateMany(...args),
+      },
+      postEditHistory: { create: (...args: unknown[]) => mockPostEditHistoryCreate(...args) },
+      postTag: {
+        deleteMany: (...args: unknown[]) => mockPostTagDeleteMany(...args),
+        createMany: (...args: unknown[]) => mockPostTagCreateMany(...args),
+      },
+      post: { update: (...args: unknown[]) => mockPostUpdate(...args) },
+      auditLog: { create: vi.fn() },
+    }),
   },
 }));
 
@@ -75,6 +96,9 @@ function setSession(id: string, role: string) {
 describe("GET /api/posts/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTagCount.mockResolvedValue(0);
+    mockRevisionUpdateMany.mockResolvedValue({ count: 0 });
+    mockRevisionCreate.mockResolvedValue({ id: "revision1", status: "PENDING" });
   });
 
   it("未登录用户应可查看公开且已发布的帖子", async () => {
@@ -254,6 +278,8 @@ describe("GET /api/posts/[id]", () => {
 describe("PATCH /api/posts/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTagCount.mockResolvedValue(0);
+    mockRevisionUpdateMany.mockResolvedValue({ count: 0 });
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -302,7 +328,7 @@ describe("PATCH /api/posts/[id]", () => {
     expect(res.status).toBe(400);
   });
 
-  it("应成功编辑帖子并保存编辑历史", async () => {
+  it("已发布帖子编辑应创建待审修订并保持线上版本不变", async () => {
     setSession("user1", "USER");
     mockPostFindUnique.mockResolvedValue({
       id: "p1",
@@ -312,37 +338,67 @@ describe("PATCH /api/posts/[id]", () => {
       status: "PUBLISHED",
     });
     mockScanContent.mockResolvedValue([]);
-    mockPostEditHistoryCreate.mockResolvedValue({});
     mockLogAudit.mockResolvedValue({});
-
-    const updatedPost = {
-      id: "p1",
-      title: "新标题",
-      content: "原内容",
-      author: { id: "user1", nickname: "用户1", avatar: null },
-      board: { id: "b1", name: "娱乐", zone: "PUBLIC" },
-      tags: [],
-    };
-    mockPostUpdate.mockResolvedValue(updatedPost);
+    mockRevisionCreate.mockResolvedValue({ id: "revision1", title: "新标题", status: "PENDING" });
 
     const { PATCH } = await import("../../[id]/route");
     const res = await PATCH(makeRequest("PATCH", { title: "新标题" }), { params: { id: "p1" } });
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data.post.title).toBe("新标题");
+    expect(data.post.title).toBe("原标题");
+    expect(data.liveVersionUnchanged).toBe(true);
+    expect(data.reviewStatus).toBe("PENDING");
+    expect(mockRevisionCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ postId: "p1", title: "新标题", editorId: "user1" }),
+    }));
+    expect(mockPostUpdate).not.toHaveBeenCalled();
+    expect(mockPostEditHistoryCreate).not.toHaveBeenCalled();
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      "user1",
+      "POST_REVISION_SUBMIT",
+      "POST",
+      "p1",
+      expect.objectContaining({ revisionId: "revision1" }),
+      undefined,
+      expect.objectContaining({ postRevision: expect.any(Object) }),
+    );
+  });
+
+  it("非已发布帖子编辑应直接更新并进入待审核状态", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      authorId: "user1",
+      title: "原标题",
+      content: "原内容",
+      summary: null,
+      images: [],
+      visibility: "PUBLIC",
+      status: "DRAFT",
+      tags: [],
+      board: { zone: "PUBLIC" },
+    });
+    mockScanContent.mockResolvedValue([]);
+    mockPostUpdate.mockResolvedValue({
+      id: "p1",
+      title: "新标题",
+      status: "PENDING",
+      board: { zone: "PUBLIC" },
+    });
+
+    const { PATCH } = await import("../../[id]/route");
+    const res = await PATCH(makeRequest("PATCH", { title: "新标题" }), { params: { id: "p1" } });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.liveVersionUnchanged).toBe(false);
+    expect(data.reviewStatus).toBe("PENDING");
     expect(mockPostUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "p1" },
       data: expect.objectContaining({ title: "新标题", status: "PENDING" }),
     }));
-
-    // Should save edit history
-    expect(mockPostEditHistoryCreate).toHaveBeenCalledWith({
-      data: {
-        postId: "p1",
-        oldTitle: "原标题",
-        oldContent: "原内容",
-      },
-    });
+    expect(mockRevisionCreate).not.toHaveBeenCalled();
   });
 
   it("应拒绝没有任何修改字段的请求", async () => {

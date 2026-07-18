@@ -9,8 +9,9 @@ describe("AdminWatermark", () => {
     expect(element.props.className).toContain("fixed");
     expect(element.props.className).toContain("inset-0");
     expect(element.props.className).toContain("pointer-events-none");
-    expect(element.props.children).toHaveLength(15);
-    expect(element.props.children[0].props.children).toContain("敏感内容，严禁外传");
-    expect(element.props.children[0].props.children).toContain("18888888888");
+    const svg = element.props.children;
+    expect(svg.type).toBe("svg");
+    expect(JSON.stringify(svg.props.children)).toContain("敏感内容，严禁外传");
+    expect(JSON.stringify(svg.props.children)).toContain("18888888888");
   });
 });

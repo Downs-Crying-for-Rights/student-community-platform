@@ -211,6 +211,10 @@ export function withAuth(
       return response;
     }
 
+    if (session.user.isBanned) {
+      return NextResponse.json({ error: "账号已被封禁" }, { status: 403 });
+    }
+
     const userRole = (session.user.role ?? "USER") as Role;
 
     if (requiredRole && !hasMinimumRole(userRole, requiredRole)) {
@@ -305,7 +309,7 @@ export function withOptionalAuth(handler: OptionalAuthHandler): RouteHandler {
     const session = await getServerSession(authOptions);
     const optReq = req as OptionalAuthRequest;
 
-    if (session?.user?.id) {
+    if (session?.user?.id && !session.user.isBanned) {
       const userRole = (session.user.role ?? "USER") as Role;
       optReq.user = { id: session.user.id, role: userRole };
     }

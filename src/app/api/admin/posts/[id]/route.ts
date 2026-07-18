@@ -10,6 +10,7 @@ const updateSchema = z.object({
   status: z.enum(["DRAFT", "PENDING", "PUBLISHED", "REJECTED", "DELETED"]).optional(),
   title: z.string().min(1).max(30).optional(),
   content: z.string().min(1).max(10000).optional(),
+  reason: z.string().trim().min(1, "必须填写操作原因").max(500),
 }).strict().refine((data) => Object.values(data).some((value) => value !== undefined), {
   message: "请至少修改一项内容",
 });
@@ -44,7 +45,10 @@ export const PATCH = withAuth(async (
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
 
-    const { status, title, content } = parsed.data;
+    const { status, title, content, reason } = parsed.data;
+    if ((title !== undefined || content !== undefined) && !["ADMIN", "SUPER_ADMIN"].includes(req.user.role)) {
+      return NextResponse.json({ error: "只有管理员可以纠正帖子正文" }, { status: 403 });
+    }
     if (title !== undefined || content !== undefined) {
       const matches = await scanContent(`${title ?? existing.title} ${content ?? existing.content}`);
       if (matches.length > 0) {
@@ -57,27 +61,38 @@ export const PATCH = withAuth(async (
       ...(content !== undefined ? { content } : {}),
     };
 
-    const post = await prisma.post.update({
-      where: { id },
-      data: updateData,
-      include: {
+    const post = await prisma.$transaction(async (tx) => {
+      if (title !== undefined || content !== undefined) {
+        await tx.postEditHistory.create({
+          data: { postId: id, oldTitle: existing.title, oldContent: existing.content },
+        });
+      }
+      const updated = await tx.post.update({
+        where: { id },
+        data: updateData,
+        include: {
         author: { select: { id: true, nickname: true, email: true } },
         board: { select: { id: true, name: true } },
-      },
-    });
-
-    await logAudit(
-      req.user.id,
-      "ADMIN_UPDATE_POST_STATUS",
-      AuditTargetType.POST,
-      id,
-      {
+        },
+      });
+      await logAudit(
+        req.user.id,
+        title !== undefined || content !== undefined ? "ADMIN_POST_CORRECT" : "ADMIN_UPDATE_POST_STATUS",
+        AuditTargetType.POST,
+        id,
+        {
         oldStatus: existing.status,
         newStatus: status ?? existing.status,
         oldTitle: existing.title,
+        newTitle: title ?? existing.title,
         updatedFields: Object.keys(updateData),
-      },
-    );
+        reason,
+        },
+        undefined,
+        tx,
+      );
+      return updated;
+    });
 
     return NextResponse.json({ post });
   } catch (error) {

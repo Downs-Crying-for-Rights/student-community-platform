@@ -30,6 +30,13 @@ enum UserPunishmentAction {
   REVOKED
 }
 
+enum PostRevisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
 model User {
   id              String    @id @default(cuid())
   name            String?
@@ -52,6 +59,7 @@ model User {
   quizPassed      Boolean   @default(false)
   phone           String?   @unique // 手机号
   passwordHash    String? // bcrypt 哈希密码
+  securityVersion Int       @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -61,6 +69,8 @@ model User {
 
   // 内容关联
   posts     Post[]
+  postRevisionsEdited   PostRevision[] @relation("PostRevisionEditor")
+  postRevisionsReviewed PostRevision[] @relation("PostRevisionReviewer")
   comments  Comment[]
   likes     Like[]
   bookmarks Bookmark[]
@@ -252,6 +262,33 @@ model Post {
   bookmarks   Bookmark[]
   reports     Report[]          @relation("ReportedPost")
   editHistory PostEditHistory[]
+  revisions   PostRevision[]
+}
+
+model PostRevision {
+  id            String             @id @default(cuid())
+  title         String
+  content       String
+  summary       String?
+  images        String[]
+  visibility    PostVisibility
+  tagIds        String[]
+  status        PostRevisionStatus @default(PENDING)
+  rejectionReason String?
+  baseUpdatedAt DateTime
+  createdAt     DateTime           @default(now())
+  reviewedAt    DateTime?
+
+  postId     String
+  post       Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  editorId   String
+  editor     User   @relation("PostRevisionEditor", fields: [editorId], references: [id], onDelete: Restrict)
+  reviewerId String?
+  reviewer   User?  @relation("PostRevisionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([postId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([editorId, createdAt])
 }
 
 model PostEditHistory {
@@ -315,12 +352,24 @@ enum ReportStatus {
   DISMISSED // 驳回
 }
 
+enum ReportResolutionAction {
+  NONE
+  DELETE_TARGET
+  BAN_RESPONSIBLE_USER
+  SHADOW_HIDE_RESPONSIBLE_USER
+  DELETE_TARGET_AND_BAN_USER
+  DELETE_TARGET_AND_SHADOW_HIDE_USER
+}
+
 model Report {
   id         String       @id @default(cuid())
   reason     String
   details    String?
   status     ReportStatus @default(PENDING)
-  resolution String?
+  resolution       String?
+  resolutionAction ReportResolutionAction?
+  resolvedAt       DateTime?
+  resolvedById     String?
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
@@ -352,6 +401,7 @@ model Report {
   @@index([targetDmMessageId])
   @@index([targetChatMessageId])
   @@index([targetChatRoomId])
+  @@index([resolvedById])
 }
 
 // ==================== DCR 工单 ====================

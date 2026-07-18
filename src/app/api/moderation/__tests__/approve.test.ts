@@ -6,6 +6,11 @@ import { NextRequest } from "next/server";
 const mockPostFindUnique = vi.fn();
 const mockPostUpdate = vi.fn();
 const mockNotificationCreate = vi.fn();
+const mockRevisionFindFirst = vi.fn();
+const mockRevisionUpdate = vi.fn();
+const mockPostEditHistoryCreate = vi.fn();
+const mockPostTagDeleteMany = vi.fn();
+const mockPostTagCreateMany = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -16,13 +21,27 @@ vi.mock("@/lib/prisma", () => ({
     notification: {
       create: (...args: unknown[]) => mockNotificationCreate(...args),
     },
+    postRevision: { findFirst: (...args: unknown[]) => mockRevisionFindFirst(...args) },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      post: { update: (...args: unknown[]) => mockPostUpdate(...args) },
+      postRevision: { update: (...args: unknown[]) => mockRevisionUpdate(...args) },
+      postEditHistory: { create: (...args: unknown[]) => mockPostEditHistoryCreate(...args) },
+      postTag: {
+        deleteMany: (...args: unknown[]) => mockPostTagDeleteMany(...args),
+        createMany: (...args: unknown[]) => mockPostTagCreateMany(...args),
+      },
+      auditLog: { create: vi.fn() },
+    }),
   },
 }));
 
 const mockLogAudit = vi.fn();
 vi.mock("@/lib/audit", () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),
-  AuditAction: { CONTENT_APPROVE: "CONTENT_APPROVE" },
+  AuditAction: {
+    CONTENT_APPROVE: "CONTENT_APPROVE",
+    POST_REVISION_APPROVE: "POST_REVISION_APPROVE",
+  },
   AuditTargetType: { POST: "POST" },
 }));
 
@@ -57,6 +76,7 @@ function setSession(id: string, role: string) {
 describe("POST /api/moderation/[id]/approve", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRevisionFindFirst.mockResolvedValue(null);
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -173,6 +193,61 @@ describe("POST /api/moderation/[id]/approve", () => {
         newStatus: "PUBLISHED",
         title: "待审核帖子",
       }),
+      undefined,
+      expect.objectContaining({ post: expect.any(Object), auditLog: expect.any(Object) }),
+    );
+  });
+
+  it("应批准待审修订并将修订内容更新到公开帖子", async () => {
+    setSession("mod1", "MODERATOR");
+    const baseUpdatedAt = new Date("2026-07-19T00:00:00.000Z");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      status: "PUBLISHED",
+      title: "原标题",
+      content: "原内容",
+      authorId: "u1",
+      updatedAt: baseUpdatedAt,
+    });
+    mockRevisionFindFirst.mockResolvedValue({
+      id: "revision1",
+      title: "修订标题",
+      content: "修订内容",
+      summary: "修订摘要",
+      images: ["revision.png"],
+      visibility: "PUBLIC",
+      tagIds: ["tag1"],
+      status: "PENDING",
+      baseUpdatedAt,
+    });
+    mockPostUpdate.mockResolvedValue({ id: "p1", title: "修订标题", status: "PUBLISHED" });
+    mockNotificationCreate.mockResolvedValue({});
+
+    const { POST } = await import("../../moderation/[id]/approve/route");
+    const res = await POST(makeRequest(), { params: { id: "p1" } });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.post.title).toBe("修订标题");
+    expect(mockPostEditHistoryCreate).toHaveBeenCalledWith({
+      data: { postId: "p1", oldTitle: "原标题", oldContent: "原内容" },
+    });
+    expect(mockPostUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "p1" },
+      data: expect.objectContaining({ title: "修订标题", content: "修订内容", status: "PUBLISHED" }),
+    }));
+    expect(mockRevisionUpdate).toHaveBeenCalledWith({
+      where: { id: "revision1" },
+      data: expect.objectContaining({ status: "APPROVED", reviewerId: "mod1" }),
+    });
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      "mod1",
+      "POST_REVISION_APPROVE",
+      "POST",
+      "p1",
+      { revisionId: "revision1" },
+      undefined,
+      expect.objectContaining({ postRevision: expect.any(Object) }),
     );
   });
 

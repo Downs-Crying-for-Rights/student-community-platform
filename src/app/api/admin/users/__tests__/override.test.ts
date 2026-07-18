@@ -12,6 +12,10 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
     },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      user: { update: (...args: unknown[]) => mockUserUpdate(...args) },
+      auditLog: { create: vi.fn() },
+    }),
   },
 }));
 
@@ -40,9 +44,12 @@ const mockGetServerSession = vi.mocked(getServerSession);
 // ==================== Helpers ====================
 
 function makeRequest(body: unknown): NextRequest {
+  const requestBody = body && typeof body === "object" && !Array.isArray(body)
+    ? { reason: "测试覆写原因", ...body as Record<string, unknown> }
+    : body;
   return new NextRequest("http://localhost:3000/api/admin/users/u1/override", {
     method: "PATCH",
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
     headers: { "Content-Type": "application/json" },
   });
 }
@@ -152,7 +159,10 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     expect(mockUserUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "u1" },
-        data: { violationCount: 5 },
+        data: expect.objectContaining({
+          violationCount: 5,
+          securityVersion: { increment: 1 },
+        }),
       }),
     );
     expect(mockLogAudit).toHaveBeenCalledWith(
@@ -160,7 +170,13 @@ describe("PATCH /api/admin/users/[id]/override", () => {
       "SUPER_ADMIN_OVERRIDE",
       "USER",
       "u1",
-      { beforeValues: { violationCount: 0 }, afterValues: { violationCount: 5 } },
+      expect.objectContaining({
+        beforeValues: { violationCount: 0 },
+        afterValues: { violationCount: 5 },
+        reason: "测试覆写原因",
+      }),
+      undefined,
+      expect.anything(),
     );
   });
 
@@ -181,7 +197,11 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     expect(res.status).toBe(200);
     expect(mockUserUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { violationCount: 5, psychAccess: true },
+        data: expect.objectContaining({
+          violationCount: 5,
+          psychAccess: true,
+          securityVersion: { increment: 1 },
+        }),
       }),
     );
     expect(mockLogAudit).toHaveBeenCalledWith(
@@ -189,10 +209,13 @@ describe("PATCH /api/admin/users/[id]/override", () => {
       "SUPER_ADMIN_OVERRIDE",
       "USER",
       "u1",
-      {
+      expect.objectContaining({
         beforeValues: { violationCount: 0, psychAccess: false },
         afterValues: { violationCount: 5, psychAccess: true },
-      },
+        reason: "测试覆写原因",
+      }),
+      undefined,
+      expect.anything(),
     );
   });
 
@@ -212,25 +235,37 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     expect(res.status).toBe(200);
     expect(mockUserUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { dcrAccess: true, dcrPledgeSigned: true },
+        data: expect.objectContaining({
+          dcrAccess: true,
+          dcrPledgeSigned: true,
+          securityVersion: { increment: 1 },
+        }),
       }),
     );
   });
 
-  it("应成功覆写 role 字段", async () => {
+  it("应拒绝覆写 role 字段", async () => {
     setSession("sa1", "SUPER_ADMIN");
-    mockUserFindUnique.mockResolvedValue({ ...defaultUser });
-    const updatedUser = { ...defaultUser, role: "ADMIN" };
-    mockUserUpdate.mockResolvedValue(updatedUser);
-    mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(makeRequest({ role: "ADMIN" }), {
       params: Promise.resolve({ id: "u1" }) as any,
     });
-    const data = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(data.user.role).toBe("ADMIN");
+    expect(res.status).toBe(400);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
+  it("应拒绝未填写原因的覆写", async () => {
+    setSession("sa1", "SUPER_ADMIN");
+
+    const { PATCH } = await import("../[id]/override/route");
+    const res = await PATCH(makeRequest({ violationCount: 1, reason: undefined }), {
+      params: Promise.resolve({ id: "u1" }) as any,
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 });

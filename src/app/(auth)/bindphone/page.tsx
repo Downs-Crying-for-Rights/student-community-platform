@@ -52,13 +52,15 @@ function BindPhoneContent() {
     };
   }, []);
 
-  // 如果 session 中已有 phone，直接跳走（已绑定的用户不应看到此页面）
+  const isChangeMode = searchParams.get("mode") === "change";
+
+  // 普通绑定入口保持原行为；显式换绑模式允许已有手机号的用户继续操作。
   useEffect(() => {
-    if ((session?.user as any)?.phone) {
+    if ((session?.user as any)?.phone && !isChangeMode) {
       const callbackUrl = searchParams.get("callbackUrl") || "/";
       router.replace(callbackUrl);
     }
-  }, [session, router, searchParams]);
+  }, [session, router, searchParams, isChangeMode]);
 
   const LoadingSpinner = () => (
     <svg
@@ -193,7 +195,7 @@ function BindPhoneContent() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
             <Smartphone className="h-8 w-8 text-blue-600 dark:text-blue-400" />
           </div>
-          <CardTitle className="text-2xl">绑定手机号</CardTitle>
+          <CardTitle className="text-2xl">{isChangeMode ? "更换手机号" : "绑定手机号"}</CardTitle>
           <CardDescription>
             申请 DCR 权益互助前需要完成手机号验证。手机号仅用于账户安全、准入审核与风险控制，不会向其他用户公开。
           </CardDescription>

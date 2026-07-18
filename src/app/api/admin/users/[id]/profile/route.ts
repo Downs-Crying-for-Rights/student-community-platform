@@ -13,6 +13,8 @@ const profileSchema = z.object({
   avatar: z.string().url().nullable().optional(),
   email: emailSchema.nullable().optional(),
   phone: z.string().regex(/^1[3-9]\d{9}$/, "请输入有效的 11 位手机号").nullable().optional(),
+  reason: z.string().trim().min(1, "必须填写修改原因").max(500),
+  ticketId: z.string().trim().min(1, "必须填写工单或事件编号").max(100),
 }).strict().refine((data) => Object.values(data).some((value) => value !== undefined), {
   message: "请至少修改一项资料",
 });
@@ -52,15 +54,18 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     const beforeValues = Object.fromEntries(Object.keys(changes).map((field) => [field, existing[field as keyof typeof existing]]));
 
     const user = await prisma.$transaction(async (tx) => {
+      const identityChanged = changes.email !== undefined || changes.phone !== undefined;
       const updated = await tx.user.update({
         where: { id },
-        data: changes,
+        data: { ...changes, ...(identityChanged ? { securityVersion: { increment: 1 } } : {}) },
         select: { id: true, nickname: true, bio: true, avatar: true, email: true, phone: true, updatedAt: true },
       });
-      await logAudit(req.user.id, AuditAction.SUPER_ADMIN_OVERRIDE, AuditTargetType.USER, id, {
+      await logAudit(req.user.id, identityChanged ? AuditAction.PHONE_EMERGENCY_CHANGE : AuditAction.ADMIN_PROFILE_CORRECT, AuditTargetType.USER, id, {
         beforeValues,
         afterValues: changes,
         category: "PROFILE",
+        reason: parsed.data.reason,
+        ticketId: parsed.data.ticketId,
       }, undefined, tx);
       return updated;
     });

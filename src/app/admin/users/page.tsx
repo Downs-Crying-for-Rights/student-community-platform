@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,6 +72,8 @@ export default function AdminUsersPage() {
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
   const [overrideForm, setOverrideForm] = useState<Record<string, unknown>>({});
   const [profileForm, setProfileForm] = useState({ nickname: "", bio: "", avatar: "", email: "", phone: "" });
+  const [profileReason, setProfileReason] = useState("");
+  const [profileTicketId, setProfileTicketId] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [userPosts, setUserPosts] = useState<AdminPostItem[]>([]);
@@ -82,6 +84,7 @@ export default function AdminUsersPage() {
   const [punishments, setPunishments] = useState<PunishmentItem[]>([]);
   const [punishmentsLoading, setPunishmentsLoading] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const detailRequestRef = useRef(0);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -107,10 +110,12 @@ export default function AdminUsersPage() {
   }, [fetchUsers]);
 
   const handleRoleChange = async (userId: string, newRole: string) => {
+    const reason = window.prompt("请输入角色变更原因：");
+    if (!reason?.trim()) return;
     const res = await fetch(`/api/admin/users/${userId}/role`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: newRole }),
+      body: JSON.stringify({ role: newRole, reason: reason.trim() }),
     });
     if (res.ok) fetchUsers();
   };
@@ -118,16 +123,17 @@ export default function AdminUsersPage() {
   const handleBan = async (userId: string, action: "ban" | "unban", shadowBan = false) => {
     const promptText = action === "unban" ? "请输入解除处罚的原因：" : shadowBan ? "请输入帖子影子隐藏的处罚原因：" : "请输入账号封禁的处罚原因：";
     const reason = window.prompt(promptText);
-    if (reason === null) return;
+    if (!reason?.trim()) return;
     const res = await fetch(`/api/admin/users/${userId}/ban`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, shadowBan, reason: reason.trim() || undefined }),
+      body: JSON.stringify({ action, shadowBan, reason: reason.trim() }),
     });
     if (res.ok) fetchUsers();
   };
 
   const handleOpenDetails = async (user: UserItem) => {
+    const requestId = ++detailRequestRef.current;
     setEditingUser(user);
     setOverrideForm({
       violationCount: user.violationCount,
@@ -146,6 +152,8 @@ export default function AdminUsersPage() {
       phone: user.phone ?? "",
     });
     setDetailError("");
+    setProfileReason("");
+    setProfileTicketId("");
     setPunishmentsLoading(true);
     setPostsLoading(true);
     try {
@@ -155,11 +163,14 @@ export default function AdminUsersPage() {
       ]);
       const punishmentData = punishmentResponse.ok ? await punishmentResponse.json() : { punishments: [] };
       const postsData = postsResponse.ok ? await postsResponse.json() : { posts: [] };
+      if (requestId !== detailRequestRef.current) return;
       setPunishments(punishmentData.punishments ?? []);
       setUserPosts(postsData.posts ?? []);
     } finally {
-      setPunishmentsLoading(false);
-      setPostsLoading(false);
+      if (requestId === detailRequestRef.current) {
+        setPunishmentsLoading(false);
+        setPostsLoading(false);
+      }
     }
   };
 
@@ -177,6 +188,8 @@ export default function AdminUsersPage() {
           avatar: profileForm.avatar.trim() || null,
           email: profileForm.email.trim() || null,
           phone: profileForm.phone.trim() || null,
+          reason: profileReason.trim(),
+          ticketId: profileTicketId.trim(),
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -192,10 +205,12 @@ export default function AdminUsersPage() {
   };
 
   const handlePostStatus = async (postId: string, status: AdminPostItem["status"]) => {
+    const reason = window.prompt("请输入帖子状态调整原因：");
+    if (!reason?.trim()) return;
     const response = await fetch(`/api/admin/posts/${postId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, reason: reason.trim() }),
     });
     if (response.ok) {
       setUserPosts((posts) => posts.map((post) => post.id === postId ? { ...post, status } : post));
@@ -213,10 +228,12 @@ export default function AdminUsersPage() {
     setPostSaving(true);
     setDetailError("");
     try {
+      const reason = window.prompt("请输入管理员纠正帖子正文的原因：");
+      if (!reason?.trim()) return;
       const response = await fetch(`/api/admin/posts/${editingPostId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: postForm.title.trim(), content: postForm.content.trim() }),
+        body: JSON.stringify({ title: postForm.title.trim(), content: postForm.content.trim(), reason: reason.trim() }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -249,10 +266,12 @@ export default function AdminUsersPage() {
       setShowConfirmDialog(false);
       return;
     }
+    const reason = window.prompt("请输入覆写权限或流程状态的原因：");
+    if (!reason?.trim()) return;
     const res = await fetch(`/api/admin/users/${editingUser.id}/override`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(changes),
+      body: JSON.stringify({ ...changes, reason: reason.trim() }),
     });
     if (res.ok) {
       fetchUsers();
@@ -451,8 +470,12 @@ export default function AdminUsersPage() {
                 <label className="space-y-1 text-sm"><span className="font-medium">头像 URL</span><input value={profileForm.avatar} onChange={(event) => setProfileForm((form) => ({ ...form, avatar: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2" placeholder="留空表示清除" /></label>
               </div>
               <label className="block space-y-1 text-sm"><span className="font-medium">个人简介</span><textarea value={profileForm.bio} onChange={(event) => setProfileForm((form) => ({ ...form, bio: event.target.value }))} rows={3} maxLength={200} className="w-full rounded-md border bg-background px-3 py-2" /></label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 text-sm"><span className="font-medium">修改原因</span><input value={profileReason} onChange={(event) => setProfileReason(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" /></label>
+                <label className="space-y-1 text-sm"><span className="font-medium">工单或事件编号</span><input value={profileTicketId} onChange={(event) => setProfileTicketId(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" /></label>
+              </div>
               {detailError && <p className="text-sm text-destructive" role="alert">{detailError}</p>}
-              <Button size="sm" onClick={handleSaveProfile} disabled={profileSaving}>{profileSaving ? "保存中..." : "保存身份资料"}</Button>
+              <Button size="sm" onClick={handleSaveProfile} disabled={profileSaving || !profileReason.trim() || !profileTicketId.trim()}>{profileSaving ? "保存中..." : "保存身份资料"}</Button>
             </div>}
 
             <div className="rounded-lg border border-amber-200 bg-amber-50/95 p-4 text-sm text-amber-950">
@@ -503,7 +526,7 @@ export default function AdminUsersPage() {
                   </div>)}
                 </div>
               )}
-              <Button size="sm" variant="outline" onClick={() => setEditingUser(null)}>关闭详情</Button>
+              <Button size="sm" variant="outline" onClick={() => { detailRequestRef.current += 1; setEditingUser(null); }}>关闭详情</Button>
             </div>
 
             <div className="space-y-3 rounded-lg border bg-background/95 p-4">

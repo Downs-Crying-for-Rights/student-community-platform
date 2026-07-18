@@ -48,16 +48,34 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
 
-    if (post.status !== "PENDING") {
+    const revision = await prisma.postRevision.findFirst({
+      where: { postId: id, status: "PENDING" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (post.status !== "PENDING" && !revision) {
       return NextResponse.json(
         { error: "只能审核待审核状态的帖子", detail: `当前状态: ${post.status}` },
         { status: 400 },
       );
     }
 
-    const updatedPost = await prisma.post.update({
-      where: { id },
-      data: { status: "REJECTED" },
+    const updatedPost = await prisma.$transaction(async (tx) => {
+      if (revision) {
+        await tx.postRevision.update({
+          where: { id: revision.id },
+          data: { status: "REJECTED", rejectionReason: reason, reviewerId: req.user.id, reviewedAt: new Date() },
+        });
+        await logAudit(req.user.id, AuditAction.POST_REVISION_REJECT, AuditTargetType.POST, id, {
+          revisionId: revision.id, reason,
+        }, undefined, tx);
+        return post;
+      }
+      const updated = await tx.post.update({ where: { id }, data: { status: "REJECTED" } });
+      await logAudit(req.user.id, AuditAction.CONTENT_REJECT, AuditTargetType.POST, id, {
+        previousStatus: "PENDING", newStatus: "REJECTED", title: post.title, reason,
+      }, undefined, tx);
+      return updated;
     });
 
     // Create notification for the post author with rejection reason
@@ -65,7 +83,7 @@ export const POST = withAuth(async (
       data: {
         type: "SYSTEM",
         title: "帖子审核未通过",
-        content: `您的帖子「${post.title}」未通过审核，原因：${reason}`,
+        content: `您的帖子「${post.title}」${revision ? "修改版本" : ""}未通过审核，原因：${reason}`,
         userId: post.authorId,
         link: `/post/${post.id}`,
       },
@@ -75,15 +93,6 @@ export const POST = withAuth(async (
       subject: "帖子审核未通过",
       text: `您的帖子「${post.title}」未通过审核，原因：${reason}。请登录平台查看详情。`,
     });
-
-    // Record to AuditLog
-    await logAudit(
-      req.user.id,
-      AuditAction.CONTENT_REJECT,
-      AuditTargetType.POST,
-      id,
-      { previousStatus: "PENDING", newStatus: "REJECTED", title: post.title, reason },
-    );
 
     return NextResponse.json({ post: updatedPost });
   } catch (error) {

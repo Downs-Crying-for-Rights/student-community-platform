@@ -29,6 +29,12 @@ export default async function AdminLayout({
   }
 
   const role = (session.user.role ?? "USER") as Role;
+  const watermarkDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 
   if (!hasMinimumRole(role, "MODERATOR")) {
     await logAudit(
@@ -45,7 +51,7 @@ export default async function AdminLayout({
     <>
       <AdminWatermark
         identity={session.user.phone || session.user.email || session.user.id}
-        date={new Date().toLocaleDateString("zh-CN").replaceAll("/", "-")}
+        date={watermarkDate}
       />
       <AdminNav isSuperAdmin={role === "SUPER_ADMIN"} />
       {children}

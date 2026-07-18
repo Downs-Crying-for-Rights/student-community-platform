@@ -13,12 +13,12 @@ const overrideSchema = z.object({
   dcrPledgeSigned: z.boolean().optional(),
   quizPassed: z.boolean().optional(),
   onboardingDone: z.boolean().optional(),
-  role: z.enum(["USER", "TRUSTED_USER", "MODERATOR", "ADMIN", "DCR_HELPER", "SUPER_ADMIN"]).optional(),
+  reason: z.string().trim().min(1, "必须填写覆写原因").max(500),
 }).strict();
 
 const OVERRIDE_FIELDS = [
   "violationCount", "psychAccess", "dcrAccess", "dcrHelperAccess",
-  "dcrPledgeSigned", "quizPassed", "onboardingDone", "role",
+  "dcrPledgeSigned", "quizPassed", "onboardingDone",
 ] as const;
 
 export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
@@ -64,10 +64,11 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       afterValues[field] = updateFields[field];
     }
 
-    const updatedUser = await prisma.user.update({
-      where: { id },
-      data: updateFields,
-      select: {
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id },
+        data: { ...updateFields, securityVersion: { increment: 1 } },
+        select: {
         id: true,
         nickname: true,
         role: true,
@@ -79,16 +80,15 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         quizPassed: true,
         onboardingDone: true,
         updatedAt: true,
-      },
+        },
+      });
+      await logAudit(
+        req.user.id, AuditAction.SUPER_ADMIN_OVERRIDE, AuditTargetType.USER, id,
+        { beforeValues, afterValues, reason: data.reason } as unknown as Prisma.InputJsonValue,
+        undefined, tx,
+      );
+      return updated;
     });
-
-    await logAudit(
-      req.user.id,
-      AuditAction.SUPER_ADMIN_OVERRIDE,
-      AuditTargetType.USER,
-      id,
-      { beforeValues, afterValues } as unknown as Prisma.InputJsonValue,
-    );
 
     return NextResponse.json({ user: updatedUser });
   } catch {

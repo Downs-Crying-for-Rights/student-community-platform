@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
   userUpdate: vi.fn(),
   auditCreate: vi.fn(),
+  logAudit: vi.fn(),
   scanContent: vi.fn(),
 }));
 
@@ -20,6 +21,14 @@ vi.mock("@/lib/prisma", () => {
     },
   };
 });
+vi.mock("@/lib/audit", () => ({
+  logAudit: mocks.logAudit,
+  AuditAction: {
+    ADMIN_PROFILE_CORRECT: "ADMIN_PROFILE_CORRECT",
+    PHONE_EMERGENCY_CHANGE: "PHONE_EMERGENCY_CHANGE",
+  },
+  AuditTargetType: { USER: "USER" },
+}));
 vi.mock("@/lib/sensitive-engine", () => ({ scanContent: mocks.scanContent }));
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
@@ -28,10 +37,13 @@ import { getServerSession } from "next-auth/next";
 import { PATCH } from "../[id]/profile/route";
 
 function request(body: unknown) {
+  const requestBody = body && typeof body === "object" && !Array.isArray(body)
+    ? { reason: "测试资料修改", ticketId: "TEST-001", ...body as Record<string, unknown> }
+    : body;
   return new NextRequest("http://localhost/api/admin/users/user1/profile", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
 }
 
@@ -67,9 +79,28 @@ describe("PATCH /api/admin/users/[id]/profile", () => {
     expect(response.status).toBe(200);
     expect(data.user.passwordHash).toBeUndefined();
     expect(mocks.userUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        nickname: "新昵称",
+        bio: "新简介",
+        email: "user@example.com",
+        phone: "18888888888",
+        securityVersion: { increment: 1 },
+      }),
       select: expect.not.objectContaining({ passwordHash: true }),
     }));
-    expect(mocks.auditCreate).toHaveBeenCalledOnce();
+    expect(mocks.logAudit).toHaveBeenCalledWith(
+      "super1",
+      "PHONE_EMERGENCY_CHANGE",
+      "USER",
+      "user1",
+      expect.objectContaining({
+        reason: "测试资料修改",
+        ticketId: "TEST-001",
+        category: "PROFILE",
+      }),
+      undefined,
+      expect.anything(),
+    );
   });
 
   it("拒绝昵称或简介中的敏感内容", async () => {
@@ -80,6 +111,18 @@ describe("PATCH /api/admin/users/[id]/profile", () => {
     mocks.scanContent.mockResolvedValue([{ word: "敏感", category: "PROFANITY", startIndex: 0, endIndex: 2 }]);
 
     const response = await PATCH(request({ bio: "敏感内容" }), { params: { id: "user1" } });
+
+    expect(response.status).toBe(400);
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["reason", { nickname: "新昵称", reason: undefined }],
+    ["ticketId", { nickname: "新昵称", ticketId: undefined }],
+  ])("拒绝缺少 %s 的资料修改", async (_field, body) => {
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "super1", role: "SUPER_ADMIN" } } as never);
+
+    const response = await PATCH(request(body), { params: { id: "user1" } });
 
     expect(response.status).toBe(400);
     expect(mocks.userUpdate).not.toHaveBeenCalled();

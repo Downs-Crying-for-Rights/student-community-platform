@@ -12,6 +12,8 @@ declare module "next-auth" {
       onboardingDone?: boolean;
       quizPassed?: boolean;
       dcrAccess?: boolean;
+      isBanned?: boolean;
+      securityVersion?: number;
     } & DefaultSession["user"];
   }
 }
@@ -25,5 +27,7 @@ declare module "next-auth/jwt" {
     onboardingDone?: boolean;
     quizPassed?: boolean;
     dcrAccess?: boolean;
+    isBanned?: boolean;
+    securityVersion?: number;
   }
 }

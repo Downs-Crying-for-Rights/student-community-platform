@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getReportTarget } from "../page";
+import { getReportActions, getReportTarget } from "../page";
 
 const base = {
   id: "report1",
@@ -33,5 +33,26 @@ describe("举报处理页面", () => {
       label: "已删除目标",
       text: "目标内容已被删除或脱敏",
     });
+  });
+
+  it("帖子举报为管理员提供删除和处罚组合动作", () => {
+    expect(getReportActions({
+      ...base,
+      targetPost: { id: "post1", title: "违规帖子", authorId: "author1" },
+    }, true)).toEqual([
+      "NONE",
+      "DELETE_TARGET",
+      "BAN_RESPONSIBLE_USER",
+      "SHADOW_HIDE_RESPONSIBLE_USER",
+      "DELETE_TARGET_AND_BAN_USER",
+      "DELETE_TARGET_AND_SHADOW_HIDE_USER",
+    ]);
+  });
+
+  it("版主只能删除内容，不能封禁用户", () => {
+    expect(getReportActions({
+      ...base,
+      targetComment: { id: "comment1", content: "违规评论", authorId: "author1" },
+    }, false)).toEqual(["NONE", "DELETE_TARGET"]);
   });
 });

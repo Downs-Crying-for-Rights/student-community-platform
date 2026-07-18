@@ -83,9 +83,9 @@ export const authOptions: NextAuthOptions = {
         const { email, password } = parsed.data;
         const user = await prisma.user.findUnique({
           where: { email },
-          select: { id: true, email: true, nickname: true, role: true, phone: true, passwordHash: true },
+          select: { id: true, email: true, nickname: true, role: true, phone: true, passwordHash: true, isBanned: true },
         });
-        if (!user || !user.passwordHash) throw new Error("邮箱或密码错误");
+        if (!user || !user.passwordHash || user.isBanned) throw new Error("邮箱或密码错误");
         const isValid = await bcrypt.compare(password, user.passwordHash);
         if (!isValid) throw new Error("邮箱或密码错误");
         return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
@@ -106,9 +106,9 @@ export const authOptions: NextAuthOptions = {
         if (!isValid) throw new Error("验证码错误或已过期");
         let user = await prisma.user.findFirst({
           where: { phone },
-          select: { id: true, email: true, nickname: true, role: true, phone: true },
+          select: { id: true, email: true, nickname: true, role: true, phone: true, isBanned: true },
         });
-        if (!user) {
+        if (!user || user.isBanned) {
           // Require explicit registration to ensure a nickname is provided
           throw new Error("手机号未注册，请通过注册页完成注册");
         }
@@ -126,13 +126,21 @@ export const authOptions: NextAuthOptions = {
     error: "/login",
   },
   callbacks: {
+    async signIn({ user }) {
+      if (!user.id) return false;
+      const account = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { isBanned: true },
+      });
+      return Boolean(account && !account.isBanned);
+    },
     async jwt({ token, user, trigger }) {
       if (user) {
         // First sign-in: inject user info into the JWT token
         token.id = user.id;
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
-          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true },
+            select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true },
         });
         token.role = dbUser?.role ?? "USER";
         token.phone = dbUser?.phone ?? null;
@@ -140,11 +148,13 @@ export const authOptions: NextAuthOptions = {
         token.onboardingDone = dbUser?.onboardingDone ?? false;
         token.quizPassed = dbUser?.quizPassed ?? false;
         token.dcrAccess = dbUser?.dcrAccess ?? false;
-      } else if (trigger === "update" && token.sub) {
-        // Session update (e.g. after bindphone): re-fetch phone from DB
+        token.isBanned = dbUser?.isBanned ?? false;
+        token.securityVersion = dbUser?.securityVersion ?? 0;
+      } else if (token.sub) {
+        // Refresh security-sensitive claims on every server session read so revocations apply immediately.
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
-          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true },
+          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true },
         });
         if (dbUser) {
           token.role = dbUser.role;
@@ -153,6 +163,8 @@ export const authOptions: NextAuthOptions = {
           token.onboardingDone = dbUser.onboardingDone;
           token.quizPassed = dbUser.quizPassed;
           token.dcrAccess = dbUser.dcrAccess;
+          token.isBanned = dbUser.isBanned;
+          token.securityVersion = dbUser.securityVersion;
         }
       }
       return token;
@@ -166,6 +178,8 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).quizPassed = token.quizPassed;
         (session.user as any).dcrAccess = token.dcrAccess;
         (session.user as any).nickname = token.nickname;
+        (session.user as any).isBanned = token.isBanned;
+        (session.user as any).securityVersion = token.securityVersion;
       }
       return session;
     },

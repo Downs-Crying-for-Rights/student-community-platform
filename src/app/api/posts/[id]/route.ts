@@ -103,7 +103,12 @@ export const PATCH = withAuth(async (
 
     const existing = await prisma.post.findUnique({
       where: { id },
-      select: { id: true, authorId: true, title: true, content: true, status: true, visibility: true, board: { select: { zone: true } } },
+      select: {
+        id: true, authorId: true, title: true, content: true, summary: true, images: true,
+        status: true, visibility: true, updatedAt: true,
+        tags: { select: { tagId: true } },
+        board: { select: { zone: true } },
+      },
     });
 
     if (!existing) {
@@ -149,58 +154,69 @@ export const PATCH = withAuth(async (
       );
     }
 
-    // Save edit history before updating
-    await prisma.postEditHistory.create({
-      data: {
-        postId: id,
-        oldTitle: existing.title,
-        oldContent: existing.content,
-      },
-    });
-
-    // Build update data
-    const updateData: Record<string, unknown> = {};
-    if (title !== undefined) updateData.title = title;
-    if (content !== undefined) updateData.content = content;
-    if (summary !== undefined) updateData.summary = summary;
-    if (images !== undefined) updateData.images = images;
-    if (visibility !== undefined) updateData.visibility = visibility;
-    updateData.status = "PENDING";
-
-    // Handle tag updates
-    if (tagIds !== undefined) {
-      // Delete existing tags and recreate
-      await prisma.postTag.deleteMany({ where: { postId: id } });
-      if (tagIds.length > 0) {
-        await prisma.postTag.createMany({
-          data: tagIds.map((tagId) => ({ postId: id, tagId })),
-        });
+    const nextTagIds = tagIds ?? (existing.tags ?? []).map((item) => item.tagId);
+    if (nextTagIds.length > 0) {
+      const validTagCount = await prisma.tag.count({ where: { id: { in: nextTagIds } } });
+      if (validTagCount !== new Set(nextTagIds).size) {
+        return NextResponse.json({ error: "包含不存在的标签" }, { status: 400 });
       }
     }
 
-    const post = await prisma.post.update({
-      where: { id },
-      data: updateData,
-      include: {
-        author: { select: { id: true, nickname: true, avatar: true } },
-        board: { select: { id: true, name: true, zone: true } },
-        tags: { include: { tag: true } },
-      },
-    });
+    const proposed = {
+      title: title ?? existing.title,
+      content: content ?? existing.content,
+      summary: summary !== undefined ? summary : existing.summary,
+      images: images ?? existing.images ?? [],
+      visibility: visibility ?? existing.visibility,
+      tagIds: [...new Set(nextTagIds)],
+    };
 
-    await logAudit(
-      req.user.id,
-      "EDIT_POST",
-      AuditTargetType.POST,
-      id,
-      {
-        updatedFields: [...Object.keys(updateData), ...(tagIds !== undefined ? ["tagIds"] : [])],
+    if (existing.status === "PUBLISHED") {
+      const revision = await prisma.$transaction(async (tx) => {
+        await tx.postRevision.updateMany({
+          where: { postId: id, status: "PENDING" },
+          data: { status: "SUPERSEDED", reviewedAt: new Date() },
+        });
+        const created = await tx.postRevision.create({
+          data: { ...proposed, postId: id, editorId: req.user.id, baseUpdatedAt: existing.updatedAt ?? new Date(0) },
+        });
+        await logAudit(req.user.id, "POST_REVISION_SUBMIT", AuditTargetType.POST, id, {
+          revisionId: created.id,
+          baseUpdatedAt: (existing.updatedAt ?? new Date(0)).toISOString(),
+        }, undefined, tx);
+        return created;
+      });
+      return NextResponse.json({
+        post: { ...existing, isAuthor: true, pendingRevision: revision },
+        liveVersionUnchanged: true,
+        reviewStatus: "PENDING",
+      });
+    }
+
+    const post = await prisma.$transaction(async (tx) => {
+      await tx.postEditHistory.create({ data: { postId: id, oldTitle: existing.title, oldContent: existing.content } });
+      await tx.postTag.deleteMany({ where: { postId: id } });
+      if (proposed.tagIds.length > 0) {
+        await tx.postTag.createMany({ data: proposed.tagIds.map((tagId) => ({ postId: id, tagId })) });
+      }
+      const { tagIds: _tagIds, ...postData } = proposed;
+      const updated = await tx.post.update({
+        where: { id },
+        data: { ...postData, status: "PENDING" },
+        include: {
+          author: { select: { id: true, nickname: true, avatar: true } },
+          board: { select: { id: true, name: true, zone: true } },
+          tags: { include: { tag: true } },
+        },
+      });
+      await logAudit(req.user.id, "POST_REVISION_SUBMIT", AuditTargetType.POST, id, {
         oldStatus: existing.status,
         newStatus: "PENDING",
-      },
-    );
+      }, undefined, tx);
+      return updated;
+    });
 
-    return NextResponse.json({ post: { ...anonymizePsychologyPost(post), isAuthor: true } });
+    return NextResponse.json({ post: { ...anonymizePsychologyPost(post), isAuthor: true }, liveVersionUnchanged: false, reviewStatus: "PENDING" });
   } catch (error) {
     console.error("PATCH /api/posts/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

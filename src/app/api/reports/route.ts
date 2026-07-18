@@ -236,9 +236,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         take: pageSize,
         include: {
           reporter: { select: { id: true, nickname: true } },
-          targetUser: { select: { id: true, nickname: true } },
-          targetPost: { select: { id: true, title: true, status: true } },
-          targetComment: { select: { id: true, content: true, isDeleted: true } },
+          targetUser: { select: { id: true, nickname: true, role: true } },
+          targetPost: { select: { id: true, title: true, status: true, authorId: true } },
+          targetComment: { select: { id: true, content: true, isDeleted: true, authorId: true } },
           targetTask: { select: { id: true, title: true, status: true } },
           targetCaseMessage: { select: { id: true, content: true, senderId: true, caseId: true } },
           targetHelpMessage: { select: { id: true, content: true, senderId: true, chat: { select: { sessionId: true } } } },
@@ -310,7 +310,7 @@ async function checkAutoHideThreshold(
 
         await notifyModerators(
           `评论 ${targetCommentId} 被 ${reportCount} 人举报，已自动隐藏`,
-          `/moderation`,
+          `/admin/moderation`,
         );
       }
     }

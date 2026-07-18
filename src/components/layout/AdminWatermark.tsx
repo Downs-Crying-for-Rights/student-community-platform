@@ -10,16 +10,18 @@ export function AdminWatermark({ identity, date }: AdminWatermarkProps) {
     <div
       aria-hidden="true"
       data-testid="admin-watermark"
-      className="pointer-events-none fixed inset-0 z-[100] grid select-none grid-cols-2 content-around overflow-hidden sm:grid-cols-3"
+      className="pointer-events-none fixed inset-0 z-[60] select-none overflow-hidden"
     >
-      {Array.from({ length: 15 }, (_, index) => (
-        <div
-          key={index}
-          className="-rotate-12 whitespace-pre-line px-4 text-center text-sm font-semibold leading-6 text-red-700/15 sm:text-base"
-        >
-          {`敏感内容，严禁外传\n${identity}\n${date}`}
-        </div>
-      ))}
+      <svg className="h-full w-full opacity-[0.08] dark:opacity-[0.11]" role="presentation">
+        <defs>
+          <pattern id="admin-watermark-pattern" width="300" height="170" patternUnits="userSpaceOnUse" patternTransform="rotate(-18)">
+            <text x="16" y="48" className="fill-red-700 text-[14px] font-semibold dark:fill-red-300">敏感内容，严禁外传</text>
+            <text x="16" y="72" className="fill-red-700 text-[13px] dark:fill-red-300">{identity}</text>
+            <text x="16" y="94" className="fill-red-700 text-[12px] dark:fill-red-300">{date} · 管理后台</text>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#admin-watermark-pattern)" />
+      </svg>
     </div>
   );
 }

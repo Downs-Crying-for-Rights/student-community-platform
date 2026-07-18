@@ -98,6 +98,7 @@ export default function PostDetailPage() {
   const [editContent, setEditContent] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
+  const [editNotice, setEditNotice] = useState("");
 
   useEffect(() => {
     async function fetchPost() {
@@ -193,6 +194,7 @@ export default function PostDetailPage() {
     setEditTitle(post.title);
     setEditContent(post.content);
     setEditError("");
+    setEditNotice("");
     setEditDialogOpen(true);
   };
 
@@ -211,7 +213,13 @@ export default function PostDetailPage() {
         setEditError(data.error || "修改失败，请稍后重试");
         return;
       }
-      setPost((current) => current ? { ...current, ...data.post, status: "PENDING", isAuthor: true } : current);
+      if (!data.liveVersionUnchanged) {
+        setPost((current) => current ? { ...current, ...data.post, status: "PENDING", isAuthor: true } : current);
+      }
+      setEditNotice(data.liveVersionUnchanged
+        ? "修改版本已提交审核，当前已发布版本会继续展示，审核通过后自动替换。"
+        : "帖子已提交审核。"
+      );
       setEditDialogOpen(false);
     } catch {
       setEditError("网络错误，请检查连接后重试");
@@ -253,6 +261,11 @@ export default function PostDetailPage() {
               <div className="mx-4 mt-4 flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 dark:border-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-200">
                 <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>帖子正在等待审核，通过后将对其他用户可见</span>
+              </div>
+            )}
+            {editNotice && (
+              <div className="mx-4 mt-4 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200" role="status">
+                {editNotice}
               </div>
             )}
 
@@ -472,7 +485,7 @@ export default function PostDetailPage() {
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
               <DialogHeader>
                 <DialogTitle>编辑帖子</DialogTitle>
-                <DialogDescription>修改后帖子会重新进入审核，审核通过前仅你和管理人员可见。</DialogDescription>
+                <DialogDescription>已发布帖子会保留当前公开版本；修改版审核通过后再自动替换。未发布帖子会进入待审核状态。</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <label className="block space-y-1 text-sm">

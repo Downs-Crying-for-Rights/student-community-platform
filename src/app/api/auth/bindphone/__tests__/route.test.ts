@@ -6,6 +6,12 @@ const mockGetToken = vi.fn();
 const mockVerifyCode = vi.fn();
 const mockFindFirst = vi.fn();
 const mockUpdate = vi.fn();
+const mockLogAudit = vi.fn();
+const mockTx = {
+  user: { update: (...args: unknown[]) => mockUpdate(...args) },
+  auditLog: { create: vi.fn() },
+};
+const mockTransaction = vi.fn((callback: (tx: typeof mockTx) => unknown) => callback(mockTx));
 
 vi.mock("next-auth/jwt", () => ({
   getToken: (...args: unknown[]) => mockGetToken(...args),
@@ -21,7 +27,13 @@ vi.mock("@/lib/prisma", () => ({
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
       update: (...args: unknown[]) => mockUpdate(...args),
     },
+    $transaction: (...args: unknown[]) => mockTransaction(...args as [(tx: typeof mockTx) => unknown]),
   },
+}));
+
+vi.mock("@/lib/audit", () => ({
+  logAudit: (...args: unknown[]) => mockLogAudit(...args),
+  AuditTargetType: { USER: "USER" },
 }));
 
 import { POST } from "../route";
@@ -145,18 +157,34 @@ describe("POST /api/auth/bindphone", () => {
       expect(mockUpdate).not.toHaveBeenCalled();
     });
 
-    it("应允许用户重新绑定自己已绑定的手机号", async () => {
+    it("应允许已有旧手机号的用户换绑新手机号并递增安全版本", async () => {
       mockGetToken.mockResolvedValue({ id: "user-1" });
       mockVerifyCode.mockResolvedValue(true);
       mockFindFirst.mockResolvedValue({ id: "user-1", phone: "13800138000" });
-      mockUpdate.mockResolvedValue({ id: "user-1", phone: "13800138000" });
+      mockUpdate.mockResolvedValue({ id: "user-1", phone: "13900139000" });
 
-      const req = createRequest({ phone: "13800138000", code: "888888" });
+      const req = createRequest({ phone: "13900139000", code: "888888" });
       const res = await POST(req);
       const data = await res.json();
 
       expect(res.status).toBe(200);
       expect(data).toEqual({ success: true });
+      expect(mockUpdate).toHaveBeenCalledWith({
+        where: { id: "user-1" },
+        data: {
+          phone: "13900139000",
+          securityVersion: { increment: 1 },
+        },
+      });
+      expect(mockLogAudit).toHaveBeenCalledWith(
+        "user-1",
+        "PHONE_VERIFIED_CHANGE",
+        "USER",
+        "user-1",
+        { hadPreviousPhone: true },
+        undefined,
+        mockTx
+      );
     });
   });
 
@@ -179,8 +207,21 @@ describe("POST /api/auth/bindphone", () => {
       expect(mockFindFirst).toHaveBeenCalledWith({ where: { phone: "13800138000" } });
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: "user-1" },
-        data: { phone: "13800138000" },
+        data: {
+          phone: "13800138000",
+          securityVersion: { increment: 1 },
+        },
       });
+      expect(mockTransaction).toHaveBeenCalledTimes(1);
+      expect(mockLogAudit).toHaveBeenCalledWith(
+        "user-1",
+        "PHONE_VERIFIED_CHANGE",
+        "USER",
+        "user-1",
+        { hadPreviousPhone: false },
+        undefined,
+        mockTx
+      );
     });
   });
 
@@ -304,7 +345,7 @@ describe("Property 14: 手机号绑定 Round-Trip", () => {
           expect(mockUpdate).toHaveBeenCalledTimes(1);
           expect(mockUpdate).toHaveBeenCalledWith({
             where: { id: userId },
-            data: { phone },
+            data: { phone, securityVersion: { increment: 1 } },
           });
         }
       ),

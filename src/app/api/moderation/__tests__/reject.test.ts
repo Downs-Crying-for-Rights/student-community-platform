@@ -6,6 +6,8 @@ import { NextRequest } from "next/server";
 const mockPostFindUnique = vi.fn();
 const mockPostUpdate = vi.fn();
 const mockNotificationCreate = vi.fn();
+const mockRevisionFindFirst = vi.fn();
+const mockRevisionUpdate = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -16,13 +18,22 @@ vi.mock("@/lib/prisma", () => ({
     notification: {
       create: (...args: unknown[]) => mockNotificationCreate(...args),
     },
+    postRevision: { findFirst: (...args: unknown[]) => mockRevisionFindFirst(...args) },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      post: { update: (...args: unknown[]) => mockPostUpdate(...args) },
+      postRevision: { update: (...args: unknown[]) => mockRevisionUpdate(...args) },
+      auditLog: { create: vi.fn() },
+    }),
   },
 }));
 
 const mockLogAudit = vi.fn();
 vi.mock("@/lib/audit", () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),
-  AuditAction: { CONTENT_REJECT: "CONTENT_REJECT" },
+  AuditAction: {
+    CONTENT_REJECT: "CONTENT_REJECT",
+    POST_REVISION_REJECT: "POST_REVISION_REJECT",
+  },
   AuditTargetType: { POST: "POST" },
 }));
 
@@ -64,6 +75,7 @@ function setSession(id: string, role: string) {
 describe("POST /api/moderation/[id]/reject", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRevisionFindFirst.mockResolvedValue(null);
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -223,6 +235,53 @@ describe("POST /api/moderation/[id]/reject", () => {
         title: "待审核帖子",
         reason: "内容不合规",
       }),
+      undefined,
+      expect.objectContaining({ post: expect.any(Object), auditLog: expect.any(Object) }),
+    );
+  });
+
+  it("应拒绝待审修订且保持公开帖子内容不变", async () => {
+    setSession("mod1", "MODERATOR");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      status: "PUBLISHED",
+      title: "公开原标题",
+      authorId: "u1",
+    });
+    mockRevisionFindFirst.mockResolvedValue({
+      id: "revision1",
+      title: "未通过的新标题",
+      status: "PENDING",
+    });
+    mockNotificationCreate.mockResolvedValue({});
+
+    const { POST } = await import("../../moderation/[id]/reject/route");
+    const res = await POST(
+      makeRequest({ reason: "修改内容不合规" }),
+      { params: { id: "p1" } },
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.post.title).toBe("公开原标题");
+    expect(data.post.status).toBe("PUBLISHED");
+    expect(mockPostUpdate).not.toHaveBeenCalled();
+    expect(mockRevisionUpdate).toHaveBeenCalledWith({
+      where: { id: "revision1" },
+      data: expect.objectContaining({
+        status: "REJECTED",
+        rejectionReason: "修改内容不合规",
+        reviewerId: "mod1",
+      }),
+    });
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      "mod1",
+      "POST_REVISION_REJECT",
+      "POST",
+      "p1",
+      { revisionId: "revision1", reason: "修改内容不合规" },
+      undefined,
+      expect.objectContaining({ postRevision: expect.any(Object) }),
     );
   });
 

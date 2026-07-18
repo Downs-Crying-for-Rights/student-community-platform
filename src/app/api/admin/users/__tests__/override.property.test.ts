@@ -14,6 +14,10 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
     },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      user: { update: (...args: unknown[]) => mockUserUpdate(...args) },
+      auditLog: { create: vi.fn() },
+    }),
   },
 }));
 
@@ -61,9 +65,12 @@ const arbOverrideFields = fc.record({
 // ==================== Helpers ====================
 
 function makeRequest(body: unknown): NextRequest {
+  const requestBody = body && typeof body === "object" && !Array.isArray(body)
+    ? { reason: "属性测试覆写原因", ...body as Record<string, unknown> }
+    : body;
   return new NextRequest("http://localhost:3000/api/admin/users/target1/override", {
     method: "PATCH",
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
     headers: { "Content-Type": "application/json" },
   });
 }
@@ -117,7 +124,12 @@ describe("Feature: super-admin-role, Property 5: 属性覆写 API 正确应用�
 
         expect(res.status).toBe(200);
         expect(mockUserUpdate).toHaveBeenCalledWith(
-          expect.objectContaining({ data: expectedData }),
+          expect.objectContaining({
+            data: expect.objectContaining({
+              ...expectedData,
+              securityVersion: { increment: 1 },
+            }),
+          }),
         );
       }),
       { numRuns: 100 },
@@ -180,13 +192,16 @@ describe("Feature: super-admin-role, Property 7: 覆写操作审计日志完整�
         });
 
         expect(mockLogAudit).toHaveBeenCalledTimes(1);
-        const [operatorId, action, targetType, targetId, details] = mockLogAudit.mock.calls[0];
+        const [operatorId, action, targetType, targetId, details, ipHash, tx] = mockLogAudit.mock.calls[0];
         expect(operatorId).toBe("sa1");
         expect(action).toBe("SUPER_ADMIN_OVERRIDE");
         expect(targetType).toBe("USER");
         expect(targetId).toBe("target1");
         expect(details).toHaveProperty("beforeValues");
         expect(details).toHaveProperty("afterValues");
+        expect(details).toHaveProperty("reason", "属性测试覆写原因");
+        expect(ipHash).toBeUndefined();
+        expect(tx).toEqual(expect.objectContaining({ user: expect.any(Object) }));
 
         // Verify before/after values match the changed fields
         for (const field of Object.keys(expectedData)) {

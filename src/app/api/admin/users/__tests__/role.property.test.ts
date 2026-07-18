@@ -14,6 +14,10 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
     },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      user: { update: (...args: unknown[]) => mockUserUpdate(...args) },
+      auditLog: { create: vi.fn() },
+    }),
   },
 }));
 
@@ -52,9 +56,12 @@ const arbUserId = fc.stringMatching(/^[a-z0-9]{8,16}$/);
 // ==================== Helpers ====================
 
 function makeRequest(body: unknown): NextRequest {
+  const requestBody = body && typeof body === "object" && !Array.isArray(body)
+    ? { reason: "属性测试角色变更", ...body as Record<string, unknown> }
+    : body;
   return new NextRequest("http://localhost:3000/api/admin/users/target1/role", {
     method: "PATCH",
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
     headers: { "Content-Type": "application/json" },
   });
 }

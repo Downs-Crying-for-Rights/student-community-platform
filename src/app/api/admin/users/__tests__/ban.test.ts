@@ -49,9 +49,12 @@ const mockGetServerSession = vi.mocked(getServerSession);
 // ==================== Helpers ====================
 
 function makeRequest(body: unknown): NextRequest {
+  const requestBody = body && typeof body === "object" && !Array.isArray(body)
+    ? { reason: "测试操作原因", ...body as Record<string, unknown> }
+    : body;
   return new NextRequest("http://localhost:3000/api/admin/users/u1/ban", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
     headers: { "Content-Type": "application/json" },
   });
 }
@@ -146,7 +149,10 @@ describe("POST /api/admin/users/[id]/ban", () => {
     expect(mockUserUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "u1" },
-        data: { isBanned: true },
+        data: expect.objectContaining({
+          isBanned: true,
+          securityVersion: { increment: 1 },
+        }),
       }),
     );
     expect(mockLogAudit).toHaveBeenCalledWith(
@@ -154,12 +160,12 @@ describe("POST /api/admin/users/[id]/ban", () => {
       "USER_BAN",
       "USER",
       "u1",
-      { action: "ban", shadowBan: false, reason: "管理员未填写处罚原因" },
+      { action: "ban", shadowBan: false, reason: "测试操作原因" },
       undefined,
       expect.anything(),
     );
     expect(mockPunishmentCreateMany).toHaveBeenCalledWith({ data: [{
-      userId: "u1", operatorId: "admin1", type: "ACCOUNT_BAN", action: "APPLIED", reason: "管理员未填写处罚原因",
+      userId: "u1", operatorId: "admin1", type: "ACCOUNT_BAN", action: "APPLIED", reason: "测试操作原因",
     }] });
   });
 
@@ -189,7 +195,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
       "SHADOW_BAN",
       "USER",
       "u1",
-      { action: "ban", shadowBan: true, reason: "管理员未填写处罚原因" },
+      { action: "ban", shadowBan: true, reason: "测试操作原因" },
       undefined,
       expect.anything(),
     );
@@ -214,7 +220,11 @@ describe("POST /api/admin/users/[id]/ban", () => {
     expect(mockUserUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "u1" },
-        data: { isBanned: false, isShadowBanned: false },
+        data: expect.objectContaining({
+          isBanned: false,
+          isShadowBanned: false,
+          securityVersion: { increment: 1 },
+        }),
       }),
     );
     expect(mockLogAudit).toHaveBeenCalledWith(
@@ -222,7 +232,7 @@ describe("POST /api/admin/users/[id]/ban", () => {
       "USER_UNBAN",
       "USER",
       "u1",
-      { action: "unban", shadowBan: false, reason: "管理员解除处罚" },
+      { action: "unban", shadowBan: false, reason: "测试操作原因" },
       undefined,
       expect.anything(),
     );
@@ -254,5 +264,17 @@ describe("POST /api/admin/users/[id]/ban", () => {
       undefined,
       expect.anything(),
     );
+  });
+
+  it("should reject a ban without a reason", async () => {
+    setSession("admin1", "ADMIN");
+
+    const { POST } = await import("../[id]/ban/route");
+    const res = await POST(makeRequest({ action: "ban", reason: undefined }), {
+      params: Promise.resolve({ id: "u1" }) as any,
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 });
