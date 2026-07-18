@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
-import { Heart, Bookmark, MessageCircle, Share2, User, Trash2, Loader2, Clock, HandHelping } from "lucide-react";
+import { Heart, Bookmark, MessageCircle, Share2, User, Trash2, Loader2, Clock, HandHelping, Pencil } from "lucide-react";
 import { ImageCarousel } from "@/components/post/ImageCarousel";
 import { CommentDrawer } from "@/components/comment/CommentDrawer";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
@@ -93,6 +93,11 @@ export default function PostDetailPage() {
   const [commentOpen, setCommentOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
 
   useEffect(() => {
     async function fetchPost() {
@@ -182,6 +187,38 @@ export default function PostDetailPage() {
       setDeleteLoading(false);
     }
   }, [postId, deleteLoading, router]);
+
+  const openEditDialog = () => {
+    if (!post) return;
+    setEditTitle(post.title);
+    setEditContent(post.content);
+    setEditError("");
+    setEditDialogOpen(true);
+  };
+
+  const handleEdit = async () => {
+    if (!post || editLoading) return;
+    setEditLoading(true);
+    setEditError("");
+    try {
+      const response = await fetch(`/api/posts/${postId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editTitle.trim(), content: editContent.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setEditError(data.error || "修改失败，请稍后重试");
+        return;
+      }
+      setPost((current) => current ? { ...current, ...data.post, status: "PENDING", isAuthor: true } : current);
+      setEditDialogOpen(false);
+    } catch {
+      setEditError("网络错误，请检查连接后重试");
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   const showPrivacyBanner =
     post?.board.zone === "PSYCHOLOGY" || post?.board.zone === "DCR";
@@ -376,6 +413,19 @@ export default function PostDetailPage() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  onClick={openEditDialog}
+                  className="min-h-[44px] min-w-[44px] gap-1.5"
+                  aria-label="编辑帖子"
+                >
+                  <Pencil className="h-5 w-5" />
+                  <span className="text-xs">编辑</span>
+                </Button>
+              )}
+
+              {isAuthor && (
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setDeleteDialogOpen(true)}
                   className="min-h-[44px] min-w-[44px] gap-1.5 text-destructive hover:text-destructive"
                   aria-label="删除帖子"
@@ -413,6 +463,44 @@ export default function PostDetailPage() {
                     <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
                   )}
                   确认删除
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+              <DialogHeader>
+                <DialogTitle>编辑帖子</DialogTitle>
+                <DialogDescription>修改后帖子会重新进入审核，审核通过前仅你和管理人员可见。</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <label className="block space-y-1 text-sm">
+                  <span className="font-medium">标题</span>
+                  <input
+                    value={editTitle}
+                    onChange={(event) => setEditTitle(event.target.value)}
+                    maxLength={30}
+                    className="w-full rounded-md border bg-background px-3 py-2"
+                  />
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span className="font-medium">正文</span>
+                  <textarea
+                    value={editContent}
+                    onChange={(event) => setEditContent(event.target.value)}
+                    maxLength={10000}
+                    rows={12}
+                    className="w-full resize-y rounded-md border bg-background px-3 py-2"
+                  />
+                </label>
+                {editError && <p role="alert" className="text-sm text-destructive">{editError}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={editLoading}>取消</Button>
+                <Button onClick={handleEdit} disabled={editLoading || !editTitle.trim() || !editContent.trim()}>
+                  {editLoading && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+                  保存并重新审核
                 </Button>
               </DialogFooter>
             </DialogContent>

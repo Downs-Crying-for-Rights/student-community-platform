@@ -102,6 +102,8 @@ export const updatePostSchema = z.object({
   tagIds: z.array(z.string().cuid()).max(5).optional(),
   images: z.array(z.string().url()).max(9).optional(),
   visibility: postVisibilitySchema.optional(),
+}).strict().refine((data) => Object.values(data).some((value) => value !== undefined), {
+  message: "请至少修改一项内容",
 });
 
 export const updateProfileSchema = z.object({

@@ -114,10 +114,8 @@ export const PATCH = withAuth(async (
       return NextResponse.json({ error: "只能编辑自己的帖子" }, { status: 403 });
     }
 
-    if (existing.board.zone === "PSYCHOLOGY") {
-      const access = await checkPostAccess(req.user, existing);
-      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
-    }
+    const access = await checkPostAccess(req.user, existing);
+    if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
 
     if (existing.status === "DELETED") {
       return NextResponse.json({ error: "已删除的帖子无法编辑" }, { status: 400 });
@@ -142,7 +140,7 @@ export const PATCH = withAuth(async (
     // Sensitive word scan on updated content
     const newTitle = title ?? existing.title;
     const newContent = content ?? existing.content;
-    const textToScan = `${newTitle} ${newContent}`;
+    const textToScan = `${newTitle} ${newContent} ${summary ?? ""}`;
     const matches = await scanContent(textToScan);
     if (matches.length > 0) {
       return NextResponse.json(
@@ -167,6 +165,7 @@ export const PATCH = withAuth(async (
     if (summary !== undefined) updateData.summary = summary;
     if (images !== undefined) updateData.images = images;
     if (visibility !== undefined) updateData.visibility = visibility;
+    updateData.status = "PENDING";
 
     // Handle tag updates
     if (tagIds !== undefined) {
@@ -194,10 +193,14 @@ export const PATCH = withAuth(async (
       "EDIT_POST",
       AuditTargetType.POST,
       id,
-      { updatedFields: Object.keys(updateData) },
+      {
+        updatedFields: [...Object.keys(updateData), ...(tagIds !== undefined ? ["tagIds"] : [])],
+        oldStatus: existing.status,
+        newStatus: "PENDING",
+      },
     );
 
-    return NextResponse.json({ post: anonymizePsychologyPost(post) });
+    return NextResponse.json({ post: { ...anonymizePsychologyPost(post), isAuthor: true } });
   } catch (error) {
     console.error("PATCH /api/posts/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

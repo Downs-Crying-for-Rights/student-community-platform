@@ -10,6 +10,7 @@ interface UserItem {
   email: string | null;
   nickname: string | null;
   avatar: string | null;
+  bio: string | null;
   role: string;
   isBanned: boolean;
   isShadowBanned: boolean;
@@ -17,10 +18,20 @@ interface UserItem {
   phone: string | null;
   psychAccess: boolean;
   dcrAccess: boolean;
+  dcrHelperAccess: boolean;
   dcrPledgeSigned: boolean;
   quizPassed: boolean;
   onboardingDone: boolean;
   createdAt: string;
+}
+
+interface AdminPostItem {
+  id: string;
+  title: string;
+  content: string;
+  status: "DRAFT" | "PENDING" | "PUBLISHED" | "REJECTED" | "DELETED";
+  createdAt: string;
+  board: { id: string; name: string };
 }
 
 interface PunishmentItem {
@@ -40,6 +51,7 @@ const ROLE_LABELS: Record<string, string> = {
 const OVERRIDE_FIELDS = [
   { key: "psychAccess", label: "心理交流区准入权限", description: "开启后可访问心理交流区；关闭后不能访问。申请审核状态不等于此权限。" },
   { key: "dcrAccess", label: "DCR 准入授权", description: "DCR 的授权开关。正常使用还需要已签署 DCR 私密区守则。" },
+  { key: "dcrHelperAccess", label: "DCR 互助工作台权限", description: "开启后可进入 DCR 互助工作台；通常由参与委托、认领或互助循环自动授予。" },
   { key: "dcrPledgeSigned", label: "已签署 DCR 私密区守则", description: "需与 DCR 准入授权同时开启，用户才能按统一准入规则使用 DCR。" },
   { key: "quizPassed", label: "已通过 DCR 入频考核", description: "只表示考核通过，不会单独授予 DCR 权限；仍需手机号、委托审核和准入授权。" },
   { key: "onboardingDone", label: "已完成平台新手引导", description: "表示完成平台引导；考核已通过的用户也不会再被强制跳转到引导页。" },
@@ -59,6 +71,14 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(false);
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
   const [overrideForm, setOverrideForm] = useState<Record<string, unknown>>({});
+  const [profileForm, setProfileForm] = useState({ nickname: "", bio: "", avatar: "", email: "", phone: "" });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [userPosts, setUserPosts] = useState<AdminPostItem[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [postForm, setPostForm] = useState({ title: "", content: "" });
+  const [postSaving, setPostSaving] = useState(false);
   const [punishments, setPunishments] = useState<PunishmentItem[]>([]);
   const [punishmentsLoading, setPunishmentsLoading] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -113,17 +133,100 @@ export default function AdminUsersPage() {
       violationCount: user.violationCount,
       psychAccess: user.psychAccess,
       dcrAccess: user.dcrAccess,
+      dcrHelperAccess: user.dcrHelperAccess,
       dcrPledgeSigned: user.dcrPledgeSigned,
       quizPassed: user.quizPassed,
       onboardingDone: user.onboardingDone,
     });
+    setProfileForm({
+      nickname: user.nickname ?? "",
+      bio: user.bio ?? "",
+      avatar: user.avatar ?? "",
+      email: user.email ?? "",
+      phone: user.phone ?? "",
+    });
+    setDetailError("");
     setPunishmentsLoading(true);
+    setPostsLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}/punishments`);
-      const data = res.ok ? await res.json() : { punishments: [] };
-      setPunishments(data.punishments ?? []);
+      const [punishmentResponse, postsResponse] = await Promise.all([
+        fetch(`/api/admin/users/${user.id}/punishments`),
+        fetch(`/api/admin/posts?authorId=${user.id}&pageSize=50`),
+      ]);
+      const punishmentData = punishmentResponse.ok ? await punishmentResponse.json() : { punishments: [] };
+      const postsData = postsResponse.ok ? await postsResponse.json() : { posts: [] };
+      setPunishments(punishmentData.punishments ?? []);
+      setUserPosts(postsData.posts ?? []);
     } finally {
       setPunishmentsLoading(false);
+      setPostsLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editingUser || profileSaving) return;
+    setProfileSaving(true);
+    setDetailError("");
+    try {
+      const response = await fetch(`/api/admin/users/${editingUser.id}/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nickname: profileForm.nickname.trim() || null,
+          bio: profileForm.bio.trim() || null,
+          avatar: profileForm.avatar.trim() || null,
+          email: profileForm.email.trim() || null,
+          phone: profileForm.phone.trim() || null,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setDetailError(data.error || "保存用户资料失败");
+        return;
+      }
+      setEditingUser((current) => current ? { ...current, ...data.user } : current);
+      await fetchUsers();
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handlePostStatus = async (postId: string, status: AdminPostItem["status"]) => {
+    const response = await fetch(`/api/admin/posts/${postId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (response.ok) {
+      setUserPosts((posts) => posts.map((post) => post.id === postId ? { ...post, status } : post));
+    }
+  };
+
+  const openPostEditor = (post: AdminPostItem) => {
+    setEditingPostId(post.id);
+    setPostForm({ title: post.title, content: post.content });
+    setDetailError("");
+  };
+
+  const handleSavePost = async () => {
+    if (!editingPostId || postSaving) return;
+    setPostSaving(true);
+    setDetailError("");
+    try {
+      const response = await fetch(`/api/admin/posts/${editingPostId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: postForm.title.trim(), content: postForm.content.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setDetailError(data.error || "保存帖子失败");
+        return;
+      }
+      setUserPosts((posts) => posts.map((post) => post.id === editingPostId ? { ...post, ...data.post } : post));
+      setEditingPostId(null);
+    } finally {
+      setPostSaving(false);
     }
   };
 
@@ -137,7 +240,7 @@ export default function AdminUsersPage() {
     if (overrideForm.violationCount !== editingUser.violationCount) {
       changes.violationCount = Number(overrideForm.violationCount);
     }
-    for (const field of ["psychAccess", "dcrAccess", "dcrPledgeSigned", "quizPassed", "onboardingDone"] as const) {
+    for (const field of ["psychAccess", "dcrAccess", "dcrHelperAccess", "dcrPledgeSigned", "quizPassed", "onboardingDone"] as const) {
       if (overrideForm[field] !== undefined && overrideForm[field] !== editingUser[field]) {
         changes[field] = overrideForm[field];
       }
@@ -326,11 +429,6 @@ export default function AdminUsersPage() {
 
       {editingUser && (
         <Card className="relative mt-6 overflow-hidden" data-testid="override-panel">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden select-none">
-            <div className="-rotate-12 whitespace-pre-line text-center text-xl font-semibold leading-10 text-red-700/[0.09]">
-              {`敏感内容，严禁外传\n${session?.user?.phone || session?.user?.email || session?.user?.id || "管理员身份未知"}\n${new Date().toLocaleDateString("zh-CN").replaceAll("/", "-")}  查看用户详情${isSuperAdmin ? " / 更新覆写属性" : ""}`}
-            </div>
-          </div>
           <CardHeader>
             <CardTitle className="text-base">
               用户详情 - {editingUser.nickname || editingUser.id}
@@ -343,6 +441,19 @@ export default function AdminUsersPage() {
               <div><span className="text-muted-foreground">角色：</span>{ROLE_LABELS[editingUser.role] || editingUser.role}</div>
               <div><span className="text-muted-foreground">注册时间：</span>{new Date(editingUser.createdAt).toLocaleString("zh-CN")}</div>
             </div>
+
+            {isSuperAdmin && <div className="space-y-4 rounded-lg border bg-background/95 p-4">
+              <div><h3 className="font-semibold">编辑身份资料与联系方式</h3><p className="mt-1 text-xs text-muted-foreground">手机号和邮箱必须保持唯一；昵称和简介会经过敏感内容与个人信息检查。</p></div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 text-sm"><span className="font-medium">昵称</span><input value={profileForm.nickname} onChange={(event) => setProfileForm((form) => ({ ...form, nickname: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2" /></label>
+                <label className="space-y-1 text-sm"><span className="font-medium">手机号</span><input value={profileForm.phone} onChange={(event) => setProfileForm((form) => ({ ...form, phone: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2" placeholder="未绑定" /></label>
+                <label className="space-y-1 text-sm"><span className="font-medium">邮箱</span><input type="email" value={profileForm.email} onChange={(event) => setProfileForm((form) => ({ ...form, email: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2" placeholder="未设置" /></label>
+                <label className="space-y-1 text-sm"><span className="font-medium">头像 URL</span><input value={profileForm.avatar} onChange={(event) => setProfileForm((form) => ({ ...form, avatar: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2" placeholder="留空表示清除" /></label>
+              </div>
+              <label className="block space-y-1 text-sm"><span className="font-medium">个人简介</span><textarea value={profileForm.bio} onChange={(event) => setProfileForm((form) => ({ ...form, bio: event.target.value }))} rows={3} maxLength={200} className="w-full rounded-md border bg-background px-3 py-2" /></label>
+              {detailError && <p className="text-sm text-destructive" role="alert">{detailError}</p>}
+              <Button size="sm" onClick={handleSaveProfile} disabled={profileSaving}>{profileSaving ? "保存中..." : "保存身份资料"}</Button>
+            </div>}
 
             <div className="rounded-lg border border-amber-200 bg-amber-50/95 p-4 text-sm text-amber-950">
               <div className="font-semibold">帖子影子隐藏是什么？</div>
@@ -393,6 +504,16 @@ export default function AdminUsersPage() {
                 </div>
               )}
               <Button size="sm" variant="outline" onClick={() => setEditingUser(null)}>关闭详情</Button>
+            </div>
+
+            <div className="space-y-3 rounded-lg border bg-background/95 p-4">
+              <div><h3 className="font-semibold">该用户的帖子</h3><p className="mt-1 text-xs text-muted-foreground">显示最多 50 篇帖子，可进入详情或调整审核状态。</p></div>
+              {postsLoading ? <p className="text-sm text-muted-foreground">加载中...</p> : userPosts.length === 0 ? <p className="text-sm text-muted-foreground">暂无帖子</p> : <div className="space-y-2">
+                {userPosts.map((post) => <div key={post.id} className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center">
+                  <div className="min-w-0 flex-1">{editingPostId === post.id ? <div className="space-y-2"><input value={postForm.title} maxLength={30} onChange={(event) => setPostForm((form) => ({ ...form, title: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm" /><textarea value={postForm.content} maxLength={10000} rows={5} onChange={(event) => setPostForm((form) => ({ ...form, content: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm" /><div className="flex gap-2"><Button size="sm" onClick={handleSavePost} disabled={postSaving || !postForm.title.trim() || !postForm.content.trim()}>保存正文</Button><Button size="sm" variant="outline" onClick={() => setEditingPostId(null)}>取消</Button></div></div> : <><a href={`/post/${post.id}`} className="font-medium hover:underline">{post.title}</a><p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{post.content}</p><p className="mt-1 text-xs text-muted-foreground">{post.board.name} · {new Date(post.createdAt).toLocaleString("zh-CN")}</p></>}</div>
+                  <div className="flex gap-2 sm:flex-col"><Button size="sm" variant="outline" onClick={() => openPostEditor(post)}>编辑内容</Button><select aria-label={`修改帖子 ${post.title} 的状态`} value={post.status} onChange={(event) => handlePostStatus(post.id, event.target.value as AdminPostItem["status"])} className="rounded-md border bg-background px-2 py-1 text-sm"><option value="DRAFT">草稿</option><option value="PENDING">待审核</option><option value="PUBLISHED">已发布</option><option value="REJECTED">已拒绝</option><option value="DELETED">已删除</option></select></div>
+                </div>)}
+              </div>}
             </div>
           </CardContent>
         </Card>

@@ -8,6 +8,7 @@ const querySchema = paginationSchema.extend({
   status: z.enum(["DRAFT", "PENDING", "PUBLISHED", "REJECTED", "DELETED"]).optional(),
   search: z.string().max(100).optional(),
   boardId: z.string().optional(),
+  authorId: z.string().cuid().optional(),
 });
 
 /**
@@ -23,6 +24,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       status: searchParams.get("status") ?? undefined,
       search: searchParams.get("search") ?? undefined,
       boardId: searchParams.get("boardId") ?? undefined,
+      authorId: searchParams.get("authorId") ?? undefined,
     });
 
     if (!parsed.success) {
@@ -32,12 +34,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { page, pageSize, status, search, boardId } = parsed.data;
+    const { page, pageSize, status, search, boardId, authorId } = parsed.data;
     const skip = (page - 1) * pageSize;
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (boardId) where.boardId = boardId;
+    if (authorId) where.authorId = authorId;
     if (search) {
       where.OR = [
         { title: { contains: search, mode: "insensitive" } },

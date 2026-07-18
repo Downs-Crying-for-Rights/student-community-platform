@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { hasMinimumRole } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { AdminNav } from "@/components/layout/AdminNav";
+import { AdminWatermark } from "@/components/layout/AdminWatermark";
 import type { Role } from "@prisma/client";
 
 /**
@@ -42,6 +43,10 @@ export default async function AdminLayout({
 
   return (
     <>
+      <AdminWatermark
+        identity={session.user.phone || session.user.email || session.user.id}
+        date={new Date().toLocaleDateString("zh-CN").replaceAll("/", "-")}
+      />
       <AdminNav isSuperAdmin={role === "SUPER_ADMIN"} />
       {children}
     </>

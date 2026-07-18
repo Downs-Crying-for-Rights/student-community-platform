@@ -331,6 +331,9 @@ describe("PATCH /api/posts/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(data.post.title).toBe("新标题");
+    expect(mockPostUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ title: "新标题", status: "PENDING" }),
+    }));
 
     // Should save edit history
     expect(mockPostEditHistoryCreate).toHaveBeenCalledWith({
@@ -340,6 +343,25 @@ describe("PATCH /api/posts/[id]", () => {
         oldContent: "原内容",
       },
     });
+  });
+
+  it("应拒绝没有任何修改字段的请求", async () => {
+    setSession("user1", "USER");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      authorId: "user1",
+      title: "原标题",
+      content: "原内容",
+      status: "PUBLISHED",
+      visibility: "PUBLIC",
+      board: { zone: "PUBLIC" },
+    });
+
+    const { PATCH } = await import("../../[id]/route");
+    const res = await PATCH(makeRequest("PATCH", {}), { params: { id: "p1" } });
+
+    expect(res.status).toBe(400);
+    expect(mockPostUpdate).not.toHaveBeenCalled();
   });
 
   it("应返回 400 当编辑内容包含敏感词", async () => {

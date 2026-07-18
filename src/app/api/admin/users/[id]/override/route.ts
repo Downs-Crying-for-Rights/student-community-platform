@@ -9,6 +9,7 @@ const overrideSchema = z.object({
   violationCount: z.number().int().min(0).optional(),
   psychAccess: z.boolean().optional(),
   dcrAccess: z.boolean().optional(),
+  dcrHelperAccess: z.boolean().optional(),
   dcrPledgeSigned: z.boolean().optional(),
   quizPassed: z.boolean().optional(),
   onboardingDone: z.boolean().optional(),
@@ -16,7 +17,7 @@ const overrideSchema = z.object({
 }).strict();
 
 const OVERRIDE_FIELDS = [
-  "violationCount", "psychAccess", "dcrAccess",
+  "violationCount", "psychAccess", "dcrAccess", "dcrHelperAccess",
   "dcrPledgeSigned", "quizPassed", "onboardingDone", "role",
 ] as const;
 
@@ -66,6 +67,19 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     const updatedUser = await prisma.user.update({
       where: { id },
       data: updateFields,
+      select: {
+        id: true,
+        nickname: true,
+        role: true,
+        violationCount: true,
+        psychAccess: true,
+        dcrAccess: true,
+        dcrHelperAccess: true,
+        dcrPledgeSigned: true,
+        quizPassed: true,
+        onboardingDone: true,
+        updatedAt: true,
+      },
     });
 
     await logAudit(
