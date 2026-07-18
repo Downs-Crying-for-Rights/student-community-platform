@@ -49,7 +49,6 @@ const arbNonSuperAdminRole = fc.constantFrom<Role>(...NON_SUPER_ADMIN_ROLES);
 const arbRole = fc.constantFrom<Role>(...ALL_ROLES);
 
 const arbOverrideFields = fc.record({
-  reputationScore: fc.option(fc.integer({ min: 0, max: 10000 }), { nil: undefined }),
   violationCount: fc.option(fc.integer({ min: 0, max: 100 }), { nil: undefined }),
   psychAccess: fc.option(fc.boolean(), { nil: undefined }),
   dcrAccess: fc.option(fc.boolean(), { nil: undefined }),
@@ -77,7 +76,6 @@ function setSession(id: string, role: string) {
 
 const defaultUser = {
   id: "target1",
-  reputationScore: 100,
   violationCount: 0,
   psychAccess: false,
   dcrAccess: false,

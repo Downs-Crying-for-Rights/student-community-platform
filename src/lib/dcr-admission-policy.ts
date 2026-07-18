@@ -1,6 +1,3 @@
-import { computeTrustLevel, type TrustLevel } from "@/lib/trust-level";
-
-export const DCR_MIN_TRUST_LEVEL: TrustLevel = 2;
 export const DCR_MAX_VIOLATION_COUNT_EXCLUSIVE = 3;
 export const DCR_COLD_START_LIMIT = 50;
 
@@ -14,7 +11,6 @@ export type DcrAdmissionStage =
 export type DcrAdmissionCode =
   | "PHONE_REQUIRED"
   | "QUIZ_REQUIRED"
-  | "TRUST_LEVEL_TOO_LOW"
   | "TOO_MANY_VIOLATIONS"
   | "CASE_REQUIRED"
   | "CASE_NOT_OWNED"
@@ -33,7 +29,6 @@ export interface DcrAdmissionUser {
   phone?: string | null;
   phoneVerified?: boolean;
   quizPassed: boolean;
-  reputationScore?: number | null;
   violationCount?: number;
   dcrAccess: boolean;
   dcrPledgeSigned?: boolean;
@@ -198,9 +193,6 @@ export function evaluateDcrAdmission(context: DcrAdmissionContext): DcrAdmission
   }
   if ((user.violationCount ?? 0) >= DCR_MAX_VIOLATION_COUNT_EXCLUSIVE) {
     return deny(stage, "TOO_MANY_VIOLATIONS", "申请人违规记录过多");
-  }
-  if (computeTrustLevel(user.reputationScore) < DCR_MIN_TRUST_LEVEL) {
-    return deny(stage, "TRUST_LEVEL_TOO_LOW", "申请人信誉等级不足");
   }
   if ((context.activeDcrUserCount ?? 0) >= DCR_COLD_START_LIMIT) {
     return deny(stage, "DCR_CAPACITY_REACHED", `DCR 区已达冷启动限额（${DCR_COLD_START_LIMIT} 名用户）`);

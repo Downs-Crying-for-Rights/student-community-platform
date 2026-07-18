@@ -24,10 +24,6 @@ BEGIN
       "closedAt" = CASE
         WHEN task."status"::text IN ('COMPLETED', 'CLOSED') THEN COALESCE(session."closedAt", task."updatedAt")
         ELSE session."closedAt"
-      END,
-      "rewardGrantedAt" = CASE
-        WHEN task."status"::text = 'COMPLETED' THEN COALESCE(session."closedAt", task."updatedAt")
-        ELSE NULL
       END
     FROM "MutualAidTask" AS task
     WHERE session."taskId" = task."id";

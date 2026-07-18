@@ -24,7 +24,6 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
         bio: true,
         role: true,
         createdAt: true,
-        reputationScore: true,
         onboardingDone: true,
         psychAccess: true,
         dcrAccess: true,

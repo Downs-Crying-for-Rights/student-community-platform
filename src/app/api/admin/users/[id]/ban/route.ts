@@ -38,6 +38,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
 
     let updateData: Record<string, boolean>;
     let auditAction: string;
+    const punishmentReason = reason?.trim() || (action === "unban" ? "管理员解除处罚" : "管理员未填写处罚原因");
 
     if (action === "ban") {
       if (shadowBan) {
@@ -53,25 +54,46 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
       auditAction = AuditAction.USER_UNBAN;
     }
 
-    const updatedUser = await prisma.user.update({
-      where: { id },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        nickname: true,
-        isBanned: true,
-        isShadowBanned: true,
-      },
-    });
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id },
+        data: updateData,
+        select: {
+          id: true,
+          email: true,
+          nickname: true,
+          isBanned: true,
+          isShadowBanned: true,
+        },
+      });
 
-    await logAudit(
-      req.user.id,
-      auditAction,
-      AuditTargetType.USER,
-      id,
-      { action, shadowBan, reason },
-    );
+      const punishmentRecords = action === "ban"
+        ? [{
+            userId: id,
+            operatorId: req.user.id,
+            type: shadowBan ? "POST_SHADOW_HIDE" as const : "ACCOUNT_BAN" as const,
+            action: "APPLIED" as const,
+            reason: punishmentReason,
+          }]
+        : [
+            ...(targetUser.isBanned ? [{ userId: id, operatorId: req.user.id, type: "ACCOUNT_BAN" as const, action: "REVOKED" as const, reason: punishmentReason }] : []),
+            ...(targetUser.isShadowBanned ? [{ userId: id, operatorId: req.user.id, type: "POST_SHADOW_HIDE" as const, action: "REVOKED" as const, reason: punishmentReason }] : []),
+          ];
+      if (punishmentRecords.length > 0) {
+        await tx.userPunishment.createMany({ data: punishmentRecords });
+      }
+
+      await logAudit(
+        req.user.id,
+        auditAction,
+        AuditTargetType.USER,
+        id,
+        { action, shadowBan, reason: punishmentReason },
+        undefined,
+        tx,
+      );
+      return updated;
+    });
 
     return NextResponse.json({ user: updatedUser });
   } catch {

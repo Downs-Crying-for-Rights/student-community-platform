@@ -5,11 +5,9 @@ const mocks = vi.hoisted(() => ({
   taskFindUnique: vi.fn(),
   sessionUpdate: vi.fn(),
   sessionFindUniqueOrThrow: vi.fn(),
-  sessionUpdateMany: vi.fn(),
   sessionFindMany: vi.fn(),
   taskUpdate: vi.fn(),
   timelineCreate: vi.fn(),
-  userUpdate: vi.fn(),
   logAudit: vi.fn(),
   notifyUsers: vi.fn(),
 }));
@@ -19,12 +17,10 @@ vi.mock("@/lib/prisma", () => {
     helpSession: {
       update: mocks.sessionUpdate,
       findUniqueOrThrow: mocks.sessionFindUniqueOrThrow,
-      updateMany: mocks.sessionUpdateMany,
       findMany: mocks.sessionFindMany,
     },
     mutualAidTask: { findUnique: mocks.taskFindUnique, updateMany: mocks.taskUpdate },
     taskTimelineEvent: { create: mocks.timelineCreate },
-    user: { update: mocks.userUpdate },
   };
   return {
     default: {
@@ -75,7 +71,6 @@ function task() {
         status: "EVIDENCE_PENDING",
         requesterConfirmed: true,
         helperConfirmed: false,
-        rewardGrantedAt: null,
         closedAt: null,
         evidenceRoom: { items: [{ type: "NOTE" }, { type: "OUTCOME" }] },
       },
@@ -86,7 +81,6 @@ function task() {
         status: "IN_PROGRESS",
         requesterConfirmed: false,
         helperConfirmed: false,
-        rewardGrantedAt: null,
         closedAt: null,
         evidenceRoom: { items: [] },
       },
@@ -102,12 +96,11 @@ describe("POST /api/dcr/tasks/[id]/close", () => {
       ...task().helpSessions[0],
       helperConfirmed: true,
     });
-    mocks.sessionUpdateMany.mockResolvedValue({ count: 1 });
     mocks.sessionFindMany.mockResolvedValue([{ status: "COMPLETED" }, { status: "IN_PROGRESS" }]);
     mocks.taskUpdate.mockResolvedValue({ count: 1 });
   });
 
-  it("completes and rewards only the authenticated helper's session", async () => {
+  it("completes only the authenticated helper's session", async () => {
     const response = await POST(
       request("helper1", { action: "confirm", sessionId: session1 }),
       { params: { id: "task1" } },
@@ -116,15 +109,6 @@ describe("POST /api/dcr/tasks/[id]/close", () => {
 
     expect(response.status).toBe(200);
     expect(data).toMatchObject({ status: "IN_PROGRESS", sessionId: session1, sessionStatus: "COMPLETED" });
-    expect(mocks.sessionUpdateMany).toHaveBeenCalledWith({
-      where: { id: session1, status: "COMPLETED", rewardGrantedAt: null },
-      data: { rewardGrantedAt: expect.any(Date) },
-    });
-    expect(mocks.userUpdate).toHaveBeenCalledOnce();
-    expect(mocks.userUpdate).toHaveBeenCalledWith({
-      where: { id: "helper1" },
-      data: { reputationScore: { increment: 10 } },
-    });
     expect(mocks.taskUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: "IN_PROGRESS" }),
     }));
@@ -133,16 +117,16 @@ describe("POST /api/dcr/tasks/[id]/close", () => {
     }));
   });
 
-  it("does not grant reputation when the session reward was already claimed", async () => {
-    mocks.sessionUpdateMany.mockResolvedValueOnce({ count: 0 });
-
+  it("does not write a score when completing a session", async () => {
     const response = await POST(
       request("helper1", { action: "confirm", sessionId: session1 }),
       { params: { id: "task1" } },
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.userUpdate).not.toHaveBeenCalled();
+    expect(mocks.sessionUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "COMPLETED" }),
+    }));
   });
 
   it("notifies the counterpart when a close request is awaiting confirmation", async () => {

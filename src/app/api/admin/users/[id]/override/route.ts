@@ -6,7 +6,6 @@ import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { z } from "zod";
 
 const overrideSchema = z.object({
-  reputationScore: z.number().int().min(0).optional(),
   violationCount: z.number().int().min(0).optional(),
   psychAccess: z.boolean().optional(),
   dcrAccess: z.boolean().optional(),
@@ -17,7 +16,7 @@ const overrideSchema = z.object({
 }).strict();
 
 const OVERRIDE_FIELDS = [
-  "reputationScore", "violationCount", "psychAccess", "dcrAccess",
+  "violationCount", "psychAccess", "dcrAccess",
   "dcrPledgeSigned", "quizPassed", "onboardingDone", "role",
 ] as const;
 

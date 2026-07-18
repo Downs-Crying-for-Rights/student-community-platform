@@ -57,7 +57,6 @@ function setSession(id: string, role: string) {
 
 const defaultUser = {
   id: "u1",
-  reputationScore: 100,
   violationCount: 0,
   psychAccess: false,
   dcrAccess: false,
@@ -77,7 +76,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
   it("应返回 401 当用户未登录", async () => {
     mockGetServerSession.mockResolvedValue(null);
     const { PATCH } = await import("../[id]/override/route");
-    const res = await PATCH(makeRequest({ reputationScore: 50 }), {
+    const res = await PATCH(makeRequest({ violationCount: 1 }), {
       params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(401);
@@ -86,7 +85,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
   it("应返回 403 当非 ADMIN 用户访问", async () => {
     setSession("user1", "USER");
     const { PATCH } = await import("../[id]/override/route");
-    const res = await PATCH(makeRequest({ reputationScore: 50 }), {
+    const res = await PATCH(makeRequest({ violationCount: 1 }), {
       params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(403);
@@ -95,7 +94,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
   it("应返回 403 当 ADMIN（非 SUPER_ADMIN）用户访问", async () => {
     setSession("admin1", "ADMIN");
     const { PATCH } = await import("../[id]/override/route");
-    const res = await PATCH(makeRequest({ reputationScore: 50 }), {
+    const res = await PATCH(makeRequest({ violationCount: 1 }), {
       params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
@@ -107,7 +106,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     setSession("sa1", "SUPER_ADMIN");
     mockUserFindUnique.mockResolvedValue(null);
     const { PATCH } = await import("../[id]/override/route");
-    const res = await PATCH(makeRequest({ reputationScore: 50 }), {
+    const res = await PATCH(makeRequest({ violationCount: 1 }), {
       params: Promise.resolve({ id: "nonexistent" }) as any,
     });
     const data = await res.json();
@@ -129,31 +128,31 @@ describe("PATCH /api/admin/users/[id]/override", () => {
   it("应返回 400 当字段值类型错误", async () => {
     setSession("sa1", "SUPER_ADMIN");
     const { PATCH } = await import("../[id]/override/route");
-    const res = await PATCH(makeRequest({ reputationScore: "abc" }), {
+    const res = await PATCH(makeRequest({ violationCount: "abc" }), {
       params: Promise.resolve({ id: "u1" }) as any,
     });
     expect(res.status).toBe(400);
   });
 
-  it("应成功覆写 reputationScore 并记录审计日志", async () => {
+  it("应成功覆写违规次数并记录审计日志", async () => {
     setSession("sa1", "SUPER_ADMIN");
     mockUserFindUnique.mockResolvedValue({ ...defaultUser });
-    const updatedUser = { ...defaultUser, reputationScore: 500 };
+    const updatedUser = { ...defaultUser, violationCount: 5 };
     mockUserUpdate.mockResolvedValue(updatedUser);
     mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../[id]/override/route");
-    const res = await PATCH(makeRequest({ reputationScore: 500 }), {
+    const res = await PATCH(makeRequest({ violationCount: 5 }), {
       params: Promise.resolve({ id: "u1" }) as any,
     });
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data.user.reputationScore).toBe(500);
+    expect(data.user.violationCount).toBe(5);
     expect(mockUserUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "u1" },
-        data: { reputationScore: 500 },
+        data: { violationCount: 5 },
       }),
     );
     expect(mockLogAudit).toHaveBeenCalledWith(
@@ -161,20 +160,20 @@ describe("PATCH /api/admin/users/[id]/override", () => {
       "SUPER_ADMIN_OVERRIDE",
       "USER",
       "u1",
-      { beforeValues: { reputationScore: 100 }, afterValues: { reputationScore: 500 } },
+      { beforeValues: { violationCount: 0 }, afterValues: { violationCount: 5 } },
     );
   });
 
   it("应成功覆写多个字段", async () => {
     setSession("sa1", "SUPER_ADMIN");
     mockUserFindUnique.mockResolvedValue({ ...defaultUser });
-    const updatedUser = { ...defaultUser, reputationScore: 200, violationCount: 5, psychAccess: true };
+    const updatedUser = { ...defaultUser, violationCount: 5, psychAccess: true };
     mockUserUpdate.mockResolvedValue(updatedUser);
     mockLogAudit.mockResolvedValue({});
 
     const { PATCH } = await import("../[id]/override/route");
     const res = await PATCH(
-      makeRequest({ reputationScore: 200, violationCount: 5, psychAccess: true }),
+      makeRequest({ violationCount: 5, psychAccess: true }),
       { params: Promise.resolve({ id: "u1" }) as any },
     );
     const data = await res.json();
@@ -182,7 +181,7 @@ describe("PATCH /api/admin/users/[id]/override", () => {
     expect(res.status).toBe(200);
     expect(mockUserUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { reputationScore: 200, violationCount: 5, psychAccess: true },
+        data: { violationCount: 5, psychAccess: true },
       }),
     );
     expect(mockLogAudit).toHaveBeenCalledWith(
@@ -191,8 +190,8 @@ describe("PATCH /api/admin/users/[id]/override", () => {
       "USER",
       "u1",
       {
-        beforeValues: { reputationScore: 100, violationCount: 0, psychAccess: false },
-        afterValues: { reputationScore: 200, violationCount: 5, psychAccess: true },
+        beforeValues: { violationCount: 0, psychAccess: false },
+        afterValues: { violationCount: 5, psychAccess: true },
       },
     );
   });

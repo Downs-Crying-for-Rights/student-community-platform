@@ -78,7 +78,7 @@ export const knowledgeArticles = [
   },
   {
     title: "DCR 区准入说明",
-    content: "# DCR 区准入说明\n\nDCR 私密区采用白名单准入机制。\n\n## 准入条件\n\n- 账号年龄满 7 天\n- 无违规记录\n- 信誉等级良好\n- 签署私密区守则声明\n\n## 申请流程\n\n1. 在 DCR 入口页面点击申请按钮\n2. 阅读并签署守则声明\n3. 等待管理员审核",
+    content: "# DCR 区准入说明\n\nDCR 私密区采用白名单准入机制。\n\n## 准入条件\n\n- 完成手机号验证\n- 通过 DCR 入频考核\n- 提交并通过委托审核\n- 违规记录未达到准入上限\n- 签署私密区守则声明\n\n## 申请流程\n\n1. 完成手机号验证和入频考核\n2. 提交一份明确的 DCR 委托\n3. 阅读并签署守则声明\n4. 等待管理员审核",
     category: "guide",
     visibility: "DCR_ONLY" as const,
   },

@@ -15,7 +15,6 @@ const eligibleUser: DcrAdmissionUser = {
   createdAt: new Date("2026-07-01T00:00:00.000Z"),
   phone: "13800138000",
   quizPassed: true,
-  reputationScore: 61,
   violationCount: 0,
   dcrAccess: false,
   dcrPledgeSigned: false,
@@ -82,21 +81,17 @@ describe("evaluateDcrAdmission", () => {
     expect(decision).toMatchObject({ allowed: false, code: "CASE_NOT_OWNED" });
   });
 
-  it("信誉 60 拒绝、61 允许，和 trust level L2 边界一致", () => {
-    const base = {
+  it("不使用信誉分，满足明确条件即可批准", () => {
+    const context = {
       stage: "APPROVE_APPLICATION" as const,
+      user: eligibleUser,
       application: pendingApplication,
       case: approvedCase,
       activeDcrUserCount: 0,
       now,
     };
 
-    expect(evaluateDcrAdmission({
-      ...base,
-      user: { ...eligibleUser, reputationScore: 60 },
-    })).toMatchObject({ allowed: false, code: "TRUST_LEVEL_TOO_LOW" });
-
-    expect(evaluateDcrAdmission({ ...base, user: eligibleUser }).allowed).toBe(true);
+    expect(evaluateDcrAdmission(context).allowed).toBe(true);
   });
 
   it("冷启动上限达到时拒绝批准", () => {

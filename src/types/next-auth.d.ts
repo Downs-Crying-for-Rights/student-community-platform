@@ -8,6 +8,10 @@ declare module "next-auth" {
       id: string;
       role: Role;
       phone: string | null;
+      nickname?: string | null;
+      onboardingDone?: boolean;
+      quizPassed?: boolean;
+      dcrAccess?: boolean;
     } & DefaultSession["user"];
   }
 }
@@ -17,5 +21,9 @@ declare module "next-auth/jwt" {
     id: string;
     role: string;
     phone: string | null;
+    nickname?: string | null;
+    onboardingDone?: boolean;
+    quizPassed?: boolean;
+    dcrAccess?: boolean;
   }
 }

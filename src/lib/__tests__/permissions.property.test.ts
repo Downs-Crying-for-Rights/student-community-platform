@@ -12,7 +12,6 @@ import {
   canAccessZone,
   type ABACUserAttributes,
 } from "../abac";
-import { computeTrustLevel } from "../trust-level";
 import type { Role } from "@prisma/client";
 
 // ==================== Generators ====================
@@ -44,7 +43,6 @@ function arbABACUser(): fc.Arbitrary<ABACUserAttributes> {
     psychAccess: fc.boolean(),
     dcrAccess: fc.boolean(),
     dcrPledgeSigned: fc.boolean(),
-    reputationScore: fc.integer({ min: 0, max: 1000 }),
     role: arbRole,
   });
 }
@@ -152,15 +150,14 @@ function arbABACUserNonSuperAdmin(): fc.Arbitrary<ABACUserAttributes> {
     psychAccess: fc.boolean(),
     dcrAccess: fc.boolean(),
     dcrPledgeSigned: fc.boolean(),
-    reputationScore: fc.integer({ min: 0, max: 1000 }),
     role: arbExistingRole,
   });
 }
 
-// ==================== Property 2: ABAC 信任等级限制正确性 ====================
+// ==================== Property 2: ABAC 明确限制正确性 ====================
 
-describe("属性 2: ABAC 信任等级限制正确性", () => {
-  it("信任等级 0 的用户，maxDailyPosts = 1", () => {
+describe("属性 2: ABAC 明确限制正确性", () => {
+  it("普通用户的 maxDailyPosts = 5", () => {
     const user: ABACUserAttributes = {
       createdAt: new Date(),
       violationCount: 0,
@@ -169,11 +166,10 @@ describe("属性 2: ABAC 信任等级限制正确性", () => {
       psychAccess: false,
       dcrAccess: false,
       dcrPledgeSigned: false,
-      reputationScore: 10, // trustLevel 0
       role: "USER",
     };
     const policy = evaluateABACPolicy(user);
-    expect(policy.maxDailyPosts).toBe(1);
+    expect(policy.maxDailyPosts).toBe(5);
     expect(policy.isNewcomer).toBe(true);
     expect(policy.canAccessPrivateZone).toBe(false);
   });
@@ -187,14 +183,13 @@ describe("属性 2: ABAC 信任等级限制正确性", () => {
       psychAccess: false,
       dcrAccess: false,
       dcrPledgeSigned: false,
-      reputationScore: 100,
       role: "USER",
     };
     const policy = evaluateABACPolicy(user);
     expect(policy.maxDailyPosts).toBe(1);
   });
 
-  it("信任等级 < 2 的用户不可进入私密区", () => {
+  it("没有专区准入权限的用户不可进入私密区", () => {
     const user: ABACUserAttributes = {
       createdAt: new Date(),
       violationCount: 0,
@@ -203,7 +198,6 @@ describe("属性 2: ABAC 信任等级限制正确性", () => {
       psychAccess: false,
       dcrAccess: false,
       dcrPledgeSigned: false,
-      reputationScore: 20, // trustLevel 0
       role: "USER",
     };
     const policy = evaluateABACPolicy(user);
@@ -336,7 +330,6 @@ describe("Feature: super-admin-role, Property 3: SUPER_ADMIN 绕过所有 ABAC �
     psychAccess: fc.boolean(),
     dcrAccess: fc.boolean(),
     dcrPledgeSigned: fc.boolean(),
-    reputationScore: fc.integer({ min: 0, max: 1000 }),
     role: fc.constant("SUPER_ADMIN" as Role),
   });
 

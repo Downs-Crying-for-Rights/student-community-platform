@@ -1,6 +1,5 @@
 import type { Role } from "@prisma/client";
 import { getAccountAgeDays } from "@/lib/utils";
-import { computeTrustLevel, getDailyPostLimit, canPostInPsychology, canSendDM as tlCanSendDM, type TrustLevel } from "@/lib/trust-level";
 import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
 
 // ==================== Types ====================
@@ -17,7 +16,6 @@ export interface ABACUserAttributes {
   psychAccess: boolean;
   dcrAccess: boolean;
   dcrPledgeSigned: boolean;
-  reputationScore: number;
   role: Role;
 }
 
@@ -35,12 +33,10 @@ export interface ABACPolicyResult {
   canAccessDCR: boolean;
   /** Whether the user can access the psychology zone */
   canAccessPsychology: boolean;
-  /** Whether the user is considered a newcomer (account < 7 days / trustLevel < 2) */
+  /** Whether the account is less than seven days old */
   isNewcomer: boolean;
   /** Whether the user has passed the onboarding quiz */
   hasPassedQuiz: boolean;
-  /** Current trust level (0-5) */
-  trustLevel: TrustLevel;
   /** Reasons for any active restrictions */
   restrictions: string[];
 }
@@ -50,8 +46,8 @@ export interface ABACPolicyResult {
 /** Account age threshold in days for newcomer restrictions (legacy, now covered by trustLevel) */
 export const NEWCOMER_AGE_DAYS = 7;
 
-/** Daily post limit for newcomers (account age < 7 days) — legacy, now trustLevel-based */
-export const NEWCOMER_DAILY_POST_LIMIT = 3;
+/** Daily post limit for ordinary users */
+export const DEFAULT_DAILY_POST_LIMIT = 5;
 
 /** Violation count threshold that triggers stricter limits */
 export const VIOLATION_THRESHOLD = 3;
@@ -59,21 +55,20 @@ export const VIOLATION_THRESHOLD = 3;
 /** Daily post limit for users exceeding the violation threshold */
 export const VIOLATION_DAILY_POST_LIMIT = 1;
 
-/** Minimum account age in days required for DCR access */
-export const DCR_MIN_ACCOUNT_AGE_DAYS = 1; // lowered from 7; trustLevel handles the gating
+/** Minimum account age in days required to send direct messages */
+export const DM_MIN_ACCOUNT_AGE_DAYS = 1;
 
 // ==================== Policy Evaluation ====================
 
 /**
  * Evaluate ABAC policies for a user and return computed restrictions.
  *
- * New trustLevel-based rules (replaces raw account-age / violation gating):
+ * Explicit rules after removal of the reputation-score system:
  * 1. SUPER_ADMIN / ADMIN bypass all restrictions
- * 2. trustLevel 0: 1 post/day, no private zone, no DM, no psychology posting
- * 3. trustLevel 1: 2 posts/day, no DM, no DCR
- * 4. trustLevel 2+: psychology browsing, DM unlocked, DCR application eligible
- * 5. trustLevel 3+: psychology posting, DCR access
- * 6. Violation count > 3 → caps max posts to 1/day regardless of trustLevel
+ * 2. Ordinary users may publish up to five posts per day
+ * 3. Violation count > 3 caps posting at one per day
+ * 4. Direct messages require an account at least one day old
+ * 5. Private-zone access is controlled by each zone's explicit access flags
  */
 export function evaluateABACPolicy(
   user: ABACUserAttributes,
@@ -88,20 +83,17 @@ export function evaluateABACPolicy(
       canAccessPsychology: true,
       isNewcomer: false,
       hasPassedQuiz: true,
-      trustLevel: 5 as TrustLevel,
       restrictions: [],
     };
   }
 
   const accountAgeDays = getAccountAgeDays(user.createdAt);
-  const trustLevel = computeTrustLevel(user.reputationScore);
-  const isNewcomer = trustLevel < 2;
+  const isNewcomer = accountAgeDays < NEWCOMER_AGE_DAYS;
   const hasExcessiveViolations = user.violationCount > VIOLATION_THRESHOLD;
 
   const restrictions: string[] = [];
 
-  // --- Daily post limit (trustLevel-based, overridden by violations) ---
-  let maxDailyPosts = getDailyPostLimit(trustLevel);
+  let maxDailyPosts = DEFAULT_DAILY_POST_LIMIT;
 
   if (hasExcessiveViolations && (maxDailyPosts === null || VIOLATION_DAILY_POST_LIMIT < maxDailyPosts)) {
     maxDailyPosts = VIOLATION_DAILY_POST_LIMIT;
@@ -110,22 +102,9 @@ export function evaluateABACPolicy(
     );
   }
 
-  if (trustLevel < 2) {
-    restrictions.push(
-      `信任等级 ${trustLevel} (${getTrustLevelLabel(trustLevel)})，每日发帖上限 ${maxDailyPosts} 篇`,
-    );
-  }
-
-  // --- Private zone access ---
-  const canAccessPrivateZone = trustLevel >= 2;
-  if (!canAccessPrivateZone) {
-    restrictions.push("信任等级不足，禁止进入私密区 (需 L2+)");
-  }
-
-  // --- DM access (trustLevel-based) ---
-  const canSendDM = tlCanSendDM(trustLevel, accountAgeDays);
+  const canSendDM = accountAgeDays >= DM_MIN_ACCOUNT_AGE_DAYS;
   if (!canSendDM) {
-    restrictions.push("信任等级不足，禁止发送私信 (需 L1+)");
+    restrictions.push(`账号注册未满 ${DM_MIN_ACCOUNT_AGE_DAYS} 天，暂不能发送私信`);
   }
 
   // --- DCR zone access（委托给统一准入策略） ---
@@ -136,7 +115,6 @@ export function evaluateABACPolicy(
       role: user.role,
       createdAt: user.createdAt,
       quizPassed: user.quizPassed,
-      reputationScore: user.reputationScore,
       violationCount: user.violationCount,
       dcrAccess: user.dcrAccess,
       dcrPledgeSigned: user.dcrPledgeSigned,
@@ -148,28 +126,22 @@ export function evaluateABACPolicy(
   }
 
   // --- Psychology zone access ---
-  const canAccessPsychology = canPostInPsychology(trustLevel, user.psychAccess);
+  const canAccessPsychology = user.psychAccess;
   if (!canAccessPsychology) {
     restrictions.push("未获得心理交流区准入权限");
   }
 
   return {
     maxDailyPosts,
-    canAccessPrivateZone,
+    canAccessPrivateZone: canAccessPsychology || canAccessDCR,
     canSendDM,
     canAccessDCR,
     canAccessPsychology,
     isNewcomer,
     hasPassedQuiz: user.quizPassed,
-    trustLevel,
     restrictions,
   };
 }
-
-// Re-export helpers
-import { getTrustLevelLabel } from "@/lib/trust-level";
-export { computeTrustLevel, getTrustLevelLabel } from "@/lib/trust-level";
-export type { TrustLevel } from "@/lib/trust-level";
 
 // ==================== Specific Checks ====================
 
@@ -228,7 +200,6 @@ export function canAccessZone(
         role: user.role,
         createdAt: user.createdAt,
         quizPassed: user.quizPassed,
-        reputationScore: user.reputationScore,
         violationCount: user.violationCount,
         dcrAccess: user.dcrAccess,
         dcrPledgeSigned: user.dcrPledgeSigned,

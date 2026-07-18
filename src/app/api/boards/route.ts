@@ -32,7 +32,6 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
           psychAccess: true,
           dcrAccess: true,
           dcrPledgeSigned: true,
-          reputationScore: true,
           role: true,
         },
       });

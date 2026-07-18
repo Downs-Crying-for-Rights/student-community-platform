@@ -94,7 +94,6 @@ async function searchPosts(
         psychAccess: true,
         dcrAccess: true,
         dcrPledgeSigned: true,
-        reputationScore: true,
         role: true,
       },
     });

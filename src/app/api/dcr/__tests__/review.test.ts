@@ -111,7 +111,6 @@ const eligibleApplicant = {
   role: "USER",
   createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
   violationCount: 0,
-  reputationScore: 100,
   phone: "13800138000",
   quizPassed: true,
   dcrAccess: false,
@@ -316,27 +315,6 @@ describe("PATCH /api/dcr/apply/[id]", () => {
 
     expect(res.status).toBe(403);
     expect(data.error).toContain("违规记录过多");
-    expect(mockUserUpdate).not.toHaveBeenCalled();
-  });
-
-  it("应返回 403 当申请人信誉等级不足", async () => {
-    setSession("admin1", "ADMIN");
-    mockAccessApplicationFindUnique.mockResolvedValue(pendingApplication);
-    mockUserCount.mockResolvedValue(10);
-    mockUserFindUnique.mockResolvedValueOnce({
-      ...eligibleApplicant,
-      reputationScore: 50,
-    });
-
-    const { PATCH } = await import("../apply/[id]/route");
-    const res = await PATCH(
-      makeRequest({ status: "APPROVED" }),
-      { params: { id: "app1" } },
-    );
-    const data = await res.json();
-
-    expect(res.status).toBe(403);
-    expect(data.error).toContain("信誉等级不足");
     expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 

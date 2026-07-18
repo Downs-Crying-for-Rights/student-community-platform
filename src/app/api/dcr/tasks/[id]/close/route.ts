@@ -21,7 +21,7 @@ const MODERATOR_ROLES = ["MODERATOR", "ADMIN", "SUPER_ADMIN"] as const;
  *
  * - action=confirm: The other party confirms closure.
  *   Checks evidence completeness via checkCompletionRequirements.
- *   If both confirmed → COMPLETED, generates completionReport, awards reputation.
+ *   If both confirmed → COMPLETED and generates completionReport.
  *
  * - action=force: Moderator/Admin force-closes the task.
  *   Requires reason. Transitions to COMPLETED regardless of confirmation state.
@@ -124,9 +124,6 @@ export const POST = withAuth(async (
         return updatedTask;
       });
 
-      // Award reputation to helper
-      await Promise.all(task.helpSessions.map((session) => awardHelperReputation(session.helperId)));
-
       await logAudit(userId, "TASK_FORCE_CLOSE", "TASK", id, {
         oldStatus: task.status,
         reason,
@@ -178,16 +175,6 @@ export const POST = withAuth(async (
           data: { status: "COMPLETED", closedAt: new Date() },
         });
         sessionStatus = "COMPLETED";
-        const reward = await tx.helpSession.updateMany({
-          where: { id: selected.id, status: "COMPLETED", rewardGrantedAt: null },
-          data: { rewardGrantedAt: new Date() },
-        });
-        if (reward.count > 0) {
-          await tx.user.update({
-            where: { id: selected.helperId },
-            data: { reputationScore: { increment: 10 } },
-          });
-        }
       }
       const statuses = await tx.helpSession.findMany({ where: { taskId: id }, select: { status: true } });
       const status = aggregateHelpSessionStatus(statuses.map((item) => item.status));
@@ -225,7 +212,7 @@ export const POST = withAuth(async (
 });
 
 /**
- * Complete a task: verify evidence, transition to COMPLETED, generate report, award reputation.
+ * Complete a task: verify evidence, transition to COMPLETED, and generate a report.
  */
 async function completeTask(
   taskId: string,
@@ -284,9 +271,6 @@ async function completeTask(
     return updatedTask;
   });
 
-  // Award reputation to helper (+10)
-  await Promise.all(task.helpSessions.map((session: any) => awardHelperReputation(session.helperId)));
-
   await logAudit(userId, "TASK_COMPLETE", "TASK", taskId, {
     oldStatus: currentStatus,
   });
@@ -320,19 +304,4 @@ function generateCompletionReport(
       completed: new Date().toISOString(),
     },
   };
-}
-
-/**
- * Award +10 reputation to the helper upon successful task completion.
- */
-async function awardHelperReputation(helperId: string): Promise<void> {
-  try {
-    await prisma.user.update({
-      where: { id: helperId },
-      data: { reputationScore: { increment: 10 } },
-    });
-  } catch (error) {
-    // Log but don't fail the close operation for reputation errors
-    console.error("Failed to update helper reputation:", error);
-  }
 }

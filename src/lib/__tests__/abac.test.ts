@@ -16,16 +16,14 @@ function makeUser(overrides: Partial<ABACUserAttributes> = {}): ABACUserAttribut
     psychAccess: false,
     dcrAccess: false,
     dcrPledgeSigned: false,
-    reputationScore: 100, // trustLevel 2
     role: "USER",
     ...overrides,
   };
 }
 
-/** Helper: create a true newcomer (trustLevel 0, repScore ≤ 30). */
+/** Helper: create an account less than one day old. */
 function makeNewcomer(overrides: Partial<ABACUserAttributes> = {}): ABACUserAttributes {
   return makeUser({
-      reputationScore: 20, // trustLevel 0
       createdAt: new Date(Date.now() - 0.5 * 24 * 60 * 60 * 1000), // <1 day ago → accountAgeDays = 0
       ...overrides,
     });
@@ -41,26 +39,25 @@ function makeSuperAdmin(overrides: Partial<ABACUserAttributes> = {}): ABACUserAt
     psychAccess: false,
     dcrAccess: false,
     dcrPledgeSigned: false,
-    reputationScore: 0,
     role: "SUPER_ADMIN" as ABACUserAttributes["role"],
     ...overrides,
   };
 }
 
-describe("ABAC 属性策略引擎 (信任等级制)", () => {
+describe("ABAC 属性策略引擎", () => {
   describe("evaluateABACPolicy", () => {
-    describe("信任等级限制 (trustLevel < 2 = 新手)", () => {
-      it("信任等级 0 用户每日发帖上限为 1 篇", () => {
-        const user = makeNewcomer(); // repScore 20 → trustLevel 0
+    describe("账号年龄限制", () => {
+      it("普通用户每日发帖上限为 5 篇", () => {
+        const user = makeNewcomer();
         const policy = evaluateABACPolicy(user);
-        expect(policy.maxDailyPosts).toBe(1);
+        expect(policy.maxDailyPosts).toBe(5);
         expect(policy.isNewcomer).toBe(true);
       });
 
-      it("信任等级 0 用户禁止进入私密区", () => {
-        const user = makeNewcomer();
+      it("私密区状态由明确准入权限决定", () => {
+        const user = makeNewcomer({ psychAccess: true });
         const policy = evaluateABACPolicy(user);
-        expect(policy.canAccessPrivateZone).toBe(false);
+        expect(policy.canAccessPrivateZone).toBe(true);
       });
 
       it("信任等级 0 用户禁止私信", () => {
@@ -69,16 +66,16 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
         expect(policy.canSendDM).toBe(false);
       });
 
-      it("信任等级 2 用户无新手限制", () => {
-        const user = makeUser(); // repScore 100 → trustLevel 2
+      it("注册满七天的用户不标记为新用户", () => {
+        const user = makeUser();
         const policy = evaluateABACPolicy(user);
         expect(policy.isNewcomer).toBe(false);
         expect(policy.canSendDM).toBe(true);
-        expect(policy.canAccessPrivateZone).toBe(true);
+        expect(policy.canAccessPrivateZone).toBe(false);
       });
 
-      it("高信任等级用户仍需 psychAccess 才能访问心理区", () => {
-        const user = makeUser({ reputationScore: 160, psychAccess: false });
+      it("用户仍需 psychAccess 才能访问心理区", () => {
+        const user = makeUser({ psychAccess: false });
         const policy = evaluateABACPolicy(user);
         expect(policy.canAccessPsychology).toBe(false);
       });
@@ -94,17 +91,16 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
       it("违规次数恰好为 3 时不触发额外限制", () => {
         const user = makeUser({ violationCount: 3 });
         const policy = evaluateABACPolicy(user);
-        // trustLevel 2 gives 5/day, no violation cap applies
         expect(policy.maxDailyPosts).toBe(5);
       });
 
-      it("违规次数为 0 时 trustLevel 2 发帖上限 5 篇", () => {
+      it("违规次数为 0 时发帖上限为 5 篇", () => {
         const user = makeUser({ violationCount: 0 });
         const policy = evaluateABACPolicy(user);
         expect(policy.maxDailyPosts).toBe(5);
       });
 
-      it("新手 + 高违规次数时取更严格的限制（1 篇）", () => {
+      it("新用户有高违规次数时取更严格的限制（1 篇）", () => {
         const user = makeNewcomer({ violationCount: 5 });
         const policy = evaluateABACPolicy(user);
         expect(policy.maxDailyPosts).toBe(1);
@@ -112,7 +108,7 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
     });
 
     describe("DCR 区访问", () => {
-      it("满足信任等级 + dcrAccess + pledgeSigned 时可访问", () => {
+      it("满足 dcrAccess + pledgeSigned 时可访问", () => {
         const user = makeUser({
           dcrAccess: true,
           dcrPledgeSigned: true,
@@ -162,7 +158,7 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
         expect(policy.canAccessPsychology).toBe(false);
       });
 
-      it("信任等级 0 不可访问心理区", () => {
+      it("新用户无准入权限时不可访问心理区", () => {
         const user = makeNewcomer({ psychAccess: false });
         const policy = evaluateABACPolicy(user);
         expect(policy.canAccessPsychology).toBe(false);
@@ -170,11 +166,10 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
     });
 
     describe("测验状态", () => {
-      it("过时的 quizPassed 字段不再影响 ABAC (信任等级为主)", () => {
+      it("quizPassed 不替代专区准入权限", () => {
         const user = makeUser({ quizPassed: false });
         const policy = evaluateABACPolicy(user);
-        // quizPassed no longer blocks — trustLevel 2 alone grants access
-        expect(policy.canAccessPrivateZone).toBe(true);
+        expect(policy.canAccessPrivateZone).toBe(false);
       });
     });
 
@@ -185,30 +180,30 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
         expect(policy.restrictions).toContain("未获得心理交流区准入权限");
       });
 
-      it("信任等级 0 用户包含新手限制描述", () => {
+      it("注册未满一天时包含私信限制描述", () => {
         const user = makeNewcomer();
         const policy = evaluateABACPolicy(user);
         expect(policy.restrictions.length).toBeGreaterThan(0);
-        expect(policy.restrictions.some((r) => r.includes("信任等级"))).toBe(true);
+        expect(policy.restrictions.some((r) => r.includes("私信"))).toBe(true);
       });
     });
   });
 
   describe("canCreatePost", () => {
-    it("信任等级 2 用户无发帖数量限制", () => {
+    it("普通用户未达到每日五篇时允许发帖", () => {
       const user = makeUser();
       expect(canCreatePost(user, 0).allowed).toBe(true);
       expect(canCreatePost(user, 4).allowed).toBe(true);
     });
 
-    it("信任等级 0 用户发帖未达上限时允许", () => {
+    it("新用户发帖未达上限时允许", () => {
       const user = makeNewcomer();
       expect(canCreatePost(user, 0).allowed).toBe(true);
     });
 
-    it("信任等级 0 用户发帖达到上限 1 篇时拒绝", () => {
+    it("普通用户发帖达到上限 5 篇时拒绝", () => {
       const user = makeNewcomer();
-      const result = canCreatePost(user, 1);
+      const result = canCreatePost(user, 5);
       expect(result.allowed).toBe(false);
       expect(result.reason).toBeDefined();
     });
@@ -244,7 +239,7 @@ describe("ABAC 属性策略引擎 (信任等级制)", () => {
       expect(canAccessZone(user, "PSYCHOLOGY").allowed).toBe(false);
     });
 
-    it("信任等级 0 不可访问心理区", () => {
+    it("无准入权限不可访问心理区", () => {
       const user = makeNewcomer();
       const result = canAccessZone(user, "PSYCHOLOGY");
       expect(result.allowed).toBe(false);

@@ -20,6 +20,16 @@ enum Role {
   SUPER_ADMIN
 }
 
+enum UserPunishmentType {
+  ACCOUNT_BAN
+  POST_SHADOW_HIDE
+}
+
+enum UserPunishmentAction {
+  APPLIED
+  REVOKED
+}
+
 model User {
   id              String    @id @default(cuid())
   name            String?
@@ -33,7 +43,6 @@ model User {
   isBanned        Boolean   @default(false)
   isShadowBanned  Boolean   @default(false)
   isAnonymous     Boolean   @default(false)
-  reputationScore Int       @default(100)
   violationCount  Int       @default(0)
   onboardingDone  Boolean   @default(false)
   psychAccess     Boolean   @default(false)
@@ -74,6 +83,8 @@ model User {
 
   // 审计
   auditLogs AuditLog[]
+  punishmentsReceived UserPunishment[] @relation("PunishmentTarget")
+  punishmentsIssued   UserPunishment[] @relation("PunishmentOperator")
 
   // 消息
   messagesSent     Message[] @relation("MessageSender")
@@ -527,6 +538,24 @@ model AuditLog {
   @@index([operatorId])
 }
 
+model UserPunishment {
+  id         String               @id @default(cuid())
+  type       UserPunishmentType
+  action     UserPunishmentAction
+  reason     String
+  details    Json?
+  createdAt  DateTime             @default(now())
+
+  userId     String
+  user       User                 @relation("PunishmentTarget", fields: [userId], references: [id], onDelete: Cascade)
+  operatorId String
+  operator   User                 @relation("PunishmentOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([operatorId, createdAt])
+  @@index([type, action])
+}
+
 // ==================== 邀请码 ====================
 
 model InviteCode {
@@ -734,7 +763,6 @@ model HelpSession {
   statusBeforeDispute HelpSessionStatus?
   requesterConfirmed  Boolean            @default(false)
   helperConfirmed     Boolean            @default(false)
-  rewardGrantedAt     DateTime?
 
   taskId String
   task   MutualAidTask @relation(fields: [taskId], references: [id])

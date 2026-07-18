@@ -56,7 +56,6 @@ const ownProfile = {
   bio: "这是我的简介",
   role: "USER",
   createdAt: new Date("2024-01-01"),
-  reputationScore: 100,
   onboardingDone: true,
   psychAccess: false,
   dcrAccess: false,
@@ -103,7 +102,6 @@ describe("GET /api/users/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(data.user.role).toBe("USER");
-    expect(data.user.reputationScore).toBe(100);
     expect(data.user.onboardingDone).toBe(true);
     expect(data.user._count.posts).toBe(5);
   });
@@ -125,7 +123,6 @@ describe("GET /api/users/[id]", () => {
     expect(data.user._count.posts).toBe(3);
     // 不应包含私有字段
     expect(data.user.role).toBeUndefined();
-    expect(data.user.reputationScore).toBeUndefined();
   });
 
   it("应返回 404 当用户不存在", async () => {

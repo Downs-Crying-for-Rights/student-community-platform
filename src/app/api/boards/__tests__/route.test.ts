@@ -98,7 +98,6 @@ describe("GET /api/boards", () => {
       psychAccess: false,
       dcrAccess: false,
       dcrPledgeSigned: false,
-      reputationScore: 100,
       role: "USER",
     });
 
@@ -138,7 +137,6 @@ describe("GET /api/boards", () => {
       psychAccess: true,
       dcrAccess: false,
       dcrPledgeSigned: false,
-      reputationScore: 100,
       role: "TRUSTED_USER",
     });
 
@@ -164,7 +162,6 @@ describe("GET /api/boards", () => {
       psychAccess: false,
       dcrAccess: true,
       dcrPledgeSigned: true,
-      reputationScore: 100,
       role: "TRUSTED_USER",
     });
 
@@ -200,7 +197,6 @@ describe("GET /api/boards", () => {
       psychAccess: false,
       dcrAccess: false,
       dcrPledgeSigned: false,
-      reputationScore: 100,
       role: "USER",
     });
 
@@ -251,7 +247,6 @@ describe("GET /api/boards", () => {
       psychAccess: true,
       dcrAccess: false,
       dcrPledgeSigned: false,
-      reputationScore: 100,
       role: "TRUSTED_USER",
     });
 

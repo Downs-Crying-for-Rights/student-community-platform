@@ -5,6 +5,8 @@ import { NextRequest } from "next/server";
 
 const mockUserFindUnique = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockPunishmentCreateMany = vi.fn();
+const mockAuditLogCreate = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -12,6 +14,11 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
     },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      user: { update: (...args: unknown[]) => mockUserUpdate(...args) },
+      userPunishment: { createMany: (...args: unknown[]) => mockPunishmentCreateMany(...args) },
+      auditLog: { create: (...args: unknown[]) => mockAuditLogCreate(...args) },
+    }),
   },
 }));
 
@@ -61,6 +68,7 @@ function setSession(id: string, role: string) {
 describe("POST /api/admin/users/[id]/ban", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPunishmentCreateMany.mockResolvedValue({ count: 1 });
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -146,8 +154,13 @@ describe("POST /api/admin/users/[id]/ban", () => {
       "USER_BAN",
       "USER",
       "u1",
-      { action: "ban", shadowBan: false, reason: undefined },
+      { action: "ban", shadowBan: false, reason: "管理员未填写处罚原因" },
+      undefined,
+      expect.anything(),
     );
+    expect(mockPunishmentCreateMany).toHaveBeenCalledWith({ data: [{
+      userId: "u1", operatorId: "admin1", type: "ACCOUNT_BAN", action: "APPLIED", reason: "管理员未填写处罚原因",
+    }] });
   });
 
   it("should shadow ban user and record audit log", async () => {
@@ -176,7 +189,9 @@ describe("POST /api/admin/users/[id]/ban", () => {
       "SHADOW_BAN",
       "USER",
       "u1",
-      { action: "ban", shadowBan: true, reason: undefined },
+      { action: "ban", shadowBan: true, reason: "管理员未填写处罚原因" },
+      undefined,
+      expect.anything(),
     );
   });
 
@@ -207,8 +222,14 @@ describe("POST /api/admin/users/[id]/ban", () => {
       "USER_UNBAN",
       "USER",
       "u1",
-      { action: "unban", shadowBan: false, reason: undefined },
+      { action: "unban", shadowBan: false, reason: "管理员解除处罚" },
+      undefined,
+      expect.anything(),
     );
+    expect(mockPunishmentCreateMany).toHaveBeenCalledWith({ data: expect.arrayContaining([
+      expect.objectContaining({ type: "ACCOUNT_BAN", action: "REVOKED" }),
+      expect.objectContaining({ type: "POST_SHADOW_HIDE", action: "REVOKED" }),
+    ]) });
   });
 
   it("should support ban with reason", async () => {
@@ -230,6 +251,8 @@ describe("POST /api/admin/users/[id]/ban", () => {
       "USER",
       "u1",
       { action: "ban", shadowBan: false, reason: "repeated violations" },
+      undefined,
+      expect.anything(),
     );
   });
 });

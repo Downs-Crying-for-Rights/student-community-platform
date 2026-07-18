@@ -212,7 +212,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     // Fetch user attributes for ABAC check
     // OPTIMIZE: JWT session already carries role, onboardingDone, quizPassed, dcrAccess.
     // Expand AuthenticatedRequest.user to include these from JWT, then only DB-query
-    // the remaining volatile fields: createdAt, violationCount, psychAccess, dcrPledgeSigned, reputationScore.
+    // the remaining volatile fields: createdAt, violationCount, psychAccess, and dcrPledgeSigned.
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -223,7 +223,6 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         psychAccess: true,
         dcrAccess: true,
         dcrPledgeSigned: true,
-        reputationScore: true,
         role: true,
       },
     });

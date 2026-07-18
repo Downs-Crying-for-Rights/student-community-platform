@@ -72,7 +72,6 @@ const defaultUserAttrs = {
   psychAccess: false,
   dcrAccess: false,
   dcrPledgeSigned: false,
-  reputationScore: 100,
   role: "USER",
 };
 

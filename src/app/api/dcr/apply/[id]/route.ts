@@ -70,7 +70,6 @@ export const PATCH = withAuth(async (
               role: true,
               createdAt: true,
               violationCount: true,
-              reputationScore: true,
               phone: true,
               quizPassed: true,
               dcrAccess: true,

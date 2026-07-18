@@ -14,7 +14,7 @@ const MODERATOR_ROLES = ["MODERATOR", "ADMIN", "SUPER_ADMIN"] as const;
  * Supported actions:
  * - takedown:       Close the task, record reason.
  * - replace_helper: Re-open the task for a new helper, delete helpSession.
- * - ban_user:       Ban the targetUserId, close the task, deduct -20 reputation.
+ * - ban_user:       Ban the targetUserId, record the punishment, and close the task.
  * - dismiss:        Dismiss the dispute, revert status to EVIDENCE_PENDING.
  * - freeze:         Close the task, record reason.
  *
@@ -142,7 +142,7 @@ export const POST = withAuth(async (
       }
 
       case "ban_user": {
-        // Ban the target user, close the task, deduct reputation
+        // Ban the target user, record the punishment, and close the task.
         if (!targetUserId) {
           return NextResponse.json(
             { error: "ban_user 操作需要提供 targetUserId" },
@@ -157,10 +157,15 @@ export const POST = withAuth(async (
             where: { id: targetUserId },
             data: { isBanned: true },
           });
-          // Deduct reputation -20
-          await tx.user.update({
-            where: { id: targetUserId },
-            data: { reputationScore: { decrement: 20 } },
+          await tx.userPunishment.create({
+            data: {
+              userId: targetUserId,
+              operatorId: userId,
+              type: "ACCOUNT_BAN",
+              action: "APPLIED",
+              reason,
+              details: { sourceType: "DCR_DISPUTE", taskId: id },
+            },
           });
           // Close the task
           await tx.mutualAidTask.update({
