@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw, Activity, ClipboardCheck, ListTodo, Scale, Flag } from "lucide-react";
+import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw, Activity, ClipboardCheck, ListTodo, Scale, Flag, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adminLinks = [
@@ -27,6 +27,7 @@ const adminLinks = [
 ];
 
 const superAdminLinks = [
+  { href: "/admin/qq-bot", label: "QQ 机器人", icon: Bot },
   { href: "/admin/telemetry", label: "应用遥测", icon: Activity },
   { href: "/admin/system", label: "系统维护", icon: RefreshCw },
   { href: "/admin/dcr/tutorial", label: "DCR教程", icon: BookOpen },

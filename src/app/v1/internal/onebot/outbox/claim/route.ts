@@ -5,6 +5,7 @@ import {
   authorizeQQInternalRequest,
   claimQQOutboxMessages,
 } from "@/lib/qq-outbox";
+import { recordQQBotHeartbeat } from "@/lib/qq-bot-monitor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +37,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const messages = await claimQQOutboxMessages(undefined, new Date(), input.limit);
+    const now = new Date();
+    const messages = await claimQQOutboxMessages(undefined, now, input.limit);
+    await recordQQBotHeartbeat(input.selfId, now);
     return NextResponse.json(messages);
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

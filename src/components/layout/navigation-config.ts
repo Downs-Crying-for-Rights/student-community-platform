@@ -35,7 +35,8 @@ export type NavigationIconName =
   | "refresh"
   | "list-todo"
   | "scale"
-  | "flag";
+  | "flag"
+  | "bot";
 
 export interface NavigationItem {
   href: string;
@@ -92,6 +93,7 @@ export const adminNavItems: readonly NavigationItem[] = [
   { href: "/admin/tasks", label: "任务管理", icon: "list-todo", minRole: "ADMIN" },
   { href: "/admin/dcr/cycles", label: "互助循环管理", icon: "refresh", minRole: "ADMIN" },
   { href: "/admin/logs", label: "系统日志", icon: "terminal", minRole: "ADMIN" },
+  { href: "/admin/qq-bot", label: "QQ 机器人", icon: "bot", minRole: "SUPER_ADMIN" },
   { href: "/admin/telemetry", label: "应用遥测", icon: "activity", minRole: "SUPER_ADMIN" },
   { href: "/admin/system", label: "系统维护", icon: "refresh", minRole: "SUPER_ADMIN" },
   { href: "/admin/dcr/tutorial", label: "DCR 教程", icon: "book", minRole: "SUPER_ADMIN" },

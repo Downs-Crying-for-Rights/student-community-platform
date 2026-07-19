@@ -278,6 +278,7 @@ describe("全局路由与导航集成", () => {
         "/admin/tasks",
         "/admin/dcr/cycles",
         "/admin/logs",
+        "/admin/qq-bot",
         "/admin/telemetry",
         "/admin/system",
         "/admin/dcr/tutorial",

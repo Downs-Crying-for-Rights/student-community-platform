@@ -29,6 +29,7 @@ import {
   ListTodo,
   Scale,
   Flag,
+  Bot,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -76,6 +77,7 @@ const NAV_ICONS: Record<NavigationIconName, LucideIcon> = {
   "list-todo": ListTodo,
   scale: Scale,
   flag: Flag,
+  bot: Bot,
 };
 
 export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
