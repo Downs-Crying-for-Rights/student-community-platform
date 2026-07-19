@@ -114,6 +114,8 @@ export default function PostDetailPage() {
         const data = await res.json();
         setPost(data.post);
         setLikeCount(data.post.likeCount);
+        setLiked(data.post.isLiked ?? false);
+        setBookmarked(data.post.isBookmarked ?? false);
       } catch {
         setError("网络错误，请稍后重试");
       } finally {

@@ -77,9 +77,16 @@ export const GET = withOptionalAuth(async (
     // Strip isShadowBanned from response
     const { isShadowBanned: _, ...authorData } = post.author;
 
+    const [like, bookmark] = await Promise.all([
+      prisma.like.findUnique({ where: { userId_postId: { userId, postId: id } } }),
+      prisma.bookmark.findUnique({ where: { userId_postId: { userId, postId: id } } }),
+    ]);
+
     return NextResponse.json({
       post: {
         ...anonymizePsychologyPost({ ...post, author: authorData }),
+        isLiked: !!like,
+        isBookmarked: !!bookmark,
         isAuthor,
       },
     });
