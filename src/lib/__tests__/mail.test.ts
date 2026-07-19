@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   sendMail: vi.fn(),
   createTransport: vi.fn(),
+  logInfo: vi.fn(),
+  logWarn: vi.fn(),
+  logError: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -17,6 +20,10 @@ vi.mock("nodemailer", () => ({
   default: {
     createTransport: mocks.createTransport,
   },
+}));
+
+vi.mock("@/lib/logger", () => ({
+  logger: { info: mocks.logInfo, warn: mocks.logWarn, error: mocks.logError },
 }));
 
 import { sendAdminActionMail, sendUserMail } from "../mail";
@@ -47,7 +54,15 @@ describe("sendUserMail", () => {
       { email: "admin@example.com" },
       { email: "admin@example.com" },
     ]);
-    mocks.sendMail.mockResolvedValue({ messageId: "mail-1" });
+    mocks.sendMail.mockResolvedValue({
+      messageId: "mail-1",
+      accepted: ["student@example.com"],
+      rejected: [],
+      response: "250 2.0.0 queued",
+    });
+    mocks.logInfo.mockResolvedValue(undefined);
+    mocks.logWarn.mockResolvedValue(undefined);
+    mocks.logError.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -75,6 +90,14 @@ describe("sendUserMail", () => {
       subject: "审核已通过",
       text: "您的申请已通过审核。",
     });
+    expect(mocks.logInfo).toHaveBeenCalledWith(
+      "邮件投递成功：审核已通过",
+      expect.objectContaining({
+        source: "mail",
+        userId: "user-1",
+        detail: expect.objectContaining({ status: "SENT", recipients: ["student@example.com"] }),
+      }),
+    );
   });
 
   it("skips delivery when the user has no registered email", async () => {
@@ -85,6 +108,10 @@ describe("sendUserMail", () => {
       sendUserMail({ userId: "user-2", subject: "审核结果", text: "结果" }),
     ).resolves.toEqual({ sent: false, reason: "user_has_no_email" });
     expect(mocks.sendMail).not.toHaveBeenCalled();
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      "邮件已跳过：审核结果",
+      expect.objectContaining({ detail: expect.objectContaining({ reason: "user_has_no_email" }) }),
+    );
   });
 
   it("sends one BCC email to eligible administrators with deduplicated addresses", async () => {
@@ -125,6 +152,30 @@ describe("sendUserMail", () => {
     }));
   });
 
+  it("records partial administrator delivery with rejected recipients", async () => {
+    mocks.sendMail.mockResolvedValue({
+      messageId: "mail-partial",
+      accepted: ["mailer@example.com", "moderator@example.com"],
+      rejected: ["admin@example.com"],
+      response: "250 queued with one rejected recipient",
+    });
+
+    await sendAdminActionMail({
+      minimumRole: "MODERATOR",
+      subject: "新举报待处理",
+      text: "收到一条新举报。",
+      actionUrl: "/admin/reports",
+    });
+
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      "管理员待办邮件部分投递：新举报待处理",
+      expect.objectContaining({
+        source: "mail",
+        detail: expect.objectContaining({ status: "PARTIAL", rejected: ["admin@example.com"] }),
+      }),
+    );
+  });
+
   it("isolates SMTP failures from the business operation", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.sendMail.mockRejectedValue(new Error("SMTP unavailable"));
@@ -135,5 +186,9 @@ describe("sendUserMail", () => {
       text: "内容",
       actionUrl: "/admin/moderation",
     })).resolves.toEqual({ sent: false, recipientCount: 0, reason: "send_failed" });
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "管理员待办邮件投递失败：待处理事项",
+      expect.objectContaining({ detail: expect.objectContaining({ status: "FAILED" }) }),
+    );
   });
 });

@@ -51,7 +51,10 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     if (level) where.level = level;
     if (source) where.source = source;
     if (search) {
-      where.message = { contains: search, mode: "insensitive" };
+      where.OR = [
+        { message: { contains: search, mode: "insensitive" } },
+        { detail: { contains: search, mode: "insensitive" } },
+      ];
     }
 
     const [logs, total] = await Promise.all([

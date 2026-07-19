@@ -14,6 +14,7 @@ import {
   Eraser,
   Info,
   Loader2,
+  Mail,
   RefreshCw,
   Search,
   Terminal,
@@ -42,6 +43,20 @@ interface TerminalResponse {
   error?: string;
 }
 
+interface MailLogDetail {
+  status?: "SENT" | "PARTIAL" | "SKIPPED" | "FAILED";
+  subject?: string;
+  recipients?: string[];
+  accepted?: string[];
+  rejected?: string[];
+  reason?: string;
+  response?: string | null;
+  messageId?: string | null;
+  smtpHost?: string;
+  smtpPort?: number;
+  error?: { message?: string; code?: string | null; response?: string | null };
+}
+
 const LEVEL_CONFIG = {
   DEBUG: { icon: Bug, className: "text-slate-500 bg-slate-100 dark:bg-slate-800" },
   INFO: { icon: Info, className: "text-blue-600 bg-blue-100 dark:bg-blue-900/40" },
@@ -56,11 +71,59 @@ const TERMINAL_SOURCES = [
   ["nginx-access", "Nginx 访问"],
   ["deployment", "部署过程"],
 ] as const;
+const MAIL_STATUS_CONFIG = {
+  SENT: { label: "成功", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" },
+  PARTIAL: { label: "部分成功", className: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300" },
+  SKIPPED: { label: "已跳过", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+  FAILED: { label: "失败", className: "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300" },
+} as const;
 
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function parseMailDetail(value: string | null): MailLogDetail {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed as MailLogDetail : {};
+  } catch {
+    return {};
+  }
+}
+
+function MailLogCard({ log }: { log: LogEntry }) {
+  const detail = parseMailDetail(log.detail);
+  const status = detail.status ? MAIL_STATUS_CONFIG[detail.status] : null;
+  return (
+    <Card className="border-muted/50">
+      <CardContent className="space-y-2 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Mail className="h-4 w-4 shrink-0 text-blue-600" />
+            <p className="truncate text-sm font-medium">{detail.subject || log.message}</p>
+          </div>
+          {status && <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}>{status.label}</span>}
+        </div>
+        <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+          <p className="break-all">收件人：{detail.recipients?.join("、") || "-"}</p>
+          <p>时间：{new Date(log.createdAt).toLocaleString("zh-CN")}</p>
+          {detail.accepted && detail.accepted.length > 0 && <p className="break-all text-emerald-700 dark:text-emerald-300">已接受：{detail.accepted.join("、")}</p>}
+          {detail.rejected && detail.rejected.length > 0 && <p className="break-all text-red-700 dark:text-red-300">已拒绝：{detail.rejected.join("、")}</p>}
+          {(detail.smtpHost || detail.smtpPort) && <p>SMTP：{detail.smtpHost || "-"}:{detail.smtpPort || "-"}</p>}
+          {detail.messageId && <p className="break-all">Message-ID：{detail.messageId}</p>}
+        </div>
+        {(detail.error?.message || detail.error?.response || detail.response || detail.reason) && (
+          <pre className={`max-h-32 overflow-auto whitespace-pre-wrap rounded p-2 text-xs ${detail.status === "FAILED" ? "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200" : "bg-muted/50 text-muted-foreground"}`}>
+            {detail.error?.response || detail.error?.message || detail.response || detail.reason}
+            {detail.error?.code ? `\n错误码：${detail.error.code}` : ""}
+          </pre>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function LiveTerminal() {
@@ -165,14 +228,14 @@ function LiveTerminal() {
   );
 }
 
-function StructuredLogs() {
+function StructuredLogs({ fixedSource }: { fixedSource?: string } = {}) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [levelFilter, setLevelFilter] = useState("ALL");
-  const [sourceFilter, setSourceFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState(fixedSource ?? "");
   const [searchText, setSearchText] = useState("");
   const pageSize = 50;
 
@@ -214,7 +277,7 @@ function StructuredLogs() {
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="搜索日志内容……" value={searchText} onChange={(event) => { setSearchText(event.target.value); setPage(1); }} className="h-8 pl-8 text-xs" />
           </div>
-          <Input placeholder="来源" value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setPage(1); }} className="h-8 w-36 text-xs" />
+          {!fixedSource && <Input placeholder="来源" value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setPage(1); }} className="h-8 w-36 text-xs" />}
         </div>
       </div>
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">{error}</div>}
@@ -225,6 +288,7 @@ function StructuredLogs() {
       ) : (
         <div className="space-y-1">
           {logs.map((log) => {
+            if (fixedSource === "mail") return <MailLogCard key={log.id} log={log} />;
             const config = LEVEL_CONFIG[log.level];
             const Icon = config.icon;
             return (
@@ -254,6 +318,18 @@ function StructuredLogs() {
   );
 }
 
+function MailDeliveryLogs() {
+  return (
+    <div>
+      <div className="mb-4 rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        <p className="flex items-center gap-1.5 font-medium text-foreground"><Mail className="h-4 w-4" />邮件投递记录</p>
+        <p className="mt-1">记录收件人、主题、成功/部分成功/跳过/失败状态及 SMTP 响应；不记录邮件正文、授权码或密码。</p>
+      </div>
+      <StructuredLogs fixedSource="mail" />
+    </div>
+  );
+}
+
 export default function AdminLogsPage() {
   return (
     <div className="min-h-screen bg-background">
@@ -266,9 +342,11 @@ export default function AdminLogsPage() {
           <TabsList className="mb-4">
             <TabsTrigger value="terminal">实时终端</TabsTrigger>
             <TabsTrigger value="structured">结构化日志</TabsTrigger>
+            <TabsTrigger value="mail">邮件投递</TabsTrigger>
           </TabsList>
           <TabsContent value="terminal"><LiveTerminal /></TabsContent>
           <TabsContent value="structured"><StructuredLogs /></TabsContent>
+          <TabsContent value="mail"><MailDeliveryLogs /></TabsContent>
         </Tabs>
       </div>
     </div>

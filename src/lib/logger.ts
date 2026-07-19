@@ -18,6 +18,7 @@ export type LogSource =
   | "admin"
   | "middleware"
   | "api"
+  | "mail"
   | "sms"
   | "upload";
 
