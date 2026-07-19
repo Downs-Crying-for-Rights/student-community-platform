@@ -82,7 +82,7 @@ describe("OneBotWorker outbox", () => {
       healthHost: "127.0.0.1",
       healthPort: 8_081,
     };
-    const worker = new OneBotWorker(config, new EventProcessor(app, "42", 65_536), app);
+    const worker = new OneBotWorker(config, new EventProcessor(app, "42", new Set(["100"]), 65_536), app);
 
     try {
       worker.start();

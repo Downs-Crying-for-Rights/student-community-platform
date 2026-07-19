@@ -21,6 +21,7 @@ export class EventProcessor {
   constructor(
     private readonly app: MessageApi,
     private readonly expectedSelfId: string,
+    private readonly allowedUserIds: ReadonlySet<string>,
     private readonly maxMessageBytes: number,
   ) {}
 
@@ -28,6 +29,7 @@ export class EventProcessor {
     // Group events and notices are intentionally rejected before any identifying details are read or forwarded.
     if (!isPrivateMessage(value)) return "ignored";
     if (String(value.self_id) !== this.expectedSelfId) return "ignored";
+    if (!this.allowedUserIds.has(String(value.user_id))) return "ignored";
 
     const text = extractText(value.message, value.raw_message);
     if (!text || Buffer.byteLength(text, "utf8") > this.maxMessageBytes) return "ignored";

@@ -22,6 +22,7 @@ Use `.env.example` as a configuration reference. The worker does not load dotenv
 | `ONEBOT_WS_URL` | yes | `ws:` or `wss:` reverse-WebSocket endpoint; credentials in the URL are rejected |
 | `ONEBOT_ACCESS_TOKEN` | yes | OneBot handshake bearer token |
 | `ONEBOT_EXPECTED_SELF_ID` | yes | Expected bot QQ/self ID |
+| `ONEBOT_ALLOWED_USER_IDS` | yes | Comma-separated QQ IDs accepted during the controlled rollout |
 | `INTERNAL_API_BASE_URL` | yes | Application base URL over HTTP(S) |
 | `INTERNAL_API_TOKEN` | yes | Dedicated bearer token for the bot API |
 | `MAX_MESSAGE_BYTES` | no, `65536` | Maximum inbound frame, user text, API response, reply, and action size |

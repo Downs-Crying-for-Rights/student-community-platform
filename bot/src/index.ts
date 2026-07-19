@@ -13,7 +13,12 @@ try {
     config.httpTimeoutMs,
     config.maxMessageBytes,
   );
-  const processor = new EventProcessor(app, config.expectedSelfId, config.maxMessageBytes);
+const processor = new EventProcessor(
+  app,
+  config.expectedSelfId,
+  config.allowedUserIds,
+  config.maxMessageBytes,
+);
   const worker = new OneBotWorker(config, processor, app);
   const health = startHealthServer(config.healthHost, config.healthPort, worker);
 
