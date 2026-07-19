@@ -47,6 +47,33 @@ export interface AppApi extends MessageApi {
   ackOutbox(id: string, ack: OutboxAck): Promise<void>;
 }
 
+export type QQBotOperationAction = "RESTART_WORKER" | "RESTART_NAPCAT" | "REFRESH_LOGIN";
+
+export interface QQBotOperationCommand {
+  id: string;
+  action: QQBotOperationAction;
+  requestedAt: string;
+}
+
+export interface QQBotLoginState {
+  isLogin: boolean;
+  isOffline: boolean;
+  qrcode: string | null;
+  captchaUrl: string | null;
+  deviceVerificationUrl: string | null;
+  loginError: string | null;
+  smsSupported: false;
+}
+
+export interface QQBotOperationResult {
+  commandId: string;
+  action: QQBotOperationAction;
+  status: "SUCCEEDED" | "FAILED";
+  updatedAt: string;
+  message: string;
+  login?: QQBotLoginState;
+}
+
 export interface QQBotRuntimeStatus {
   oneBotConnected: boolean;
   accountOnline: boolean;

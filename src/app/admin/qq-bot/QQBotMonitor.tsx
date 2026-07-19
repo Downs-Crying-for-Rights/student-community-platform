@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, Bot, CheckCircle2, ChevronLeft, ChevronRight, Clock3,
-  Inbox, Link2, MessageSquareText, RefreshCw, RotateCcw, Send, Users,
+  AlertTriangle, Bot, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ExternalLink,
+  Inbox, KeyRound, Link2, MessageSquareText, Power, RefreshCw, RotateCcw, Send, Users,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -40,6 +41,14 @@ interface QQBotData {
     accountOnline: boolean;
     accountCheckedAt: string | null;
   };
+  operation: {
+    commandId: string;
+    action: "RESTART_WORKER" | "RESTART_NAPCAT" | "REFRESH_LOGIN";
+    status: "RUNNING" | "SUCCEEDED" | "FAILED";
+    updatedAt: string;
+    message: string;
+    hasLoginCredentials: boolean;
+  } | null;
   summary: {
     identities: number;
     activeConversations: number;
@@ -54,6 +63,16 @@ interface QQBotData {
   };
   events: QQBotEvent[];
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
+interface LoginCredentials {
+  isLogin: boolean;
+  isOffline: boolean;
+  qrcode: string | null;
+  captchaUrl: string | null;
+  deviceVerificationUrl: string | null;
+  loginError: string | null;
+  smsSupported: false;
 }
 
 const selectClass = "h-9 rounded-md border border-input bg-background px-3 text-sm";
@@ -90,6 +109,8 @@ export function QQBotMonitor() {
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [operationLoading, setOperationLoading] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<LoginCredentials | null>(null);
 
   const loadDetail = async (id: string, kind: "INBOX" | "OUTBOX") => {
     setDetailLoading(true);
@@ -127,6 +148,39 @@ export function QQBotMonitor() {
     return () => window.clearInterval(timer);
   }, [load]);
   const resetPage = () => setPage(1);
+  const runOperation = async (action: "RESTART_WORKER" | "RESTART_NAPCAT" | "REFRESH_LOGIN", label: string) => {
+    if (!window.confirm(`确认${label}？该操作会写入审计日志。`)) return;
+    setOperationLoading(action);
+    setCredentials(null);
+    try {
+      const response = await fetch("/api/admin/qq-bot/actions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, confirmation: "CONFIRM" }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "提交修复操作失败");
+      setError("");
+      window.setTimeout(() => void load(), 1_500);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "提交修复操作失败");
+    } finally {
+      setOperationLoading(null);
+    }
+  };
+  const revealCredentials = async () => {
+    setOperationLoading("CREDENTIALS");
+    try {
+      const response = await fetch("/api/admin/qq-bot/credentials", { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "读取登录凭证失败");
+      setCredentials(body.login); setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "读取登录凭证失败");
+    } finally {
+      setOperationLoading(null);
+    }
+  };
   const worker = data?.worker;
   const summary = data?.summary;
   const workerLabel = worker?.status === "ONLINE" ? "完全在线" : worker?.status === "DISABLED" ? "已停用" :
@@ -181,6 +235,32 @@ export function QQBotMonitor() {
             <span className="text-muted-foreground">数据刷新</span><span>{formatTime(data?.generatedAt ?? null)}</span>
           </div>
         </CardContent>
+      </Card>
+
+      <Card><CardContent className="space-y-4 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 className="flex items-center gap-2 font-semibold"><Power className="h-4 w-4" />机器人修复</h2><p className="mt-1 text-xs text-muted-foreground">仅超级管理员可用。操作通过固定命令通道执行，不授予主站 Docker 权限。</p></div>
+          {data?.operation && <span className={cn("rounded-full px-3 py-1 text-xs font-medium", data.operation.status === "SUCCEEDED" ? "bg-emerald-100 text-emerald-800" : data.operation.status === "FAILED" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800")}>{data.operation.message}</span>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" disabled={Boolean(operationLoading)} onClick={() => void runOperation("RESTART_WORKER", "重启 Worker")}><RotateCcw className="mr-2 h-4 w-4" />重启 Worker</Button>
+          <Button variant="outline" disabled={Boolean(operationLoading)} onClick={() => void runOperation("RESTART_NAPCAT", "重启 NapCat 并重新登录")}><Power className="mr-2 h-4 w-4" />重启 NapCat</Button>
+          <Button disabled={Boolean(operationLoading)} onClick={() => void runOperation("REFRESH_LOGIN", "刷新 QQ 登录凭证")}><KeyRound className="mr-2 h-4 w-4" />刷新登录凭证</Button>
+          {data?.operation?.hasLoginCredentials && <Button variant="secondary" disabled={Boolean(operationLoading)} onClick={() => void revealCredentials()}>查看登录凭证</Button>}
+        </div>
+        {credentials && <div className="grid gap-4 rounded-lg border bg-muted/20 p-4 md:grid-cols-[auto_1fr]">
+          <div className="flex min-h-48 min-w-48 items-center justify-center rounded-lg bg-white p-3">
+            {credentials.qrcode ? <QRCodeSVG value={credentials.qrcode} size={168} level="M" /> : <span className="max-w-40 text-center text-sm text-slate-500">当前没有普通登录二维码</span>}
+          </div>
+          <div className="space-y-3 text-sm">
+            <p><span className="text-muted-foreground">登录状态：</span>{credentials.isLogin ? "已登录" : credentials.isOffline ? "已掉线" : "等待登录"}</p>
+            {credentials.captchaUrl && <a className="flex items-center gap-1 text-primary underline" href={credentials.captchaUrl} target="_blank" rel="noreferrer">打开滑块验证 <ExternalLink className="h-3.5 w-3.5" /></a>}
+            {credentials.deviceVerificationUrl && <a className="flex items-center gap-1 text-primary underline" href={credentials.deviceVerificationUrl} target="_blank" rel="noreferrer">打开设备验证 <ExternalLink className="h-3.5 w-3.5" /></a>}
+            {credentials.loginError && <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-800">{credentials.loginError}</p>}
+            <p className="text-xs text-muted-foreground">当前 NapCat 版本不提供短信验证码读取接口。凭证结果约 5 分钟后自动删除；每次查看均写入审计日志。</p>
+          </div>
+        </div>}
+      </CardContent>
       </Card>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

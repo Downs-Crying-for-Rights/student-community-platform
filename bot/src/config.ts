@@ -5,6 +5,8 @@ export interface Config {
   allowedUserIds: ReadonlySet<string>;
   internalApiBaseUrl: string;
   internalApiToken: string;
+  napcatWebuiBaseUrl: string;
+  napcatWebuiToken: string;
   maxMessageBytes: number;
   httpTimeoutMs: number;
   heartbeatMs: number;
@@ -60,6 +62,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowedUserIds,
     internalApiBaseUrl: url(required(env, "INTERNAL_API_BASE_URL"), ["http:", "https:"], "INTERNAL_API_BASE_URL"),
     internalApiToken: required(env, "INTERNAL_API_TOKEN"),
+    napcatWebuiBaseUrl: url(env.NAPCAT_WEBUI_BASE_URL?.trim() || "http://tunnel:6099", ["http:", "https:"], "NAPCAT_WEBUI_BASE_URL"),
+    napcatWebuiToken: env.NAPCAT_WEBUI_TOKEN?.trim() || "",
     maxMessageBytes: integer(env, "MAX_MESSAGE_BYTES", 65_536, 1_024, 1_048_576),
     httpTimeoutMs: integer(env, "HTTP_TIMEOUT_MS", 10_000, 500, 120_000),
     heartbeatMs: integer(env, "WS_HEARTBEAT_MS", 30_000, 5_000, 300_000),

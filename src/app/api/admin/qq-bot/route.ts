@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { getQQBotHeartbeat } from "@/lib/qq-bot-monitor";
 import { QQ_OUTBOX_MAX_ATTEMPTS, QQ_OUTBOX_STALE_AFTER_MS } from "@/lib/qq-outbox";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { getQQBotOperationResult } from "@/lib/qq-bot-operations";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
   const [
     heartbeat,
+    operation,
     identities,
     activeConversations,
     activeDrafts,
@@ -55,6 +57,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     outboxRows,
   ] = await Promise.all([
     getQQBotHeartbeat(),
+    getQQBotOperationResult(),
     prisma.qQIdentity.count(),
     prisma.qQConversation.count({ where: { state: "DELEGATION_FORM", expiresAt: { gt: now } } }),
     prisma.qQDelegationDraft.count({ where: { finalizedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } }),
@@ -148,6 +151,14 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       accountOnline: heartbeat?.accountOnline ?? false,
       accountCheckedAt: heartbeat?.checkedAt ?? null,
     },
+    operation: operation ? {
+      commandId: operation.commandId,
+      action: operation.action,
+      status: operation.status,
+      updatedAt: operation.updatedAt,
+      message: operation.message,
+      hasLoginCredentials: Boolean(operation.login),
+    } : null,
     summary: {
       identities,
       activeConversations,

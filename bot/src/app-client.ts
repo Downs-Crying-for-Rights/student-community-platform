@@ -5,6 +5,8 @@ import type {
   OutboxAck,
   OutboxItem,
   QQBotRuntimeStatus,
+  QQBotOperationCommand,
+  QQBotOperationResult,
 } from "./types.js";
 
 export class AppApiError extends Error {
@@ -116,6 +118,24 @@ export class AppClient implements AppApi {
     await this.postJson(new URL(`outbox/${encodedId}/ack`, this.internalBaseUrl), ack, true);
   }
 
+  async claimOperation(): Promise<QQBotOperationCommand | null> {
+    const parsed = await this.requestJson(new URL("operations", this.internalBaseUrl), "GET");
+    if (!parsed || typeof parsed !== "object") throw new AppApiError("contract");
+    const command = (parsed as { command?: unknown }).command;
+    if (command === null) return null;
+    if (!command || typeof command !== "object") throw new AppApiError("contract");
+    const item = command as Partial<QQBotOperationCommand>;
+    if (typeof item.id !== "string" || typeof item.requestedAt !== "string" ||
+      !["RESTART_WORKER", "RESTART_NAPCAT", "REFRESH_LOGIN"].includes(item.action ?? "")) {
+      throw new AppApiError("contract");
+    }
+    return item as QQBotOperationCommand;
+  }
+
+  async reportOperation(result: QQBotOperationResult): Promise<void> {
+    await this.postJson(new URL("operations", this.internalBaseUrl), result, true);
+  }
+
   private async postJson(endpoint: URL, value: unknown, allowEmpty = false): Promise<unknown> {
     const body = JSON.stringify(value);
     if (Buffer.byteLength(body, "utf8") > this.maxMessageBytes) throw new AppApiError("contract");
@@ -136,6 +156,27 @@ export class AppClient implements AppApi {
     if (!responseText && allowEmpty) return null;
     try {
       return JSON.parse(responseText);
+    } catch {
+      throw new AppApiError("contract");
+    }
+  }
+
+  private async requestJson(endpoint: URL, method: "GET" | "POST"): Promise<unknown> {
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method,
+        headers: { authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch {
+      throw new AppApiError("network");
+    }
+    if (!response.ok) throw new AppApiError("status");
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > this.maxMessageBytes) throw new AppApiError("contract");
+    try {
+      return JSON.parse(text);
     } catch {
       throw new AppApiError("contract");
     }

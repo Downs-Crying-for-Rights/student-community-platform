@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
-  session: vi.fn(), heartbeat: vi.fn(),
+  session: vi.fn(), heartbeat: vi.fn(), operation: vi.fn(),
   identityCount: vi.fn(), conversationCount: vi.fn(), draftCount: vi.fn(), grantCount: vi.fn(),
   inboxCount: vi.fn(), inboxFindMany: vi.fn(), outboxCount: vi.fn(), outboxGroupBy: vi.fn(), outboxFindMany: vi.fn(),
 }));
@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next-auth/next", () => ({ getServerSession: mocks.session }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 vi.mock("@/lib/qq-bot-monitor", () => ({ getQQBotHeartbeat: mocks.heartbeat }));
+vi.mock("@/lib/qq-bot-operations", () => ({ getQQBotOperationResult: mocks.operation }));
 vi.mock("@/lib/prisma", () => ({ default: {
   qQIdentity: { count: mocks.identityCount }, qQConversation: { count: mocks.conversationCount },
   qQDelegationDraft: { count: mocks.draftCount }, qQGrant: { count: mocks.grantCount },
@@ -35,6 +36,7 @@ describe("GET /api/admin/qq-bot", () => {
     mocks.inboxFindMany.mockResolvedValue([{ id: "inbox-1", eventId: "very-long-sensitive-event-reference", selfId: "3917673573", createdAt: new Date("2026-07-19T10:00:00Z"), processedAt: new Date("2026-07-19T10:00:01Z") }]);
     mocks.outboxFindMany.mockResolvedValue([{ id: "outbox-1", status: "FAILED", attemptCount: 5, nextAttemptAt: new Date(), lastError: "ONEBOT_REJECTED", createdAt: new Date("2026-07-19T10:00:02Z"), updatedAt: new Date("2026-07-19T10:00:03Z"), deliveredAt: null }]);
     mocks.heartbeat.mockResolvedValue({ selfId: "3917673573", recordedAt: "2026-07-19T10:00:04.000Z", oneBotConnected: true, accountOnline: true, checkedAt: "2026-07-19T10:00:03.000Z" });
+    mocks.operation.mockResolvedValue(null);
   });
 
   it("distinguishes a connected worker from an offline QQ account", async () => {
