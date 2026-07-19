@@ -39,6 +39,8 @@ import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
 export type LoginTab = "email" | "password" | "sms";
 
+const USAGE_CONSENT_KEYS = new Set(["dm_consent", "chat_monitoring_consent"]);
+
 /** All tabs available on the login page */
 export const LOGIN_TABS: LoginTab[] = ["email", "password", "sms"];
 
@@ -166,10 +168,13 @@ function LoginContent() {
       fetch("/api/site-content")
         .then(r => r.json())
         .then(d => {
-          setAllKeys(d.items ?? []);
+          const registrationAgreements = (d.items ?? []).filter(
+            (item: { key: string }) => !USAGE_CONSENT_KEYS.has(item.key),
+          );
+          setAllKeys(registrationAgreements);
           // Initialize all as unchecked
           const init: Record<string, boolean> = {};
-          (d.items ?? []).forEach((k: { key: string }) => { init[k.key] = false; });
+          registrationAgreements.forEach((item: { key: string }) => { init[item.key] = false; });
           setAgreedKeys(init);
         })
         .catch(() => {});

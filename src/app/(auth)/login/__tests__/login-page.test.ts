@@ -207,6 +207,13 @@ describe("注册方式分流", () => {
     );
     expect(standardRegistration).not.toContain("inviteCode");
   });
+
+  it("注册页不展示私信和群聊的使用时授权协议", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+
+    expect(source).toContain('["dm_consent", "chat_monitoring_consent"]');
+    expect(source).toContain("!USAGE_CONSENT_KEYS.has(item.key)");
+  });
 });
 
 describe("忘记密码", () => {
