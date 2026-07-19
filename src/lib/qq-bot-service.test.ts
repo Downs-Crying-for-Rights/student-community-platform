@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   inboxFindUnique: vi.fn(),
+  identityFindUnique: vi.fn(),
+  conversationFindUnique: vi.fn(),
   transaction: vi.fn(),
   tx: {
     qQBotEventInbox: { create: vi.fn(), update: vi.fn() },
@@ -13,7 +15,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({
-  default: { qQBotEventInbox: { findUnique: mocks.inboxFindUnique } },
+  default: {
+    qQBotEventInbox: { findUnique: mocks.inboxFindUnique },
+    qQIdentity: { findUnique: mocks.identityFindUnique },
+    qQConversation: { findUnique: mocks.conversationFindUnique },
+  },
 }));
 vi.mock("@/lib/serializable-transaction", () => ({
   runSerializableTransaction: mocks.transaction,
@@ -28,6 +34,7 @@ vi.mock("@/lib/qq-config", () => ({
   }),
 }));
 vi.mock("@/lib/sensitive-engine", () => ({ scanContent: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/lib/qq-draft-ai-review", () => ({ reviewQQDraftWithAi: vi.fn().mockResolvedValue([]) }));
 
 import { processQQBotMessage } from "./qq-bot-service";
 import type { QQBotMessage, QQBotResponse } from "./qq-bot-contract";
@@ -46,6 +53,8 @@ describe("QQ bot transactional service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.inboxFindUnique.mockResolvedValue(null);
+    mocks.identityFindUnique.mockResolvedValue(null);
+    mocks.conversationFindUnique.mockResolvedValue(null);
     mocks.transaction.mockImplementation((operation: (tx: typeof mocks.tx) => unknown) => operation(mocks.tx));
     mocks.tx.qQIdentity.findUnique.mockResolvedValue(null);
     mocks.tx.qQBotEventInbox.create.mockResolvedValue({});
@@ -92,38 +101,41 @@ describe("QQ bot transactional service", () => {
   });
 
   it("persists the complete final answer, seven-day draft, submit grant, and saved link response", async () => {
-    const payload = {
-      contentType: "TUTORING",
-      schoolName: "测试高级中学",
-      schoolCategory: "公立学历制学校",
-      schoolType: "高级中学",
-      schoolAddress: "测试路 1 号",
-      reportChannels: "12345",
-      description: "学校从本学期开始要求全年级每周六到校上课，涉及多个班级。",
-      feeStatus: "none",
-      feeDetails: null,
-      demands: ["停止补课"],
-      otherDemand: null,
-      grade: "高二",
-      timeRange: "2026 年 7 月至今",
-      province: "广东省",
-      city: "广州市",
-      expectedHelperProvince: null,
-    };
     mocks.tx.qQIdentity.findUnique.mockResolvedValue({ user: { id: "user-1", isBanned: false } });
+    mocks.identityFindUnique.mockResolvedValue({ userId: "user-1" });
+    mocks.conversationFindUnique.mockResolvedValue({
+      state: "DELEGATION_FORM",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
     mocks.tx.qQConversation.findUnique.mockResolvedValue({
       ownerId: "user-1",
       state: "DELEGATION_FORM",
-      step: 16,
-      revision: 17,
-      payload,
+      step: 0,
+      revision: 1,
+      payload: {},
       expiresAt: new Date(Date.now() + 60_000),
     });
-    mocks.tx.qQConversation.update.mockResolvedValue({ revision: 18 });
+    mocks.tx.qQConversation.update.mockResolvedValue({ revision: 2 });
     const finalMessage: QQBotMessage = {
       ...bindingMessage,
       eventId: "1000000000:124",
-      input: { type: "text", text: "1" },
+      input: { type: "text", text: `内容类型：学校补课
+学校全称：测试高级中学
+学校性质：公立学历制学校
+学校类型：高级中学
+详细地址：广东省广州市测试路 1 号
+举报途径：020-12345 热线
+行为描述：学校安排高二年级学生每周六上午八点至十二点到校统一补课。
+收费情况：无
+收费详情：无
+诉求：停止补课
+其他诉求：无
+涉及年级：高二
+时间范围：2026 年 7 月至今，每周六 8:00-12:00
+所在省份：广东省
+所在城市：广州市
+期望互助人省份：无
+风险偏好：仅站内沟通` },
     };
 
     const result = await processQQBotMessage(finalMessage);
@@ -134,7 +146,7 @@ describe("QQ bot transactional service", () => {
       schemaVersion: 1,
       payload: expect.objectContaining({
         grade: "高二",
-        timeRange: "2026 年 7 月至今",
+        timeRange: "2026 年 7 月至今，每周六 8:00-12:00",
         province: "广东省",
         city: "广州市",
         expectedHelperProvince: null,
@@ -150,7 +162,29 @@ describe("QQ bot transactional service", () => {
     expect(result).toMatchObject({
       duplicate: false,
       replies: [expect.stringMatching(/^委托草稿已保存 7 天。.*https:\/\/forum\.dcr2026\.com\/qq\/draft\?token=qqg_/)],
-      conversation: { state: "draft", revision: "18", prompt: null },
+      conversation: { state: "draft", revision: "2", prompt: null },
     });
+  });
+
+  it("returns only a supplement list and no assessment link when required details are missing", async () => {
+    mocks.tx.qQIdentity.findUnique.mockResolvedValue({ user: { id: "user-1", isBanned: false } });
+    mocks.identityFindUnique.mockResolvedValue({ userId: "user-1" });
+    mocks.conversationFindUnique.mockResolvedValue({ state: "DELEGATION_FORM", expiresAt: new Date(Date.now() + 60_000) });
+    mocks.tx.qQConversation.findUnique.mockResolvedValue({
+      state: "DELEGATION_FORM", step: 0, revision: 1, payload: {}, expiresAt: new Date(Date.now() + 60_000),
+    });
+    const message: QQBotMessage = {
+      ...bindingMessage,
+      eventId: "1000000000:125",
+      input: { type: "text", text: "内容类型：学校补课" },
+    };
+
+    const result = await processQQBotMessage(message);
+
+    expect(result.replies.join("\n")).toContain("请补全以下字段");
+    expect(result.replies.join("\n")).toContain("AI 辅助生成");
+    expect(result.replies.join("\n")).not.toMatch(/AZEOi5|考核链接|\/qq\/draft\?token=/);
+    expect(mocks.tx.qQDelegationDraft.create).not.toHaveBeenCalled();
+    expect(mocks.tx.qQGrant.create).not.toHaveBeenCalled();
   });
 });

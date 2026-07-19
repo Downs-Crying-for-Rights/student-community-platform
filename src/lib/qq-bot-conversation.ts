@@ -6,107 +6,171 @@ export const QQ_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 
 type Payload = Record<string, unknown>;
 
-interface FormStep {
+interface FormField {
+  label: string;
   key: string;
-  prompt: string;
   parse: (answer: string, payload: Payload) => unknown;
 }
 
-function required(max: number, minimum = 1): FormStep["parse"] {
+function required(max: number, minimum = 1): FormField["parse"] {
   return (answer) => {
     const value = answer.trim();
     if (value.length < minimum || value.length > max) {
-      throw new Error(`请输入 ${minimum}-${max} 个字符。`);
+      throw new Error(`“${value.slice(0, 12) || "空值"}”应为 ${minimum}-${max} 个字符。`);
     }
     return value;
   };
 }
 
-function optional(max: number): FormStep["parse"] {
+function optional(max: number): FormField["parse"] {
   return (answer) => {
     const value = answer.trim();
     if (value === "无") return null;
-    if (!value || value.length > max) throw new Error(`请输入不超过 ${max} 个字符，或回复“无”。`);
+    if (!value || value.length > max) throw new Error(`请输入不超过 ${max} 个字符，或填写“无”。`);
     return value;
   };
 }
 
-function choice<T extends string>(choices: Record<string, T>, hint: string): FormStep["parse"] {
+function choice<T extends string>(choices: Record<string, T>, hint: string): FormField["parse"] {
   return (answer) => {
     const value = choices[answer.trim()];
-    if (!value) throw new Error(`格式不正确。${hint}`);
+    if (!value) throw new Error(`格式不正确，${hint}`);
     return value;
   };
 }
 
-export const QQ_DELEGATION_STEPS: readonly FormStep[] = [
+const FIELDS: readonly FormField[] = [
   {
+    label: "内容类型",
     key: "contentType",
-    prompt: "请选择内容类型：1 学校补课，2 提前开学，3 不双休，4 校外培训，5 其他。",
     parse: choice(
-      { "1": "TUTORING", "学校补课": "TUTORING", "2": "EARLY_START", "提前开学": "EARLY_START", "3": "NO_WEEKENDS", "不双休": "NO_WEEKENDS", "4": "EXTERNAL_TRAINING", "校外培训": "EXTERNAL_TRAINING", "5": "OTHER", "其他": "OTHER" },
-      "请回复 1-5。",
+      { "学校补课": "TUTORING", "提前开学": "EARLY_START", "不双休": "NO_WEEKENDS", "校外培训": "EXTERNAL_TRAINING", "其他": "OTHER" },
+      "请填写学校补课、提前开学、不双休、校外培训或其他。",
     ),
   },
-  { key: "schoolName", prompt: "请填写学校或机构全称。", parse: required(200) },
+  { label: "学校全称", key: "schoolName", parse: required(200, 2) },
   {
+    label: "学校性质",
     key: "schoolCategory",
-    prompt: "请选择学校性质：1 公立学历制学校，2 私立学历制学校，3 校外培训机构。",
     parse: choice(
-      { "1": "公立学历制学校", "公立学历制学校": "公立学历制学校", "2": "私立学历制学校", "私立学历制学校": "私立学历制学校", "3": "校外培训机构", "校外培训机构": "校外培训机构" },
-      "请回复 1-3。",
+      { "公立学历制学校": "公立学历制学校", "私立学历制学校": "私立学历制学校", "校外培训机构": "校外培训机构" },
+      "请填写公立学历制学校、私立学历制学校或校外培训机构。",
     ),
   },
-  { key: "schoolType", prompt: "请填写学校类型，例如高级中学、普通高校或校外培训机构。", parse: required(100) },
-  { key: "schoolAddress", prompt: "请填写学校或机构的详细地址。", parse: required(500) },
-  { key: "reportChannels", prompt: "请填写已经尝试的举报渠道；没有请回复“无”。", parse: optional(500) },
-  { key: "description", prompt: "请详细描述事实经过、时间和涉及对象（至少 20 字）。", parse: required(5_000, 20) },
+  { label: "学校类型", key: "schoolType", parse: required(100, 2) },
+  { label: "详细地址", key: "schoolAddress", parse: required(500, 5) },
+  { label: "举报途径", key: "reportChannels", parse: required(500, 4) },
+  { label: "行为描述", key: "description", parse: required(5_000, 20) },
   {
+    label: "收费情况",
     key: "feeStatus",
-    prompt: "请选择收费情况：1 未收费，2 已收费，3 不清楚。",
-    parse: choice({ "1": "none", "未收费": "none", "2": "charged", "已收费": "charged", "3": "unknown", "不清楚": "unknown" }, "请回复 1-3。"),
+    parse: choice({ "无": "none", "未收费": "none", "已收费": "charged", "不明": "unknown", "不清楚": "unknown" }, "请填写无、已收费或不明。"),
   },
+  { label: "收费详情", key: "feeDetails", parse: optional(1_000) },
   {
-    key: "feeDetails",
-    prompt: "请填写收费金额、方式等信息；未收费或不清楚请回复“无”。",
-    parse: (answer, payload) => {
-      const value = optional(1_000)(answer, payload);
-      if (payload.feeStatus === "charged" && value === null) throw new Error("已收费时必须填写收费详情。");
-      return value;
-    },
-  },
-  {
+    label: "诉求",
     key: "demands",
-    prompt: "请填写诉求，多项用中文逗号分隔，例如：停止补课，退还费用。",
     parse: (answer) => {
       const values = [...new Set(answer.split(/[，,]/).map((item) => item.trim()).filter(Boolean))];
       if (values.length < 1 || values.length > 20 || values.some((item) => item.length > 200)) {
-        throw new Error("请填写 1-20 项诉求，每项不超过 200 字，并用逗号分隔。");
+        throw new Error("请填写 1-20 项明确诉求，每项不超过 200 字，并用逗号分隔。");
       }
       return values;
     },
   },
-  { key: "otherDemand", prompt: "如有其他诉求请填写；没有请回复“无”。", parse: optional(1_000) },
-  { key: "grade", prompt: "请填写涉及年级；不确定请回复“无”。", parse: optional(20) },
-  { key: "timeRange", prompt: "请填写事件发生的时间范围；不确定请回复“无”。", parse: optional(200) },
-  { key: "province", prompt: "请填写事件所在省份。", parse: required(50) },
-  { key: "city", prompt: "请填写事件所在城市。", parse: required(50) },
-  { key: "expectedHelperProvince", prompt: "请填写期望互助人省份；无偏好请回复“无”。", parse: optional(50) },
+  { label: "其他诉求", key: "otherDemand", parse: optional(1_000) },
+  { label: "涉及年级", key: "grade", parse: optional(20) },
+  { label: "时间范围", key: "timeRange", parse: optional(200) },
+  { label: "所在省份", key: "province", parse: required(50, 2) },
+  { label: "所在城市", key: "city", parse: required(50, 2) },
+  { label: "期望互助人省份", key: "expectedHelperProvince", parse: optional(50) },
   {
+    label: "风险偏好",
     key: "riskPreference",
-    prompt: "请选择风险偏好：1 仅站内沟通，2 可电话，3 仅模板咨询。",
-    parse: choice({ "1": "仅站内沟通", "仅站内沟通": "仅站内沟通", "2": "可电话", "可电话": "可电话", "3": "仅模板咨询", "仅模板咨询": "仅模板咨询" }, "请回复 1-3。"),
+    parse: choice({ "仅站内沟通": "仅站内沟通", "可电话": "可电话", "仅模板咨询": "仅模板咨询" }, "请填写仅站内沟通、可电话或仅模板咨询。"),
   },
 ] as const;
 
-export function getQQDelegationPrompt(step: number): FormStep | null {
-  return QQ_DELEGATION_STEPS[step] ?? null;
+const FIELD_BY_LABEL = new Map(FIELDS.map((field) => [field.label, field]));
+
+export const QQ_DELEGATION_TEMPLATE = `请一次填写并发送以下完整模板，不要删除字段名。需要修改时请重新发送完整模板。
+可参考委托表生成器：https://1kxfhpte.jsjform.com/f/TMcGoz
+
+内容类型：学校补课/提前开学/不双休/校外培训/其他
+学校全称：
+学校性质：公立学历制学校/私立学历制学校/校外培训机构
+学校类型：例如高级中学
+详细地址：
+举报途径：至少一种，例如区号+12345、市教育局或省教育厅电话
+行为描述：请写明事实，不要填写姓名、手机号、班级等个人信息
+收费情况：无/已收费/不明
+收费详情：无或具体金额、方式
+诉求：多项用中文逗号分隔
+其他诉求：无
+涉及年级：
+时间范围：补课请写日期范围或星期与时段；提前开学请写规定日期和实际日期
+所在省份：
+所在城市：
+期望互助人省份：无
+风险偏好：仅站内沟通/可电话/仅模板咨询
+
+自愿与真实性声明、最终核对和正式提交仅在登录后的网页中完成。`;
+
+export function parseQQDelegationForm(text: string): Payload {
+  const values = new Map<string, string>();
+  let currentLabel: string | null = null;
+
+  for (const rawLine of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const match = line.match(/^([^：:]{1,30})[：:]\s*(.*)$/);
+    const label = match?.[1].trim();
+    if (label && FIELD_BY_LABEL.has(label)) {
+      if (values.has(label)) throw new Error(`字段“${label}”重复，请只保留一项。`);
+      values.set(label, match?.[2].trim() ?? "");
+      currentLabel = label;
+      continue;
+    }
+    if (!currentLabel) throw new Error("请保留固定模板的字段名，并从“内容类型”开始填写。");
+    values.set(currentLabel, `${values.get(currentLabel)}\n${line}`.trim());
+  }
+
+  const missing = FIELDS.filter((field) => !values.get(field.label)).map((field) => field.label);
+  if (missing.length > 0) throw new Error(`请补全以下字段：${missing.join("、")}。没有相关信息时请填写“无”。`);
+
+  let payload: Payload = {};
+  for (const field of FIELDS) {
+    try {
+      payload = { ...payload, [field.key]: field.parse(values.get(field.label)!, payload) };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "格式不正确。";
+      throw new Error(`${field.label}：${reason}`);
+    }
+  }
+  return payload;
 }
 
-export function applyQQDelegationAnswer(step: number, payload: Payload, answer: string): Payload {
-  const current = getQQDelegationPrompt(step);
-  if (!current) throw new Error("当前表单已填写完成。");
-  return { ...payload, [current.key]: current.parse(answer, payload) };
+export function validateQQDelegationRequirements(payload: Payload): string[] {
+  const issues: string[] = [];
+  const type = payload.contentType;
+  const grade = typeof payload.grade === "string" ? payload.grade : "";
+  const timeRange = typeof payload.timeRange === "string" ? payload.timeRange : "";
+  const description = typeof payload.description === "string" ? payload.description : "";
+
+  if (payload.feeStatus === "charged" && !payload.feeDetails) issues.push("已收费时请在“收费详情”中填写金额和收费方式。");
+  if (type === "TUTORING" || type === "NO_WEEKENDS") {
+    if (!grade) issues.push("请填写涉及年级。");
+    if (!timeRange) issues.push("请填写补课或到校安排的日期范围，或星期与具体时段。");
+  }
+  if (type === "EARLY_START") {
+    if (!grade) issues.push("请填写涉及年级。");
+    const schedule = `${description}\n${timeRange}`;
+    if (!/规定.{0,12}(?:日期|时间)/.test(schedule) || !/实际.{0,12}(?:日期|时间)/.test(schedule)) {
+      issues.push("提前开学请明确填写规定开学日期和实际开学日期。");
+    }
+  }
+  if (type === "OTHER") issues.push("该类型暂不适用 QQ 委托预审，请通过站内渠道联系管理员说明情况。");
+  return issues;
 }
 
 export function buildCanonicalQQDraft(payload: Payload): { payload: Payload; canonical: string; hash: string } {
@@ -117,7 +181,7 @@ export function buildCanonicalQQDraft(payload: Payload): { payload: Payload; can
     schoolCategory: payload.schoolCategory,
     schoolType: payload.schoolType,
     schoolAddress: payload.schoolAddress,
-    reportChannels: payload.reportChannels ?? undefined,
+    reportChannels: payload.reportChannels,
     description: payload.description,
     feeStatus: payload.feeStatus,
     feeDetails: payload.feeDetails ?? undefined,
