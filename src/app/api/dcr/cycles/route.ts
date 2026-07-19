@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { createCycle, enqueueThreePartyMatch } from "@/lib/mutual-aid-cycle";
 import { z } from "zod";
+import { sendAdminActionMail } from "@/lib/mail";
 
 const createCycleSchema = z.object({
   mode: z.enum(["TWO_PARTY", "THREE_PARTY"]).default("THREE_PARTY"),
@@ -42,6 +43,14 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         needText: parsed.data.needText,
         offerText: parsed.data.offerText,
       });
+      if (!match.matched) {
+        await sendAdminActionMail({
+          minimumRole: "ADMIN",
+          subject: "三方互助匹配待处理",
+          text: `新的三方互助请求正在等待匹配，请检查匹配池。请求编号：${match.request.id}。`,
+          actionUrl: "/admin/dcr/cycles",
+        });
+      }
       return NextResponse.json({
         matched: match.matched,
         matchRequest: { id: match.request.id, status: match.matched ? "MATCHED" : "WAITING" },

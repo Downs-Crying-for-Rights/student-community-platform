@@ -5,6 +5,7 @@ import { updatePostSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
 import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
+import { sendAdminActionMail } from "@/lib/mail";
 
 /**
  * GET /api/posts/[id]
@@ -186,6 +187,12 @@ export const PATCH = withAuth(async (
         }, undefined, tx);
         return created;
       });
+      await sendAdminActionMail({
+        minimumRole: "MODERATOR",
+        subject: "已发布帖子修改待审核",
+        text: `帖子「${existing.title}」提交了新的修改版本，当前公开版本保持不变。`,
+        actionUrl: "/admin/moderation",
+      });
       return NextResponse.json({
         post: { ...existing, isAuthor: true, pendingRevision: revision },
         liveVersionUnchanged: true,
@@ -214,6 +221,13 @@ export const PATCH = withAuth(async (
         newStatus: "PENDING",
       }, undefined, tx);
       return updated;
+    });
+
+    await sendAdminActionMail({
+      minimumRole: "MODERATOR",
+      subject: "帖子重新提交审核",
+      text: `帖子「${post.title}」已更新并重新进入待审核队列。`,
+      actionUrl: "/admin/moderation",
     });
 
     return NextResponse.json({ post: { ...anonymizePsychologyPost(post), isAuthor: true }, liveVersionUnchanged: false, reviewStatus: "PENDING" });

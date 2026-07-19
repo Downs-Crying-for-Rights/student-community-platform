@@ -5,6 +5,7 @@ const mockConfideRequestDeleteMany = vi.fn();
 const mockMessageDeleteMany = vi.fn();
 const mockCaseUpdateMany = vi.fn();
 const mockAuditLogCount = vi.fn();
+const mockAiReviewDeleteMany = vi.fn();
 
 vi.mock("../prisma", () => ({
   default: {
@@ -21,6 +22,9 @@ vi.mock("../prisma", () => ({
     auditLog: {
       count: (...args: unknown[]) => mockAuditLogCount(...args),
     },
+    aiReview: {
+      deleteMany: (...args: unknown[]) => mockAiReviewDeleteMany(...args),
+    },
   },
 }));
 
@@ -30,6 +34,7 @@ import {
   archiveOldCases,
   countArchivableAuditLogs,
   cleanupExpiredListeningSessions,
+  cleanupExpiredAiReviews,
   runAllCleanup,
 } from "../cleanup";
 
@@ -186,6 +191,14 @@ describe("数据清理模块", () => {
     });
   });
 
+  describe("cleanupExpiredAiReviews", () => {
+    it("应删除超过保留期限的私密 AI 审核结果", async () => {
+      mockAiReviewDeleteMany.mockResolvedValue({ count: 4 });
+      expect(await cleanupExpiredAiReviews()).toBe(4);
+      expect(mockAiReviewDeleteMany).toHaveBeenCalledWith({ where: { expiresAt: { lt: expect.any(Date) } } });
+    });
+  });
+
   describe("runAllCleanup", () => {
     it("应执行所有清理任务并返回汇总报告", async () => {
       mockConfideRequestFindMany.mockResolvedValue([{ id: "c-1" }]);
@@ -193,6 +206,7 @@ describe("数据清理模块", () => {
       mockConfideRequestDeleteMany.mockResolvedValue({ count: 1 });
       mockCaseUpdateMany.mockResolvedValue({ count: 2 });
       mockAuditLogCount.mockResolvedValue(10);
+      mockAiReviewDeleteMany.mockResolvedValue({ count: 4 });
 
       const report = await runAllCleanup();
 
@@ -202,6 +216,7 @@ describe("数据清理模块", () => {
         archivedCases: 2,
         archivableAuditLogs: 10,
         expiredListeningSessions: 3,
+        expiredAiReviews: 4,
         executedAt: expect.any(String),
       });
     });
@@ -211,6 +226,7 @@ describe("数据清理模块", () => {
       mockMessageDeleteMany.mockResolvedValue({ count: 0 });
       mockCaseUpdateMany.mockResolvedValue({ count: 0 });
       mockAuditLogCount.mockResolvedValue(0);
+      mockAiReviewDeleteMany.mockResolvedValue({ count: 0 });
 
       const report = await runAllCleanup();
 
@@ -218,6 +234,7 @@ describe("数据清理模块", () => {
       expect(report.oldAnonymousSessionMessages).toBe(0);
       expect(report.archivedCases).toBe(0);
       expect(report.archivableAuditLogs).toBe(0);
+      expect(report.expiredAiReviews).toBe(0);
       expect(report.expiredListeningSessions).toBe(0);
       expect(report.executedAt).toBeTruthy();
     });

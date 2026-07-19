@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
+  findMany: vi.fn(),
   sendMail: vi.fn(),
   createTransport: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   default: {
-    user: { findUnique: mocks.findUnique },
+    user: { findUnique: mocks.findUnique, findMany: mocks.findMany },
   },
 }));
 
@@ -18,7 +19,7 @@ vi.mock("nodemailer", () => ({
   },
 }));
 
-import { sendUserMail } from "../mail";
+import { sendAdminActionMail, sendUserMail } from "../mail";
 
 const SMTP_KEYS = [
   "SMTP_HOST",
@@ -41,6 +42,11 @@ describe("sendUserMail", () => {
     process.env.SMTP_FROM = "mailer@example.com";
     mocks.createTransport.mockReturnValue({ sendMail: mocks.sendMail });
     mocks.findUnique.mockResolvedValue({ email: "student@example.com" });
+    mocks.findMany.mockResolvedValue([
+      { email: "moderator@example.com" },
+      { email: "admin@example.com" },
+      { email: "admin@example.com" },
+    ]);
     mocks.sendMail.mockResolvedValue({ messageId: "mail-1" });
   });
 
@@ -79,5 +85,55 @@ describe("sendUserMail", () => {
       sendUserMail({ userId: "user-2", subject: "审核结果", text: "结果" }),
     ).resolves.toEqual({ sent: false, reason: "user_has_no_email" });
     expect(mocks.sendMail).not.toHaveBeenCalled();
+  });
+
+  it("sends one BCC email to eligible administrators with deduplicated addresses", async () => {
+    const result = await sendAdminActionMail({
+      minimumRole: "MODERATOR",
+      subject: "新举报待处理",
+      text: "收到一条新举报。",
+      actionUrl: "/admin/reports",
+    });
+
+    expect(result).toEqual({ sent: true, recipientCount: 2 });
+    expect(mocks.findMany).toHaveBeenCalledWith({
+      where: {
+        role: { in: ["MODERATOR", "ADMIN", "SUPER_ADMIN"] },
+        isBanned: false,
+        email: { not: null },
+      },
+      select: { email: true },
+    });
+    expect(mocks.sendMail).toHaveBeenCalledWith(expect.objectContaining({
+      to: "mailer@example.com",
+      bcc: ["moderator@example.com", "admin@example.com"],
+      subject: "[管理员待办] 新举报待处理",
+      text: expect.stringContaining("https://forum.dcr2026.com/admin/reports"),
+    }));
+  });
+
+  it("limits administrator-only actions to ADMIN and SUPER_ADMIN", async () => {
+    await sendAdminActionMail({
+      minimumRole: "ADMIN",
+      subject: "DCR 申请待审核",
+      text: "收到申请。",
+      actionUrl: "/admin/applications",
+    });
+
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ role: { in: ["ADMIN", "SUPER_ADMIN"] } }),
+    }));
+  });
+
+  it("isolates SMTP failures from the business operation", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.sendMail.mockRejectedValue(new Error("SMTP unavailable"));
+
+    await expect(sendAdminActionMail({
+      minimumRole: "MODERATOR",
+      subject: "待处理事项",
+      text: "内容",
+      actionUrl: "/admin/moderation",
+    })).resolves.toEqual({ sent: false, recipientCount: 0, reason: "send_failed" });
   });
 });

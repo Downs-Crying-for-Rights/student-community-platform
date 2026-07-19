@@ -8,6 +8,7 @@ import {
   notifyMutualAidAdminsBestEffort,
   notifyMutualAidUsersBestEffort,
 } from "@/lib/mutual-aid-notifications";
+import { sendAdminActionMail } from "@/lib/mail";
 
 /**
  * POST /api/dcr/tasks/[id]/dispute
@@ -112,6 +113,12 @@ export const POST = withAuth(async (
       title: "新的互助争议待处理",
       content: `互助任务「${task.title}」有新的会话争议。`,
       link: "/admin/disputes",
+    });
+    await sendAdminActionMail({
+      minimumRole: "MODERATOR",
+      subject: "新的互助争议待仲裁",
+      text: `互助任务「${task.title}」有新的会话争议，争议会话：${selected.id}。`,
+      actionUrl: "/admin/disputes",
     });
 
     return NextResponse.json({ status: "DISPUTED", sessionId: selected.id });

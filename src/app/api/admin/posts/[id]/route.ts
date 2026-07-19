@@ -5,6 +5,7 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditTargetType } from "@/lib/audit";
 import { scanContent } from "@/lib/sensitive-engine";
 import { z } from "zod";
+import { sendAdminActionMail } from "@/lib/mail";
 
 const updateSchema = z.object({
   status: z.enum(["DRAFT", "PENDING", "PUBLISHED", "REJECTED", "DELETED"]).optional(),
@@ -93,6 +94,15 @@ export const PATCH = withAuth(async (
       );
       return updated;
     });
+
+    if (status === "PENDING" && existing.status !== "PENDING") {
+      await sendAdminActionMail({
+        minimumRole: "MODERATOR",
+        subject: "帖子被重新加入审核队列",
+        text: `帖子「${post.title}」由管理员重新设为待审核。`,
+        actionUrl: "/admin/moderation",
+      });
+    }
 
     return NextResponse.json({ post });
   } catch (error) {

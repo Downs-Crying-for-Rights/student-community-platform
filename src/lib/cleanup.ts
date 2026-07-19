@@ -9,6 +9,7 @@ export interface CleanupReport {
   archivedCases: number;
   archivableAuditLogs: number;
   expiredListeningSessions: number;
+  expiredAiReviews: number;
   executedAt: string;
 }
 
@@ -128,6 +129,13 @@ export async function cleanupExpiredListeningSessions(): Promise<number> {
   return result.count;
 }
 
+export async function cleanupExpiredAiReviews(): Promise<number> {
+  const result = await prisma.aiReview.deleteMany({
+    where: { expiresAt: { lt: new Date() } },
+  });
+  return result.count;
+}
+
 /**
  * Run all cleanup tasks and return a consolidated report.
  *
@@ -140,12 +148,14 @@ export async function runAllCleanup(): Promise<CleanupReport> {
     archivedCases,
     archivableAuditLogs,
     expiredListeningSessions,
+    expiredAiReviews,
   ] = await Promise.all([
     cleanupExpiredConfideRequests(),
     cleanupOldAnonymousSessions(),
     archiveOldCases(),
     countArchivableAuditLogs(),
     cleanupExpiredListeningSessions(),
+    cleanupExpiredAiReviews(),
   ]);
 
   return {
@@ -154,6 +164,7 @@ export async function runAllCleanup(): Promise<CleanupReport> {
     archivedCases,
     archivableAuditLogs,
     expiredListeningSessions,
+    expiredAiReviews,
     executedAt: new Date().toISOString(),
   };
 }

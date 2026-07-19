@@ -91,6 +91,10 @@ export const AuditAction = {
   // 系统
   SYSTEM_RESTART: "SYSTEM_RESTART",
   UNAUTHORIZED_ACCESS: "UNAUTHORIZED_ACCESS",
+  AI_REVIEW_REQUEST: "AI_REVIEW_REQUEST",
+  AI_REVIEW_COMPLETE: "AI_REVIEW_COMPLETE",
+  AI_REVIEW_FAILED: "AI_REVIEW_FAILED",
+  AI_REVIEW_BLOCKED: "AI_REVIEW_BLOCKED",
 } as const;
 
 export type AuditActionType = (typeof AuditAction)[keyof typeof AuditAction];

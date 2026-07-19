@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
+import { AiReviewPanel } from "@/components/admin/AiReviewPanel";
 import {
   NEED_MORE_INFO_TEMPLATE,
   APPROVED_TEMPLATE,
@@ -206,6 +207,10 @@ export default function DCRModPage() {
                   {/* 审核意见 */}
                   {c.reviewNote && (
                     <p className="text-xs text-muted-foreground italic">审核意见: {c.reviewNote}</p>
+                  )}
+
+                  {(activeTab === "PENDING" || activeTab === "NEED_MORE_INFO" || activeTab === "MANUAL_REVIEW") && (
+                    <AiReviewPanel targetType="CASE" targetId={c.id} onUseReason={setReviewNote} />
                   )}
 
                   {/* 操作按钮 */}

@@ -7,6 +7,7 @@ import { CheckCircle2, ExternalLink, Flag, Loader2, RefreshCw, XCircle } from "l
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AiReviewPanel } from "@/components/admin/AiReviewPanel";
 
 type ReportStatus = "PENDING" | "IN_PROGRESS" | "RESOLVED" | "DISMISSED";
 type ResolutionAction = "NONE" | "DELETE_TARGET" | "BAN_RESPONSIBLE_USER" | "SHADOW_HIDE_RESPONSIBLE_USER" | "DELETE_TARGET_AND_BAN_USER" | "DELETE_TARGET_AND_SHADOW_HIDE_USER";
@@ -219,6 +220,14 @@ export default function AdminReportsPage() {
                   </div>
                   {report.details && <p className="whitespace-pre-wrap text-sm text-muted-foreground">补充说明：{report.details}</p>}
                   <p className="text-xs text-muted-foreground">举报人：{report.reporter.nickname || report.reporter.id}</p>
+
+                  {(report.status === "PENDING" || report.status === "IN_PROGRESS") && (
+                    <AiReviewPanel
+                      targetType="REPORT"
+                      targetId={report.id}
+                      onUseReason={(reason) => setResolutionById((current) => ({ ...current, [report.id]: reason }))}
+                    />
+                  )}
 
                   {report.status === "PENDING" && (
                     <Button size="sm" onClick={() => void update(report, "IN_PROGRESS")} disabled={actingId === report.id}>接手处理</Button>

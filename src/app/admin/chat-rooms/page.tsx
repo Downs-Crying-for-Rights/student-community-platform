@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ListSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { AiReviewPanel } from "@/components/admin/AiReviewPanel";
 
 type ReviewStatus = "PENDING" | "APPROVED" | "REJECTED";
 
@@ -126,6 +127,12 @@ export default function ChatRoomReviewPage() {
                     </div>
                   )}
                 </div>
+
+                {room.status === "PENDING" && (
+                  <div className="mt-4">
+                    <AiReviewPanel targetType="CHAT_ROOM" targetId={room.id} onUseReason={(value) => { setRejectingId(room.id); setReason(value); }} />
+                  </div>
+                )}
 
                 {rejectingId === room.id && (
                   <div className="mt-4 flex flex-col gap-2 border-t pt-4 sm:flex-row">

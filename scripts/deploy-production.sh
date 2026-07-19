@@ -32,6 +32,28 @@ if [[ ! -f "$SHARED_DIR/.env" ]]; then
   fi
 fi
 
+if [[ -n "${AI_ENV_PATH:-}" ]]; then
+  if [[ ! -f "$AI_ENV_PATH" ]]; then
+    echo "AI runtime configuration is missing: $AI_ENV_PATH" >&2
+    exit 1
+  fi
+  while IFS='=' read -r key value; do
+    case "$key" in
+      DEEPSEEK_ENABLED|DEEPSEEK_API_KEY|DEEPSEEK_BASE_URL|DEEPSEEK_DEFAULT_MODEL|DEEPSEEK_COMPLEX_MODEL)
+        sed -i "/^${key}=/d" "$SHARED_DIR/.env"
+        printf '%s=%s\n' "$key" "$value" >> "$SHARED_DIR/.env"
+        ;;
+      "") ;;
+      *)
+        echo "Unexpected AI runtime configuration key: $key" >&2
+        exit 1
+        ;;
+    esac
+  done < "$AI_ENV_PATH"
+  chmod 600 "$SHARED_DIR/.env"
+  rm -f -- "$AI_ENV_PATH"
+fi
+
 cp "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 chmod 600 "$RELEASE_DIR/.env"
 
@@ -49,6 +71,12 @@ docker compose -p "$PROJECT_NAME" exec -T web sh -ec '
   test -n "$OSS_CDN_DOMAIN"
   case "$OSS_ENDPOINT" in https://*) ;; *) exit 1 ;; esac
   case "$OSS_CDN_DOMAIN" in https://*) ;; *) exit 1 ;; esac
+  if [ "$DEEPSEEK_ENABLED" = "true" ]; then
+    test -n "$DEEPSEEK_API_KEY"
+    test "$DEEPSEEK_BASE_URL" = "https://api.deepseek.com"
+    test "$DEEPSEEK_DEFAULT_MODEL" = "deepseek-v4-flash"
+    test "$DEEPSEEK_COMPLEX_MODEL" = "deepseek-v4-flash"
+  fi
 '
 
 healthy=false

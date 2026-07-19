@@ -60,6 +60,7 @@ vi.mock("@/lib/notification", () => ({
 
 vi.mock("@/lib/mail", () => ({
   sendUserMail: vi.fn(),
+  sendAdminActionMail: vi.fn(),
 }));
 
 vi.mock("@/lib/utils", () => ({

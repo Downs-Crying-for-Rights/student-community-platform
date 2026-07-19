@@ -4,6 +4,7 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { scanContent } from "@/lib/sensitive-engine";
 import { createNotification } from "@/lib/notification";
 import { z } from "zod";
+import { sendAdminActionMail } from "@/lib/mail";
 
 const messageSchema = z.object({
   content: z.string().min(1).max(2000),
@@ -77,7 +78,7 @@ export const POST = withAuth(async (
 
       // Notify all moderators — find one moderator to notify
       const moderators = await prisma.user.findMany({
-        where: { role: { in: ["MODERATOR", "ADMIN"] } },
+        where: { role: { in: ["MODERATOR", "ADMIN", "SUPER_ADMIN"] } },
         select: { id: true },
       });
 
@@ -107,6 +108,15 @@ export const POST = withAuth(async (
       await prisma.confideRequest.update({
         where: { id },
         data: { status: "ACTIVE" },
+      });
+    }
+
+    if (riskDetected) {
+      await sendAdminActionMail({
+        minimumRole: "MODERATOR",
+        subject: "倾听会话风险预警",
+        text: `倾听会话 ${id} 中检测到风险触发词，请及时介入处理。`,
+        actionUrl: "/admin/reports",
       });
     }
 

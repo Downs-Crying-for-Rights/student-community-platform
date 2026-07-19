@@ -36,7 +36,7 @@ vi.mock("@/lib/dcr-review-rules", () => ({
   reviewDelegation: () => ({ decision: "APPROVED", reason: "完整", missingFields: [] }),
 }));
 vi.mock("@/lib/notification", () => ({ createNotification: vi.fn() }));
-vi.mock("@/lib/mail", () => ({ sendUserMail: vi.fn() }));
+vi.mock("@/lib/mail", () => ({ sendUserMail: vi.fn(), sendAdminActionMail: vi.fn() }));
 vi.mock("@/lib/utils", () => ({ generateAnonymousId: () => "anonymous" }));
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));

@@ -6,6 +6,7 @@ import {
   disputeLink,
 } from "@/lib/mutual-aid-cycle";
 import { z } from "zod";
+import { sendAdminActionMail } from "@/lib/mail";
 
 const linkActionSchema = z.object({
   action: z.enum(["ACCEPTED", "REJECTED", "IN_PROGRESS", "COMPLETED", "DISPUTED"]),
@@ -51,6 +52,15 @@ export const PATCH = withAuth(async (
       case "DISPUTED":
         result = await disputeLink(linkId, userId, reason ?? "争议");
         break;
+    }
+
+    if (action === "DISPUTED" || action === "REJECTED") {
+      await sendAdminActionMail({
+        minimumRole: "ADMIN",
+        subject: action === "DISPUTED" ? "互助循环争议待处理" : "互助循环已断裂",
+        text: `互助循环 ${cycleId} 的关系 ${linkId} 已${action === "DISPUTED" ? "发起争议" : "被拒绝"}。`,
+        actionUrl: "/admin/dcr/cycles",
+      });
     }
 
     return NextResponse.json(result);

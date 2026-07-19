@@ -4,6 +4,7 @@ import { withAuth, hasMinimumRole, type AuthenticatedRequest } from "@/lib/rbac"
 import { createReportSchema, paginationSchema } from "@/lib/validators";
 import { checkPostAccess } from "@/lib/post-access";
 import { z } from "zod";
+import { sendAdminActionMail } from "@/lib/mail";
 
 const AUTO_HIDE_THRESHOLD = 3;
 
@@ -188,6 +189,12 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     });
 
     await checkAutoHideThreshold(data.targetPostId, data.targetCommentId);
+    await sendAdminActionMail({
+      minimumRole: "MODERATOR",
+      subject: "新举报待处理",
+      text: `收到新的用户举报，举报类型：${data.reason}。`,
+      actionUrl: "/admin/reports?status=PENDING",
+    });
     return NextResponse.json({ report }, { status: 201 });
   } catch (error) {
     console.error("POST /api/reports error:", error);

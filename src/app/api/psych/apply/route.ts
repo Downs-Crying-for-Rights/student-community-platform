@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
+import { sendAdminActionMail } from "@/lib/mail";
 
 /**
  * POST /api/psych/apply
@@ -66,6 +67,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       application.id,
       { type: "PSYCHOLOGY" },
     );
+
+    await sendAdminActionMail({
+      minimumRole: "ADMIN",
+      subject: "心理区准入申请待审核",
+      text: "收到新的心理区准入申请，请及时审核。",
+      actionUrl: "/admin/applications?type=PSYCHOLOGY&status=PENDING",
+    });
 
     return NextResponse.json({ application }, { status: 201 });
   } catch (error) {

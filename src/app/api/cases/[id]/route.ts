@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
-import { sendUserMail } from "@/lib/mail";
+import { sendAdminActionMail, sendUserMail } from "@/lib/mail";
 import { generateAnonymousId } from "@/lib/utils";
 import { CaseStatus } from "@prisma/client";
 import { z } from "zod";
@@ -220,6 +220,12 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       if (!updated) {
         return NextResponse.json({ error: "委托审核状态已变化", code: "CASE_NOT_AWAITING_SUPPLEMENT" }, { status: 409 });
       }
+      await sendAdminActionMail({
+        minimumRole: "MODERATOR",
+        subject: "委托补充材料待复审",
+        text: `委托 ${id} 已提交补充材料并重新进入审核队列。`,
+        actionUrl: "/admin/dcr/reviews?requestStatus=PENDING",
+      });
       return NextResponse.json({ case: updated });
     }
 
@@ -306,6 +312,15 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         return NextResponse.json({ error: "委托不存在" }, { status: 404 });
       }
       const { caseRecord, updated, autoApprovedApplicationId } = reviewResult;
+
+      if (newRequestStatus === "PENDING" || newRequestStatus === "MANUAL_REVIEW") {
+        await sendAdminActionMail({
+          minimumRole: "MODERATOR",
+          subject: "委托需要继续审核",
+          text: `委托 ${id} 已转为${newRequestStatus === "MANUAL_REVIEW" ? "人工审核" : "待审核"}状态。`,
+          actionUrl: `/admin/dcr/reviews?requestStatus=${newRequestStatus}`,
+        });
+      }
 
       // Log audit
       await logAudit(

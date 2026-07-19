@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ListSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { AiReviewPanel } from "@/components/admin/AiReviewPanel";
 import { cn } from "@/lib/utils";
 
 /* ---------- Types ---------- */
@@ -397,6 +398,12 @@ export default function ModerationPage() {
                     ))}
                   </div>
                 )}
+
+                <AiReviewPanel
+                  targetType={selectedPost.revisionId ? "POST_REVISION" : "POST"}
+                  targetId={selectedPost.revisionId || selectedPost.id}
+                  onUseReason={setRejectReason}
+                />
 
                 {/* Reject reason input (only for PENDING posts) */}
                 {selectedPost.status === "PENDING" && (

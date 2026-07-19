@@ -9,6 +9,7 @@ import { scanContent } from "@/lib/sensitive-engine";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
+import { sendAdminActionMail } from "@/lib/mail";
 
 // ==================== Schemas ====================
 
@@ -259,6 +260,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         sensitiveHitCount,
       },
     );
+
+    await sendAdminActionMail({
+      minimumRole: "MODERATOR",
+      subject: "新委托待审核",
+      text: `收到新的 DCR 委托，分类：${category}，系统建议：${reviewResult.decision}。`,
+      actionUrl: "/admin/dcr/reviews?requestStatus=PENDING",
+    });
 
     return NextResponse.json({
       case: caseRecord,

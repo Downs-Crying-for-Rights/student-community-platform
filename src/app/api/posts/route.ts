@@ -9,6 +9,7 @@ import { logAudit, AuditTargetType } from "@/lib/audit";
 import { generateAnonymousId, truncateText } from "@/lib/utils";
 import { z } from "zod";
 import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
+import { sendAdminActionMail } from "@/lib/mail";
 
 // Query params schema for GET
 const listQuerySchema = paginationSchema.extend({
@@ -388,6 +389,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       post.id,
       { title, boardZone: board.zone, status, caseId: caseId ?? null },
     );
+
+    await sendAdminActionMail({
+      minimumRole: "MODERATOR",
+      subject: "新帖子待审核",
+      text: `帖子「${post.title}」已提交，等待内容审核。`,
+      actionUrl: "/admin/moderation",
+    });
 
     return NextResponse.json({ post: anonymizePsychologyPost(post) }, { status: 201 });
   } catch (error) {

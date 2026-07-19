@@ -30,6 +30,20 @@ enum UserPunishmentAction {
   REVOKED
 }
 
+enum AiReviewStatus {
+  COMPLETED
+  FAILED
+  BLOCKED
+  STALE
+}
+
+enum AiReviewDecision {
+  APPROVE
+  REJECT
+  NEED_MORE_INFO
+  MANUAL_REVIEW
+}
+
 enum PostRevisionStatus {
   PENDING
   APPROVED
@@ -68,12 +82,12 @@ model User {
   sessions Session[]
 
   // 内容关联
-  posts     Post[]
+  posts                 Post[]
   postRevisionsEdited   PostRevision[] @relation("PostRevisionEditor")
   postRevisionsReviewed PostRevision[] @relation("PostRevisionReviewer")
-  comments  Comment[]
-  likes     Like[]
-  bookmarks Bookmark[]
+  comments              Comment[]
+  likes                 Like[]
+  bookmarks             Bookmark[]
 
   // 举报
   reportsFiled    Report[] @relation("ReportFiler")
@@ -93,9 +107,10 @@ model User {
   notifications Notification[]
 
   // 审计
-  auditLogs AuditLog[]
+  auditLogs           AuditLog[]
   punishmentsReceived UserPunishment[] @relation("PunishmentTarget")
   punishmentsIssued   UserPunishment[] @relation("PunishmentOperator")
+  aiReviewsRequested  AiReview[]       @relation("AiReviewRequester")
 
   // 消息
   messagesSent     Message[] @relation("MessageSender")
@@ -129,6 +144,36 @@ model User {
   chatRoomBans     ChatRoomBan[]         @relation("ChatRoomBanUser")
   chatBansImposed  ChatRoomBan[]         @relation("ChatRoomBanImposedBy")
   chatBansRevoked  ChatRoomBan[]         @relation("ChatRoomBanRevokedBy")
+}
+
+model AiReview {
+  id                  String            @id @default(cuid())
+  feature             String
+  targetType          String
+  targetId            String
+  targetVersion       String
+  status              AiReviewStatus
+  provider            String
+  model               String
+  schemaVersion       Int               @default(1)
+  riskLevel           String?
+  confidence          Float?
+  recommendation      AiReviewDecision?
+  result              Json?
+  inputHash           String
+  redactionCount      Int               @default(0)
+  containsPrivateData Boolean           @default(false)
+  requestedById       String?
+  createdAt           DateTime          @default(now())
+  completedAt         DateTime?
+  expiresAt           DateTime?
+
+  requestedBy User? @relation("AiReviewRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@unique([feature, targetType, targetId, targetVersion, model])
+  @@index([targetType, targetId, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedById, createdAt])
 }
 
 // NextAuth 模型
@@ -267,25 +312,25 @@ model Post {
 }
 
 model PostRevision {
-  id            String             @id @default(cuid())
-  title         String
-  content       String
-  summary       String?
-  images        String[]
-  visibility    PostVisibility
-  tagIds        String[]
-  status        PostRevisionStatus @default(PENDING)
+  id              String             @id @default(cuid())
+  title           String
+  content         String
+  summary         String?
+  images          String[]
+  visibility      PostVisibility
+  tagIds          String[]
+  status          PostRevisionStatus @default(PENDING)
   rejectionReason String?
-  baseUpdatedAt DateTime
-  createdAt     DateTime           @default(now())
-  reviewedAt    DateTime?
+  baseUpdatedAt   DateTime
+  createdAt       DateTime           @default(now())
+  reviewedAt      DateTime?
 
   postId     String
-  post       Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post       Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
   editorId   String
-  editor     User   @relation("PostRevisionEditor", fields: [editorId], references: [id], onDelete: Restrict)
+  editor     User    @relation("PostRevisionEditor", fields: [editorId], references: [id], onDelete: Restrict)
   reviewerId String?
-  reviewer   User?  @relation("PostRevisionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  reviewer   User?   @relation("PostRevisionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
 
   @@index([postId, status, createdAt])
   @@index([status, createdAt])
@@ -363,16 +408,16 @@ enum ReportResolutionAction {
 }
 
 model Report {
-  id         String       @id @default(cuid())
-  reason     String
-  details    String?
-  status     ReportStatus @default(PENDING)
+  id               String                  @id @default(cuid())
+  reason           String
+  details          String?
+  status           ReportStatus            @default(PENDING)
   resolution       String?
   resolutionAction ReportResolutionAction?
   resolvedAt       DateTime?
   resolvedById     String?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
 
   reporterId          String
   targetUserId        String?
@@ -591,17 +636,17 @@ model AuditLog {
 }
 
 model UserPunishment {
-  id         String               @id @default(cuid())
-  type       UserPunishmentType
-  action     UserPunishmentAction
-  reason     String
-  details    Json?
-  createdAt  DateTime             @default(now())
+  id        String               @id @default(cuid())
+  type      UserPunishmentType
+  action    UserPunishmentAction
+  reason    String
+  details   Json?
+  createdAt DateTime             @default(now())
 
   userId     String
-  user       User                 @relation("PunishmentTarget", fields: [userId], references: [id], onDelete: Cascade)
+  user       User   @relation("PunishmentTarget", fields: [userId], references: [id], onDelete: Cascade)
   operatorId String
-  operator   User                 @relation("PunishmentOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  operator   User   @relation("PunishmentOperator", fields: [operatorId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
   @@index([operatorId, createdAt])

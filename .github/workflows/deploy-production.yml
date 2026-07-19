@@ -47,6 +47,7 @@ jobs:
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || 22 }}
       SSHPASS: ${{ secrets.DEPLOY_PASSWORD }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -83,6 +84,18 @@ jobs:
           } > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
+      - name: Prepare AI runtime configuration
+        run: |
+          test -n "$DEEPSEEK_API_KEY"
+          umask 077
+          {
+            printf '%s\n' 'DEEPSEEK_ENABLED=true'
+            printf 'DEEPSEEK_API_KEY=%s\n' "$DEEPSEEK_API_KEY"
+            printf '%s\n' 'DEEPSEEK_BASE_URL=https://api.deepseek.com'
+            printf '%s\n' 'DEEPSEEK_DEFAULT_MODEL=deepseek-v4-flash'
+            printf '%s\n' 'DEEPSEEK_COMPLEX_MODEL=deepseek-v4-flash'
+          } > "$RUNNER_TEMP/deepseek.env"
+
       - name: Upload release archive
         run: |
           sshpass -e scp \
@@ -90,6 +103,11 @@ jobs:
             -o StrictHostKeyChecking=yes \
             forum-dcr2026.tar.gz \
             "$DEPLOY_USER@$DEPLOY_HOST:/tmp/forum-dcr2026-$GITHUB_SHA.tar.gz"
+          sshpass -e scp \
+            -P "$DEPLOY_PORT" \
+            -o StrictHostKeyChecking=yes \
+            "$RUNNER_TEMP/deepseek.env" \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/forum-dcr2026-$GITHUB_SHA-ai.env"
 
       - name: Activate release
         run: |
@@ -97,4 +115,4 @@ jobs:
             -p "$DEPLOY_PORT" \
             -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "set -eu; APP_DIR=/opt/forum-dcr2026; RELEASE_SHA=$GITHUB_SHA; RELEASE_DIR=\$APP_DIR/releases/\$RELEASE_SHA; ARCHIVE_PATH=/tmp/forum-dcr2026-\$RELEASE_SHA.tar.gz; mkdir -p \$RELEASE_DIR; tar -xzf \$ARCHIVE_PATH -C \$RELEASE_DIR; APP_DIR=\$APP_DIR RELEASE_SHA=\$RELEASE_SHA bash \$RELEASE_DIR/scripts/deploy-production.sh"
+            "set -eu; APP_DIR=/opt/forum-dcr2026; RELEASE_SHA=$GITHUB_SHA; RELEASE_DIR=\$APP_DIR/releases/\$RELEASE_SHA; ARCHIVE_PATH=/tmp/forum-dcr2026-\$RELEASE_SHA.tar.gz; AI_ENV_PATH=/tmp/forum-dcr2026-\$RELEASE_SHA-ai.env; mkdir -p \$RELEASE_DIR; tar -xzf \$ARCHIVE_PATH -C \$RELEASE_DIR; APP_DIR=\$APP_DIR RELEASE_SHA=\$RELEASE_SHA AI_ENV_PATH=\$AI_ENV_PATH bash \$RELEASE_DIR/scripts/deploy-production.sh"

@@ -27,7 +27,7 @@ vi.mock("@/lib/audit", () => ({
   AuditTargetType: { CASE: "CASE", APPLICATION: "APPLICATION" },
 }));
 vi.mock("@/lib/notification", () => ({ createNotification: mocks.createNotification }));
-vi.mock("@/lib/mail", () => ({ sendUserMail: mocks.sendUserMail }));
+vi.mock("@/lib/mail", () => ({ sendUserMail: mocks.sendUserMail, sendAdminActionMail: vi.fn() }));
 vi.mock("@/lib/utils", () => ({ generateAnonymousId: () => "anonymous" }));
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));

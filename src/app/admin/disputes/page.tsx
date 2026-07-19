@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { AiReviewPanel } from "@/components/admin/AiReviewPanel";
 
 interface TimelineEvent {
   id: string;
@@ -254,6 +255,10 @@ export default function AdminDisputesPage() {
                       </div>
                     </div>
                   )}
+
+                  <div className="mb-3">
+                    <AiReviewPanel targetType="DISPUTE" targetId={dispute.id} onUseReason={setActionReason} />
+                  </div>
 
                   {/* Action area */}
                   {isActioning ? (

@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
 import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
+import { sendAdminActionMail } from "@/lib/mail";
 
 const applySchema = z.object({
   pledgeText: z.string().min(1, "守则声明不能为空"),
@@ -116,6 +117,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         applicantId: userId,
         caseId,
       },
+    });
+
+    await sendAdminActionMail({
+      minimumRole: "ADMIN",
+      subject: "DCR 准入申请待审核",
+      text: `收到新的 DCR 准入申请，关联委托：${caseId}。`,
+      actionUrl: "/admin/applications?type=DCR&status=PENDING",
     });
 
     return NextResponse.json({ application }, { status: 201 });

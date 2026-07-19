@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
+import { sendAdminActionMail } from "@/lib/mail";
 
 const createRoomSchema = z.object({
   name: z.string().min(1).max(50),
@@ -112,6 +113,15 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         _count: { select: { members: true } },
       },
     });
+
+    if (type === "PUBLIC") {
+      await sendAdminActionMail({
+        minimumRole: "MODERATOR",
+        subject: "公开群聊待审核",
+        text: `公开群聊「${room.name}」已创建，等待审核。`,
+        actionUrl: "/admin/chat-rooms",
+      });
+    }
 
     return NextResponse.json(
       {
