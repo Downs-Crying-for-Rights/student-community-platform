@@ -54,6 +54,10 @@ if [[ -n "${AI_ENV_PATH:-}" ]]; then
   rm -f -- "$AI_ENV_PATH"
 fi
 
+if ! grep -q '^SYSTEM_SECRET_ENCRYPTION_KEY=' "$SHARED_DIR/.env"; then
+  printf 'SYSTEM_SECRET_ENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)" >> "$SHARED_DIR/.env"
+fi
+
 cp "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 chmod 600 "$RELEASE_DIR/.env"
 

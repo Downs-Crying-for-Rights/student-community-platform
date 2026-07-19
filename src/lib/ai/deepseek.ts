@@ -1,5 +1,5 @@
 import "server-only";
-import { getAiConfig } from "./config";
+import { getAiConfig } from "./runtime-config";
 import { aiReviewResultSchema, type AiReviewResult } from "./schemas";
 
 interface DeepSeekResponse {
@@ -37,7 +37,7 @@ export async function requestDeepSeekReview(input: {
   userId: string;
   complex?: boolean;
 }): Promise<{ result: AiReviewResult; model: string; usage: DeepSeekResponse["usage"] }> {
-  const config = getAiConfig();
+  const config = await getAiConfig();
   if (!config.enabled || !config.apiKey) throw new AiProviderError("AI_DISABLED", 503);
   if (input.content.length > config.maxInputChars) throw new AiProviderError("AI_INPUT_TOO_LARGE", 413);
   const model = input.complex ? config.complexModel : config.defaultModel;
@@ -61,6 +61,7 @@ export async function requestDeepSeekReview(input: {
       temperature: 0,
       user_id: input.userId,
     }),
+    redirect: "error",
   }, config.timeoutMs);
 
   if (!response.ok) {

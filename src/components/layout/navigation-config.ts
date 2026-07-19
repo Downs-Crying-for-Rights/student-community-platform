@@ -48,6 +48,13 @@ export interface NavigationItem {
   requireHelperAccess?: boolean;
 }
 
+export interface AdminMenuGroup {
+  id: string;
+  label: string;
+  icon: NavigationIconName;
+  children: readonly NavigationItem[];
+}
+
 export interface BottomPrimaryNavigationItem extends NavigationItem {
   slot: "leading" | "center" | "trailing";
   raised?: boolean;
@@ -75,30 +82,44 @@ export const moderationNavItems: readonly NavigationItem[] = [
   { href: "/admin/moderation", label: "审核", icon: "shield", minRole: "MODERATOR" },
 ];
 
-/** Admin destinations intentionally remain unchanged. */
-export const adminNavItems: readonly NavigationItem[] = [
-  { href: "/admin/reports", label: "举报处理", icon: "flag", minRole: "MODERATOR" },
-  { href: "/admin/users", label: "用户管理", icon: "users", minRole: "ADMIN" },
-  { href: "/admin/content", label: "内容管理", icon: "file-text", minRole: "ADMIN" },
-  { href: "/admin/invites", label: "邀请码", icon: "ticket", minRole: "ADMIN" },
-  { href: "/admin/audit", label: "操作日志", icon: "file-text", minRole: "ADMIN" },
-  { href: "/admin/boards", label: "板块管理", icon: "dashboard", minRole: "ADMIN" },
-  { href: "/admin/kb", label: "知识库", icon: "book", minRole: "ADMIN" },
-  { href: "/admin/applications", label: "准入审核", icon: "shield-check", minRole: "ADMIN" },
-  { href: "/admin/dcr/reviews", label: "委托表审核", icon: "clipboard-check", minRole: "ADMIN" },
-  { href: "/admin/dcr/questions", label: "DCR 入频考核题库", icon: "book", minRole: "ADMIN" },
-  { href: "/admin/quiz", label: "平台新手指引题库", icon: "book", minRole: "ADMIN" },
-  { href: "/admin/chat-rooms", label: "群聊审核", icon: "messages", minRole: "ADMIN" },
-  { href: "/admin/disputes", label: "争议处理", icon: "scale", minRole: "ADMIN" },
-  { href: "/admin/tasks", label: "任务管理", icon: "list-todo", minRole: "ADMIN" },
-  { href: "/admin/dcr/cycles", label: "互助循环管理", icon: "refresh", minRole: "ADMIN" },
-  { href: "/admin/logs", label: "系统日志", icon: "terminal", minRole: "ADMIN" },
-  { href: "/admin/qq-bot", label: "QQ 机器人", icon: "bot", minRole: "SUPER_ADMIN" },
-  { href: "/admin/telemetry", label: "应用遥测", icon: "activity", minRole: "SUPER_ADMIN" },
-  { href: "/admin/system", label: "系统维护", icon: "refresh", minRole: "SUPER_ADMIN" },
-  { href: "/admin/dcr/tutorial", label: "DCR 教程", icon: "book", minRole: "SUPER_ADMIN" },
-  { href: "/admin/site-content", label: "站点内容", icon: "file-text", minRole: "SUPER_ADMIN" },
-];
+export const adminMenuGroups: readonly AdminMenuGroup[] = [
+  { id: "governance", label: "审核治理", icon: "shield", children: [
+    { href: "/admin/moderation", label: "审核看板", icon: "shield", minRole: "MODERATOR" },
+    { href: "/admin/reports", label: "举报处理", icon: "flag", minRole: "MODERATOR" },
+    { href: "/admin/content", label: "内容管理", icon: "file-text", minRole: "ADMIN" },
+    { href: "/admin/chat-rooms", label: "群聊审核", icon: "messages", minRole: "ADMIN" },
+    { href: "/admin/dm", label: "私信审查", icon: "message", minRole: "ADMIN" },
+    { href: "/admin/disputes", label: "争议处理", icon: "scale", minRole: "ADMIN" },
+  ] },
+  { id: "access", label: "用户准入", icon: "users", children: [
+    { href: "/admin/users", label: "用户管理", icon: "users", minRole: "ADMIN" },
+    { href: "/admin/invites", label: "邀请码", icon: "ticket", minRole: "ADMIN" },
+    { href: "/admin/applications", label: "准入审核", icon: "shield-check", minRole: "ADMIN" },
+  ] },
+  { id: "dcr", label: "DCR 管理", icon: "clipboard-check", children: [
+    { href: "/admin/dcr/reviews", label: "委托表审核", icon: "clipboard-check", minRole: "ADMIN" },
+    { href: "/admin/dcr/questions", label: "入频考核题库", icon: "book", minRole: "ADMIN" },
+    { href: "/admin/tasks", label: "任务管理", icon: "list-todo", minRole: "ADMIN" },
+    { href: "/admin/dcr/cycles", label: "互助循环", icon: "refresh", minRole: "ADMIN" },
+    { href: "/admin/dcr/tutorial", label: "DCR 教程", icon: "book", minRole: "SUPER_ADMIN" },
+  ] },
+  { id: "content", label: "内容配置", icon: "dashboard", children: [
+    { href: "/admin/boards", label: "板块管理", icon: "dashboard", minRole: "ADMIN" },
+    { href: "/admin/kb", label: "知识库", icon: "book", minRole: "ADMIN" },
+    { href: "/admin/quiz", label: "新手指引题库", icon: "book", minRole: "ADMIN" },
+    { href: "/admin/site-content", label: "站点内容", icon: "file-text", minRole: "SUPER_ADMIN" },
+  ] },
+  { id: "system", label: "系统安全", icon: "settings", children: [
+    { href: "/admin/audit", label: "操作日志", icon: "file-text", minRole: "ADMIN" },
+    { href: "/admin/logs", label: "系统日志", icon: "terminal", minRole: "SUPER_ADMIN" },
+    { href: "/admin/qq-bot", label: "QQ 机器人", icon: "bot", minRole: "SUPER_ADMIN" },
+    { href: "/admin/ai-config", label: "AI 配置", icon: "bot", minRole: "SUPER_ADMIN" },
+    { href: "/admin/telemetry", label: "应用遥测", icon: "activity", minRole: "SUPER_ADMIN" },
+    { href: "/admin/system", label: "系统维护", icon: "refresh", minRole: "SUPER_ADMIN" },
+  ] },
+] as const;
+
+export const adminNavItems: readonly NavigationItem[] = adminMenuGroups.flatMap((group) => group.children);
 
 export const bottomPrimaryNavItems: readonly BottomPrimaryNavigationItem[] = [
   { href: "/", label: "首页", icon: "home", slot: "leading" },

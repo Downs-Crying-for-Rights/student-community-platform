@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+const runtime = vi.hoisted(() => ({ getConfig: vi.fn() }));
+vi.mock("../runtime-config", () => ({ getAiConfig: runtime.getConfig }));
 
 import { AiProviderError, requestDeepSeekReview } from "../deepseek";
 
@@ -23,6 +25,7 @@ describe("DeepSeek review client", () => {
     vi.stubEnv("DEEPSEEK_API_KEY", "test-key");
     vi.stubEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com");
     vi.stubEnv("DEEPSEEK_DEFAULT_MODEL", "deepseek-v4-flash");
+    runtime.getConfig.mockResolvedValue({ enabled: true, apiKey: "test-key", baseUrl: "https://api.deepseek.com", defaultModel: "deepseek-v4-flash", complexModel: "deepseek-v4-flash", timeoutMs: 25_000, maxInputChars: 12_000, maxOutputTokens: 1_800, revision: 1, source: "database" });
   });
 
   afterEach(() => {
@@ -75,7 +78,7 @@ describe("DeepSeek review client", () => {
   });
 
   it("fails closed when AI is disabled", async () => {
-    vi.stubEnv("DEEPSEEK_ENABLED", "false");
+    runtime.getConfig.mockResolvedValue({ ...(await runtime.getConfig()), enabled: false });
     await expect(requestDeepSeekReview({ systemPrompt: "json", content: "test", userId: "u_safe" }))
       .rejects.toMatchObject({ code: "AI_DISABLED", status: 503 } satisfies Partial<AiProviderError>);
   });

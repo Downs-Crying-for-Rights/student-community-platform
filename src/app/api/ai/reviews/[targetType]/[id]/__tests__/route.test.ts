@@ -21,6 +21,10 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 vi.mock("@/lib/ai/review-target", () => ({ loadAiReviewTarget: (...args: unknown[]) => mockLoadTarget(...args) }));
+vi.mock("@/lib/ai/runtime-config", () => ({
+  getAiConfig: vi.fn().mockResolvedValue({ enabled: true, apiKey: "test-key", baseUrl: "https://api.deepseek.com", defaultModel: "deepseek-v4-flash", complexModel: "deepseek-v4-flash", timeoutMs: 25_000, maxInputChars: 12_000, maxOutputTokens: 1_800, revision: 1, source: "database" }),
+  getAiPrompt: vi.fn().mockResolvedValue("test system prompt"),
+}));
 vi.mock("@/lib/ai/deepseek", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/ai/deepseek")>();
   return { ...original, requestDeepSeekReview: (...args: unknown[]) => mockReview(...args) };

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({ request: vi.fn() }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/ai/deepseek", () => ({ requestDeepSeekReview: mocks.request }));
+vi.mock("@/lib/ai/runtime-config", () => ({ getAiPrompt: vi.fn().mockResolvedValue("test prompt") }));
 vi.mock("@/lib/ai/redact", () => ({
   redactForAi: (value: unknown) => ({ text: JSON.stringify(value), redactionCount: 0 }),
   containsUnredactedPii: () => false,

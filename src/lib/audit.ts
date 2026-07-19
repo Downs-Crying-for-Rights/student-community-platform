@@ -95,6 +95,8 @@ export const AuditAction = {
   AI_REVIEW_COMPLETE: "AI_REVIEW_COMPLETE",
   AI_REVIEW_FAILED: "AI_REVIEW_FAILED",
   AI_REVIEW_BLOCKED: "AI_REVIEW_BLOCKED",
+  AI_CONFIG_UPDATE: "AI_CONFIG_UPDATE",
+  QQ_MESSAGE_CONTENT_VIEW: "QQ_MESSAGE_CONTENT_VIEW",
 } as const;
 
 export type AuditActionType = (typeof AuditAction)[keyof typeof AuditAction];
@@ -119,6 +121,7 @@ export const AuditTargetType = {
   EVIDENCE_ROOM: "EVIDENCE_ROOM",
   EVIDENCE_ITEM: "EVIDENCE_ITEM",
   SYSTEM: "SYSTEM",
+  QQ_MESSAGE: "QQ_MESSAGE",
 } as const;
 
 export type AuditTargetTypeValue =

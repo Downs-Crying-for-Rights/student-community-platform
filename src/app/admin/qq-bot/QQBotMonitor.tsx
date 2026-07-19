@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type OutboxStatus = "PENDING" | "PROCESSING" | "DELIVERED" | "RETRY" | "FAILED";
@@ -84,6 +85,22 @@ export function QQBotMonitor() {
   const [kind, setKind] = useState("ALL");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
+  const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const loadDetail = async (id: string, kind: "INBOX" | "OUTBOX") => {
+    setDetailLoading(true);
+    try {
+      const response = await fetch(`/api/admin/qq-bot/events/${encodeURIComponent(id)}?kind=${kind}`, { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "读取原文失败");
+      setDetail(body.event);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "读取原文失败");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -190,7 +207,7 @@ export function QQBotMonitor() {
 
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[880px] text-left text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground"><tr><th className="px-3 py-2.5">方向</th><th className="px-3 py-2.5">状态</th><th className="px-3 py-2.5">安全引用</th><th className="px-3 py-2.5">尝试</th><th className="px-3 py-2.5">耗时</th><th className="px-3 py-2.5">错误/下次重试</th><th className="px-3 py-2.5">创建时间</th></tr></thead>
+            <thead className="bg-muted/50 text-xs text-muted-foreground"><tr><th className="px-3 py-2.5">方向</th><th className="px-3 py-2.5">状态</th><th className="px-3 py-2.5">安全引用</th><th className="px-3 py-2.5">尝试</th><th className="px-3 py-2.5">耗时</th><th className="px-3 py-2.5">错误/下次重试</th><th className="px-3 py-2.5">创建时间</th><th className="px-3 py-2.5">详情</th></tr></thead>
             <tbody>{data?.events.length ? data.events.map((event) => <tr key={`${event.kind}-${event.id}`} className="border-t align-top hover:bg-muted/20">
               <td className="px-3 py-3">{event.kind === "INBOX" ? "用户消息" : "机器人通知"}</td>
               <td className="px-3 py-3"><StatusBadge status={event.status} /></td>
@@ -199,7 +216,8 @@ export function QQBotMonitor() {
               <td className="px-3 py-3 font-mono text-xs">{formatLatency(event.latencyMs)}</td>
               <td className="max-w-[260px] px-3 py-3 text-xs"><span className={event.error ? "text-red-700" : "text-muted-foreground"}>{event.error ?? (event.nextAttemptAt ? `重试：${formatTime(event.nextAttemptAt)}` : "-")}</span></td>
               <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">{formatTime(event.createdAt)}</td>
-            </tr>) : <tr><td colSpan={7} className="p-10 text-center text-sm text-muted-foreground">{loading ? "正在加载..." : "暂无符合条件的机器人事件"}</td></tr>}</tbody>
+              <td className="px-3 py-3"><Button size="sm" variant="outline" disabled={detailLoading} onClick={() => void loadDetail(event.id, event.kind)}>查看原文</Button></td>
+            </tr>) : <tr><td colSpan={8} className="p-10 text-center text-sm text-muted-foreground">{loading ? "正在加载..." : "暂无符合条件的机器人事件"}</td></tr>}</tbody>
           </table>
         </div>
         <div className="mt-4 flex items-center justify-center gap-3">
@@ -208,6 +226,22 @@ export function QQBotMonitor() {
           <Button size="sm" variant="outline" disabled={!data || page >= data.pagination.totalPages} onClick={() => setPage((value) => value + 1)}><ChevronRight className="h-4 w-4" /></Button>
         </div>
       </CardContent></Card>
+      <Dialog open={Boolean(detail)} onOpenChange={(open) => { if (!open) setDetail(null); }}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+          <DialogHeader><DialogTitle>QQ 消息审计详情</DialogTitle></DialogHeader>
+          {detail && <div className="space-y-4 text-sm">
+            <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2">
+              <p><span className="text-muted-foreground">事件：</span><span className="font-mono text-xs">{String(detail.eventId ?? detail.id)}</span></p>
+              <p><span className="text-muted-foreground">类型：</span>{detail.kind === "OUTBOX" ? "机器人通知" : `用户消息 · bot ${String(detail.selfId)}`}</p>
+              <p><span className="text-muted-foreground">接收时间：</span>{formatTime(String(detail.createdAt))}</p>
+              <p><span className="text-muted-foreground">处理时间：</span>{detail.processedAt ? formatTime(String(detail.processedAt)) : "未处理"}</p>
+            </div>
+            {detail.kind !== "OUTBOX" && detail.sender ? <div><h3 className="mb-2 font-semibold">发送者与绑定账号</h3><pre className="overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(detail.sender, null, 2)}</pre></div> : null}
+            {detail.kind === "OUTBOX" ? <><div><h3 className="mb-2 font-semibold">机器人通知原文</h3><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-slate-950 p-4 text-xs text-slate-100">{String(detail.content)}</pre></div><div><h3 className="mb-2 font-semibold">投递状态</h3><pre className="overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify({ status: detail.status, attemptCount: detail.attemptCount, nextAttemptAt: detail.nextAttemptAt, providerMessageId: detail.providerMessageId, lastError: detail.lastError, deliveredAt: detail.deliveredAt }, null, 2)}</pre></div></> : <><div><h3 className="mb-2 font-semibold">用户发送原文</h3><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-slate-950 p-4 text-xs text-slate-100">{detail.input == null ? "历史消息未保存输入原文" : JSON.stringify(detail.input, null, 2)}</pre></div><div><h3 className="mb-2 font-semibold">机器人回复原文</h3><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-slate-950 p-4 text-xs text-slate-100">{detail.replies == null ? "无回复记录" : JSON.stringify(detail.replies, null, 2)}</pre></div><div><h3 className="mb-2 font-semibold">会话状态</h3><pre className="overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(detail.responseState, null, 2)}</pre></div></>}
+            <p className="text-xs text-amber-700">一次性授权 token、API Key 和 Bearer 凭据已自动脱敏；本次查看已写入审计日志。</p>
+          </div>}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -37,9 +37,9 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import {
   adminNavItems,
+  adminMenuGroups,
   isActive,
   isVisible,
-  moderationNavItems,
   sidebarCoreNavItems,
   sidebarZoneNavItems,
   type NavigationAccessFlags,
@@ -152,12 +152,8 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
   const visibleZoneItems = sidebarZoneNavItems.filter((item) =>
     isVisible(item, role, accessFlags),
   );
-  const visibleModItems = moderationNavItems.filter((item) =>
-    isVisible(item, role, accessFlags),
-  );
-  const visibleAdminItems = adminNavItems.filter((item) =>
-    isVisible(item, role, accessFlags),
-  );
+  const visibleAdminItems = adminNavItems.filter((item) => isVisible(item, role, accessFlags));
+  const visibleAdminGroups = adminMenuGroups.map((group) => ({ ...group, children: group.children.filter((item) => isVisible(item, role, accessFlags)) })).filter((group) => group.children.length > 0);
 
   return (
     <aside
@@ -200,23 +196,7 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
           </>
         ) : null}
 
-        {visibleModItems.length > 0 && (
-          <>
-            <div className="my-3 border-t border-border/40" />
-            <span className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
-              管理
-            </span>
-            <div className="flex flex-col gap-0.5">
-              {visibleModItems.map(renderNavItem)}
-            </div>
-          </>
-        )}
-
-        {visibleAdminItems.length > 0 && (
-          <div className="flex flex-col gap-0.5">
-            {visibleAdminItems.map(renderNavItem)}
-          </div>
-        )}
+        {visibleAdminItems.length > 0 && visibleAdminGroups.map((group) => <div key={group.id} className="mt-3 flex flex-col gap-0.5"><span className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">{group.label}</span>{group.children.map(renderNavItem)}</div>)}
       </nav>
 
       <div className="border-t border-border/40 px-3 py-3">

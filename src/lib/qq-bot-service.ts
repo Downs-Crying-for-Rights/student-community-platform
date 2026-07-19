@@ -14,6 +14,7 @@ import {
   validateQQDelegationRequirements,
 } from "@/lib/qq-bot-conversation";
 import { reviewQQDraftWithAi } from "@/lib/qq-draft-ai-review";
+import { decryptQQAuditValue, encryptQQMessageInput, encryptQQMessageReplies } from "@/lib/qq-message-audit";
 import type { QQBotMessage, QQBotResponse } from "@/lib/qq-bot-contract";
 
 const SITE_ORIGIN = "https://forum.dcr2026.com";
@@ -35,8 +36,26 @@ function response(
   return { duplicate: false, replies, conversation: { state, revision: String(revision), prompt } };
 }
 
-function storedResponse(value: Prisma.JsonValue): QQBotResponse {
-  return { ...(value as unknown as QQBotResponse), duplicate: true };
+function storedResponse(row: {
+  eventId: string;
+  response: Prisma.JsonValue;
+  replyCiphertext: string | null;
+  replyIv: string | null;
+  replyAuthTag: string | null;
+  replyKeyVersion: number | null;
+}): QQBotResponse {
+  const saved = row.response as unknown as QQBotResponse;
+  if (row.replyCiphertext && row.replyIv && row.replyAuthTag && row.replyKeyVersion) {
+    const replies = decryptQQAuditValue({
+      ciphertext: row.replyCiphertext,
+      iv: row.replyIv,
+      authTag: row.replyAuthTag,
+      keyVersion: row.replyKeyVersion,
+    }, `qq-inbox-replies:${row.eventId}`);
+    if (!Array.isArray(replies) || !replies.every((item) => typeof item === "string")) throw new Error("QQ_AUDIT_INVALID_REPLIES");
+    return { ...saved, replies, duplicate: true };
+  }
+  return { ...saved, duplicate: true };
 }
 
 function stateName(state: QQConversationState | undefined): QQBotResponse["conversation"]["state"] {
@@ -263,26 +282,44 @@ export async function processQQBotMessage(message: QQBotMessage): Promise<QQBotR
   const config = getQQConfig();
   const qq = normalizeQQIdentity(message.userId);
   const lookupHash = hashQQIdentity(qq, config.identityHmacKey);
-  const existing = await prisma.qQBotEventInbox.findUnique({ where: { eventId: message.eventId }, select: { response: true } });
-  if (existing?.response) return storedResponse(existing.response);
+  const inboxSelect = { eventId: true, response: true, replyCiphertext: true, replyIv: true, replyAuthTag: true, replyKeyVersion: true } as const;
+  const existing = await prisma.qQBotEventInbox.findUnique({ where: { eventId: message.eventId }, select: inboxSelect });
+  if (existing?.response) return storedResponse({ ...existing, response: existing.response });
   const answerHasSensitiveContent = message.input.type === "text"
     && (await scanContent(message.input.text)).length > 0;
   const draftPreflight = await prepareDraftPreflight(message, lookupHash, answerHasSensitiveContent);
 
   try {
     return await runSerializableTransaction(async (tx) => {
-      await tx.qQBotEventInbox.create({ data: { eventId: message.eventId, selfId: message.selfId, lookupHash } });
+      const input = encryptQQMessageInput(message);
+      await tx.qQBotEventInbox.create({ data: {
+        eventId: message.eventId,
+        selfId: message.selfId,
+        lookupHash,
+        inputCiphertext: input.ciphertext,
+        inputIv: input.iv,
+        inputAuthTag: input.authTag,
+        inputKeyVersion: input.keyVersion,
+      } });
       const result = await applyMessage(tx, message, lookupHash, answerHasSensitiveContent, draftPreflight);
+      const replies = encryptQQMessageReplies(message.eventId, result);
       await tx.qQBotEventInbox.update({
         where: { eventId: message.eventId },
-        data: { response: result as unknown as Prisma.InputJsonValue, processedAt: new Date() },
+        data: {
+          response: { ...result, replies: [] } as unknown as Prisma.InputJsonValue,
+          replyCiphertext: replies.ciphertext,
+          replyIv: replies.iv,
+          replyAuthTag: replies.authTag,
+          replyKeyVersion: replies.keyVersion,
+          processedAt: new Date(),
+        },
       });
       return result;
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      const duplicate = await prisma.qQBotEventInbox.findUnique({ where: { eventId: message.eventId }, select: { response: true } });
-      if (duplicate?.response) return storedResponse(duplicate.response);
+      const duplicate = await prisma.qQBotEventInbox.findUnique({ where: { eventId: message.eventId }, select: inboxSelect });
+      if (duplicate?.response) return storedResponse({ ...duplicate, response: duplicate.response });
     }
     throw error;
   }

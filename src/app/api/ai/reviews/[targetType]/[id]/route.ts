@@ -5,11 +5,10 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { enforceRateLimit } from "@/lib/rate-limiter";
 import { logAudit, AuditAction } from "@/lib/audit";
 import { trackServerTelemetryLater } from "@/lib/telemetry";
-import { getAiConfig } from "@/lib/ai/config";
+import { getAiConfig, getAiPrompt } from "@/lib/ai/runtime-config";
 import { requestDeepSeekReview, AiProviderError } from "@/lib/ai/deepseek";
 import { aiReviewTargetSchema } from "@/lib/ai/schemas";
 import { aiInputHash, aiProviderUserId, containsUnredactedPii, redactForAi } from "@/lib/ai/redact";
-import { reviewSystemPrompt } from "@/lib/ai/prompts";
 import { loadAiReviewTarget } from "@/lib/ai/review-target";
 
 export const POST = withAuth(async (
@@ -31,8 +30,9 @@ export const POST = withAuth(async (
   const target = await loadAiReviewTarget(parsedType.data, context.params.id);
   if (!target) return NextResponse.json({ error: "审核目标不存在" }, { status: 404 });
 
-  const config = getAiConfig();
+  const config = await getAiConfig();
   const model = target.complex ? config.complexModel : config.defaultModel;
+  const cacheTargetVersion = `${target.targetVersion}:cfg${config.revision}`;
   const rawPayload = JSON.stringify(target.payload);
   const redacted = redactForAi(rawPayload);
   const inputHash = aiInputHash(redacted.text);
@@ -41,7 +41,7 @@ export const POST = withAuth(async (
     where: {
       feature_targetType_targetId_targetVersion_model: {
         feature: target.feature, targetType: target.targetType, targetId: target.targetId,
-        targetVersion: target.targetVersion, model,
+        targetVersion: cacheTargetVersion, model,
       },
     },
   });
@@ -50,14 +50,14 @@ export const POST = withAuth(async (
   }
 
   await logAudit(req.user.id, AuditAction.AI_REVIEW_REQUEST, target.targetType, target.targetId, {
-    feature: target.feature, model, containsPrivateData: target.containsPrivateData,
+      feature: target.feature, model, configRevision: config.revision, containsPrivateData: target.containsPrivateData,
   });
 
   if (containsUnredactedPii(redacted.text)) {
     const blocked = await prisma.aiReview.upsert({
-      where: { feature_targetType_targetId_targetVersion_model: { feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: target.targetVersion, model } },
+      where: { feature_targetType_targetId_targetVersion_model: { feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: cacheTargetVersion, model } },
       create: {
-        feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: target.targetVersion,
+        feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: cacheTargetVersion,
         status: "BLOCKED", provider: "deepseek", model, inputHash, redactionCount: redacted.redactionCount,
         containsPrivateData: target.containsPrivateData, requestedById: req.user.id,
       },
@@ -70,16 +70,16 @@ export const POST = withAuth(async (
   const startedAt = Date.now();
   try {
     const response = await requestDeepSeekReview({
-      systemPrompt: reviewSystemPrompt(target.targetType), content: redacted.text,
+      systemPrompt: await getAiPrompt(target.targetType), content: redacted.text,
       userId: aiProviderUserId(req.user.id), complex: target.complex,
     });
     if (containsUnredactedPii(JSON.stringify(response.result))) {
       throw new AiProviderError("AI_OUTPUT_CONTAINS_PII", 502);
     }
     const completed = await prisma.aiReview.upsert({
-      where: { feature_targetType_targetId_targetVersion_model: { feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: target.targetVersion, model: response.model } },
+      where: { feature_targetType_targetId_targetVersion_model: { feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: cacheTargetVersion, model: response.model } },
       create: {
-        feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: target.targetVersion,
+        feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: cacheTargetVersion,
         status: "COMPLETED", provider: "deepseek", model: response.model, riskLevel: response.result.riskLevel,
         confidence: response.result.confidence, recommendation: response.result.recommendation,
         result: response.result as Prisma.InputJsonValue, inputHash, redactionCount: redacted.redactionCount,
@@ -108,9 +108,9 @@ export const POST = withAuth(async (
     const code = error instanceof AiProviderError ? error.code : "AI_UNKNOWN_ERROR";
     const status = error instanceof AiProviderError ? error.status : 500;
     await prisma.aiReview.upsert({
-      where: { feature_targetType_targetId_targetVersion_model: { feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: target.targetVersion, model } },
+      where: { feature_targetType_targetId_targetVersion_model: { feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: cacheTargetVersion, model } },
       create: {
-        feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: target.targetVersion,
+        feature: target.feature, targetType: target.targetType, targetId: target.targetId, targetVersion: cacheTargetVersion,
         status: "FAILED", provider: "deepseek", model, inputHash, redactionCount: redacted.redactionCount,
         containsPrivateData: target.containsPrivateData, requestedById: req.user.id,
       },

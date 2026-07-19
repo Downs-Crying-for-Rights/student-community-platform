@@ -96,7 +96,13 @@ describe("QQ bot transactional service", () => {
     });
     expect(mocks.tx.qQBotEventInbox.update).toHaveBeenCalledWith({
       where: { eventId: bindingMessage.eventId },
-      data: expect.objectContaining({ response: result, processedAt: expect.any(Date) }),
+      data: expect.objectContaining({
+        response: { ...result, replies: [] },
+        replyCiphertext: expect.any(String),
+        replyIv: expect.any(String),
+        replyAuthTag: expect.any(String),
+        processedAt: expect.any(Date),
+      }),
     });
   });
 

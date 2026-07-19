@@ -53,7 +53,7 @@ export default async function AdminLayout({
         identity={session.user.phone || session.user.email || session.user.id}
         date={watermarkDate}
       />
-      <AdminNav isSuperAdmin={role === "SUPER_ADMIN"} />
+      <AdminNav role={role} />
       {children}
     </>
   );

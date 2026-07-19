@@ -2,77 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Ticket, FileText, LayoutGrid, Home, MessageSquare, MessagesSquare, BookOpen, ShieldCheck, Shield, Terminal, RefreshCw, Activity, ClipboardCheck, ListTodo, Scale, Flag, Bot } from "lucide-react";
+import { Home } from "lucide-react";
+import { adminMenuGroups, isActive, isVisible } from "./navigation-config";
 import { cn } from "@/lib/utils";
 
-const adminLinks = [
-  { href: "/admin/moderation", label: "审核看板", icon: Shield },
-  { href: "/admin/reports", label: "举报处理", icon: Flag },
-  { href: "/admin/users", label: "用户管理", icon: Users },
-  { href: "/admin/content", label: "内容管理", icon: MessageSquare },
-  { href: "/admin/invites", label: "邀请码", icon: Ticket },
-  { href: "/admin/audit", label: "操作日志", icon: FileText },
-  { href: "/admin/boards", label: "板块管理", icon: LayoutGrid },
-  { href: "/admin/kb", label: "知识库", icon: BookOpen },
-  { href: "/admin/applications", label: "准入审核", icon: ShieldCheck },
-  { href: "/admin/dcr/reviews", label: "委托表审核", icon: ClipboardCheck },
-  { href: "/admin/dcr/questions", label: "DCR 入频考核题库", icon: BookOpen },
-  { href: "/admin/quiz", label: "平台新手指引题库", icon: BookOpen },
-  { href: "/admin/chat-rooms", label: "群聊审核", icon: MessagesSquare },
-  { href: "/admin/dm", label: "私信审查", icon: MessageSquare },
-  { href: "/admin/disputes", label: "争议处理", icon: Scale },
-  { href: "/admin/tasks", label: "任务管理", icon: ListTodo },
-  { href: "/admin/dcr/cycles", label: "互助循环管理", icon: RefreshCw },
-  { href: "/admin/logs", label: "系统日志", icon: Terminal },
-];
-
-const superAdminLinks = [
-  { href: "/admin/qq-bot", label: "QQ 机器人", icon: Bot },
-  { href: "/admin/telemetry", label: "应用遥测", icon: Activity },
-  { href: "/admin/system", label: "系统维护", icon: RefreshCw },
-  { href: "/admin/dcr/tutorial", label: "DCR教程", icon: BookOpen },
-  { href: "/admin/site-content", label: "站点内容", icon: FileText },
-];
-
-export function AdminNav({ isSuperAdmin = false }: { isSuperAdmin?: boolean }) {
+export function AdminNav({ role = "MODERATOR" }: { role?: string }) {
   const pathname = usePathname();
-  const links = isSuperAdmin ? [...adminLinks, ...superAdminLinks] : adminLinks;
+  const groups = adminMenuGroups.map((group) => ({ ...group, children: group.children.filter((item) => isVisible(item, role)) })).filter((group) => group.children.length > 0);
+  const activeGroup = groups.find((group) => group.children.some((item) => isActive(item.href, pathname))) ?? groups[0];
 
-  return (
-    <nav className="border-b border-border bg-background" aria-label="管理后台导航">
-      <div className="mx-auto flex max-w-screen-xl items-center gap-1 overflow-x-auto px-4">
-        <Link
-          href="/"
-          className={cn(
-            "flex items-center gap-1.5 whitespace-nowrap px-3 py-3 text-sm font-medium transition-colors",
-            "text-muted-foreground hover:text-foreground"
-          )}
-          aria-label="返回首页"
-        >
-          <Home className="h-4 w-4" />
-          首页
-        </Link>
-        <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
-        {links.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href;
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors",
-                isActive
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-              )}
-              aria-current={isActive ? "page" : undefined}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
-  );
+  return <nav className="border-b bg-background" aria-label="管理后台导航">
+    <div className="mx-auto flex max-w-screen-xl items-center gap-1 overflow-x-auto px-4">
+      <Link href="/" className="flex items-center gap-1.5 whitespace-nowrap px-3 py-3 text-sm text-muted-foreground"><Home className="h-4 w-4" />首页</Link>
+      <span className="mx-1 h-4 w-px bg-border" />
+      {groups.map((group) => {
+        const active = group.id === activeGroup?.id;
+        return <Link key={group.id} href={group.children[0].href} className={cn("whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium", active ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>{group.label}</Link>;
+      })}
+    </div>
+    {activeGroup && <div className="border-t bg-muted/20"><div className="mx-auto flex max-w-screen-xl gap-1 overflow-x-auto px-4 py-2">{activeGroup.children.map((item) => <Link key={item.href} href={item.href} aria-current={isActive(item.href, pathname) ? "page" : undefined} className={cn("whitespace-nowrap rounded-md px-3 py-1.5 text-sm", isActive(item.href, pathname) ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>{item.label}</Link>)}</div></div>}
+  </nav>;
 }

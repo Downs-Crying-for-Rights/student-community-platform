@@ -255,10 +255,39 @@ model QQBotEventInbox {
   selfId      String
   lookupHash  String
   response    Json?
+  inputCiphertext String?
+  inputIv         String?
+  inputAuthTag    String?
+  inputKeyVersion Int?
+  replyCiphertext String?
+  replyIv         String?
+  replyAuthTag    String?
+  replyKeyVersion Int?
   createdAt   DateTime @default(now())
   processedAt DateTime?
 
   @@index([createdAt])
+}
+
+model AiRuntimeConfig {
+  id                  String   @id @default("default")
+  enabled             Boolean  @default(false)
+  baseUrl             String
+  defaultModel        String
+  complexModel        String
+  timeoutMs           Int      @default(25000)
+  maxInputChars       Int      @default(12000)
+  maxOutputTokens     Int      @default(1800)
+  reviewBasePrompt    String   @db.Text
+  targetInstructions Json
+  qqDraftPrompt       String   @db.Text
+  apiKeyCiphertext    String?
+  apiKeyIv            String?
+  apiKeyAuthTag       String?
+  apiKeyKeyVersion    Int?
+  revision            Int      @default(1)
+  updatedAt           DateTime @updatedAt
+  updatedById         String?
 }
 
 model QQMessageOutbox {
