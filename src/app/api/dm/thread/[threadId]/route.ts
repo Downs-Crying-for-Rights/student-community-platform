@@ -5,6 +5,14 @@ import { scanContent } from "@/lib/sensitive-engine";
 import { z } from "zod";
 import { enforceRateLimit } from "@/lib/rate-limiter";
 import { logAudit } from "@/lib/audit";
+import { requireDMConsent } from "@/lib/dm-consent";
+
+async function consentRequired(userId: string) {
+  const consent = await requireDMConsent(userId);
+  return consent
+    ? NextResponse.json({ error: "使用私信前需要同意私信巡查授权", code: "DM_CONSENT_REQUIRED", consent }, { status: 428 })
+    : null;
+}
 
 const sendMessageSchema = z.object({
   content: z.string().min(1, "消息不能为空").max(5000, "消息不能超过 5000 字"),
@@ -22,6 +30,8 @@ export const GET = withAuth(async (
 ) => {
   try {
     const userId = req.user.id;
+    const consentResponse = await consentRequired(userId);
+    if (consentResponse) return consentResponse;
     const { threadId } = context.params;
 
     // Verify user is participant
@@ -79,6 +89,8 @@ export const POST = withAuth(async (
 ) => {
   try {
     const userId = req.user.id;
+    const consentResponse = await consentRequired(userId);
+    if (consentResponse) return consentResponse;
     const { threadId } = context.params;
 
     const body = await req.json();

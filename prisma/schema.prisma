@@ -95,6 +95,8 @@ model User {
   phone           String?   @unique // 手机号
   passwordHash    String? // bcrypt 哈希密码
   securityVersion Int       @default(0)
+  dmConsentVersion Int      @default(0)
+  dmConsentAcceptedAt DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -1469,6 +1471,7 @@ model SiteContent {
   key       String   @unique // e.g., "user_agreement"
   title     String // 显示标题
   content   String   @db.Text // Markdown 内容
+  revision  Int      @default(1)
   updatedAt DateTime @updatedAt
   updatedBy String? // 最后修改者 ID
 }

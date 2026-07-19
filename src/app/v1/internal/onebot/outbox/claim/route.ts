@@ -5,7 +5,7 @@ import {
   authorizeQQInternalRequest,
   claimQQOutboxMessages,
 } from "@/lib/qq-outbox";
-import { recordQQBotHeartbeat } from "@/lib/qq-bot-monitor";
+import { alertQQBotReconnectFailure, recordQQBotHeartbeat } from "@/lib/qq-bot-monitor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +17,8 @@ const claimSchema = z
     oneBotConnected: z.boolean(),
     accountOnline: z.boolean(),
     checkedAt: z.string().datetime({ offset: true }),
+    reconnectAttemptedAt: z.string().datetime({ offset: true }).optional(),
+    reconnectFailed: z.boolean().optional(),
   })
   .strict();
 
@@ -48,7 +50,10 @@ export async function POST(request: Request) {
       oneBotConnected: input.oneBotConnected,
       accountOnline: input.accountOnline,
       checkedAt: input.checkedAt,
+      reconnectAttemptedAt: input.reconnectAttemptedAt,
+      reconnectFailed: input.reconnectFailed,
     }, now);
+    await alertQQBotReconnectFailure(input.selfId, input);
     return NextResponse.json(messages);
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

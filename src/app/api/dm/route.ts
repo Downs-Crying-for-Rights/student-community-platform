@@ -4,6 +4,14 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
 import { enforceRateLimit } from "@/lib/rate-limiter";
 import { logAudit } from "@/lib/audit";
+import { requireDMConsent } from "@/lib/dm-consent";
+
+async function consentRequired(userId: string) {
+  const consent = await requireDMConsent(userId);
+  return consent
+    ? NextResponse.json({ error: "使用私信前需要同意私信巡查授权", code: "DM_CONSENT_REQUIRED", consent }, { status: 428 })
+    : null;
+}
 
 const createThreadSchema = z.object({
   participantId: z.string().trim().min(1, "无效的用户 ID").max(191, "用户 ID 过长"),
@@ -19,6 +27,8 @@ const createThreadSchema = z.object({
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   try {
     const userId = req.user.id;
+    const consentResponse = await consentRequired(userId);
+    if (consentResponse) return consentResponse;
 
     const body = await req.json();
     const parsed = createThreadSchema.safeParse(body);
@@ -82,6 +92,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   try {
     const userId = req.user.id;
+    const consentResponse = await consentRequired(userId);
+    if (consentResponse) return consentResponse;
 
     const threads = await prisma.dMThread.findMany({
       where: {

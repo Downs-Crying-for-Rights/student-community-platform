@@ -18,6 +18,9 @@ interface PendingAction {
   timer: NodeJS.Timeout;
 }
 
+const ACCOUNT_RESTART_COOLDOWN_MS = 5 * 60_000;
+const ACCOUNT_RESTART_GRACE_MS = 60_000;
+
 export class OneBotWorker {
   private socket: WebSocket | null = null;
   private stopped = false;
@@ -29,9 +32,11 @@ export class OneBotWorker {
   private loginEcho = "";
   private messageQueue: Promise<void> = Promise.resolve();
   private outboxTimer: NodeJS.Timeout | null = null;
+  private reconnectFailureTimer: NodeJS.Timeout | null = null;
   private outboxFailures = 0;
   private accountOnline = false;
   private accountStatusCheckedAt = 0;
+  private reconnectAttemptedAt = 0;
   private readonly pendingActions = new Map<string, PendingAction>();
 
   constructor(
@@ -52,6 +57,7 @@ export class OneBotWorker {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.outboxTimer) clearTimeout(this.outboxTimer);
+    if (this.reconnectFailureTimer) clearTimeout(this.reconnectFailureTimer);
     this.rejectPendingActions("CONNECTION_LOST");
     this.socket?.close(1000, "shutdown");
   }
@@ -243,13 +249,34 @@ export class OneBotWorker {
       const checkedAt = new Date();
       this.accountOnline = await this.probeAccountStatus();
       this.accountStatusCheckedAt = checkedAt.getTime();
+      if (this.accountOnline) {
+        this.reconnectAttemptedAt = 0;
+        if (this.reconnectFailureTimer) clearTimeout(this.reconnectFailureTimer);
+        this.reconnectFailureTimer = null;
+      }
+      const shouldRestart = !this.accountOnline &&
+        checkedAt.getTime() - this.reconnectAttemptedAt >= ACCOUNT_RESTART_COOLDOWN_MS;
+      if (shouldRestart) this.reconnectAttemptedAt = checkedAt.getTime();
       const items = await this.app.claimOutbox(this.config.expectedSelfId, {
         oneBotConnected: true,
         accountOnline: this.accountOnline,
         checkedAt: checkedAt.toISOString(),
+        ...(this.reconnectAttemptedAt > 0
+          ? {
+              reconnectAttemptedAt: new Date(this.reconnectAttemptedAt).toISOString(),
+              reconnectFailed: checkedAt.getTime() - this.reconnectAttemptedAt >= ACCOUNT_RESTART_GRACE_MS,
+            }
+          : {}),
       });
       this.outboxFailures = 0;
-      if (!this.accountOnline) logger.warn("qq_account_offline");
+      if (!this.accountOnline) {
+        logger.warn("qq_account_offline", { reconnectRequested: shouldRestart });
+        if (shouldRestart) {
+          this.scheduleReconnectFailureReport();
+          void this.sendAction("set_restart", { delay: 1_000 })
+            .catch(() => logger.warn("qq_account_restart_request_failed"));
+        }
+      }
       for (const item of items) await this.deliverOutboxItem(item);
       this.scheduleOutboxPoll(this.config.outboxPollMs);
     } catch {
@@ -260,6 +287,22 @@ export class OneBotWorker {
       );
       this.scheduleOutboxPoll(delay);
     }
+  }
+
+  private scheduleReconnectFailureReport(): void {
+    if (this.reconnectFailureTimer) clearTimeout(this.reconnectFailureTimer);
+    const attemptedAt = new Date(this.reconnectAttemptedAt).toISOString();
+    this.reconnectFailureTimer = setTimeout(() => {
+      this.reconnectFailureTimer = null;
+      if (this.accountOnline || this.stopped) return;
+      void this.app.claimOutbox(this.config.expectedSelfId, {
+        oneBotConnected: this.isTransportReady(),
+        accountOnline: false,
+        checkedAt: new Date().toISOString(),
+        reconnectAttemptedAt: attemptedAt,
+        reconnectFailed: true,
+      }).catch(() => logger.warn("qq_account_restart_failure_report_failed"));
+    }, ACCOUNT_RESTART_GRACE_MS);
   }
 
   private async probeAccountStatus(): Promise<boolean> {

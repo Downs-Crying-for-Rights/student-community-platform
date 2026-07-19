@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ReportDialog } from "@/components/shared/ReportDialog";
+import { useDMConsent } from "@/components/dm/DMConsentDialog";
 
 /* ---------- Types ---------- */
 
@@ -122,6 +123,7 @@ function PostGrid({
 /* ---------- Main Page ---------- */
 
 export default function ProfilePage() {
+  const { ensureConsent, dialog: dmConsentDialog } = useDMConsent();
   const params = useParams();
   const router = useRouter();
   const rawId = params.id as string;
@@ -299,7 +301,7 @@ export default function ProfilePage() {
             </div>
             {!isOwnProfile && session?.user?.id && (
               <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={startDirectMessage} disabled={startingDM}>
+                <Button type="button" variant="outline" onClick={() => void ensureConsent(startDirectMessage)} disabled={startingDM}>
                   {startingDM ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
                   发私信
                 </Button>
@@ -357,6 +359,7 @@ export default function ProfilePage() {
         )}
       </main>
 
+      {dmConsentDialog}
     </div>
   );
 }

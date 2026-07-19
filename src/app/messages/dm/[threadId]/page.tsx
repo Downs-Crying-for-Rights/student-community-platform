@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ReportDialog } from "@/components/shared/ReportDialog";
+import { DMConsentGate } from "@/components/dm/DMConsentDialog";
 
 interface DMMessage {
   id: string;
@@ -16,7 +17,7 @@ interface DMMessage {
   createdAt: string;
 }
 
-export default function DMThreadPage() {
+function DMThreadContent() {
   const threadId = useParams()?.threadId as string;
   const [messages, setMessages] = useState<DMMessage[]>([]);
   const [userId, setUserId] = useState("");
@@ -86,4 +87,8 @@ export default function DMThreadPage() {
       </form>
     </main>
   );
+}
+
+export default function DMThreadPage() {
+  return <DMConsentGate><DMThreadContent /></DMConsentGate>;
 }

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   threadUpsert: vi.fn(),
   threadFindMany: vi.fn(),
   logAudit: vi.fn(),
+  requireConsent: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({ default: {
@@ -14,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({ default: {
 } }));
 vi.mock("@/lib/rate-limiter", () => ({ enforceRateLimit: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.logAudit }));
+vi.mock("@/lib/dm-consent", () => ({ requireDMConsent: mocks.requireConsent }));
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 
@@ -30,6 +32,19 @@ describe("/api/dm", () => {
     mocks.userFindUnique.mockResolvedValue({ id: otherUser });
     mocks.threadUpsert.mockResolvedValue({ id: "thread-1", participant1Id: currentUser, participant2Id: otherUser });
     mocks.logAudit.mockResolvedValue({});
+    mocks.requireConsent.mockResolvedValue(null);
+  });
+
+  it("rejects DM access until the current consent text is accepted", async () => {
+    mocks.requireConsent.mockResolvedValue({ title: "私信巡查授权提示", content: "授权文本", version: 2 });
+
+    const response = await GET(new NextRequest("http://localhost/api/dm"), {} as never);
+    const data = await response.json();
+
+    expect(response.status).toBe(428);
+    expect(data.code).toBe("DM_CONSENT_REQUIRED");
+    expect(data.consent.version).toBe(2);
+    expect(mocks.threadFindMany).not.toHaveBeenCalled();
   });
 
   it("creates or reuses an order-independent one-to-one thread", async () => {

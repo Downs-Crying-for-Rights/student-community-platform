@@ -23,10 +23,21 @@ describe("站内一对一私信", () => {
     const profile = fs.readFileSync(path.resolve(__dirname, "../../../u/[id]/page.tsx"), "utf8");
     expect(profile).toContain('fetch("/api/dm"');
     expect(profile).toContain("发私信");
+    expect(profile).toContain("ensureConsent(startDirectMessage)");
+  });
+
+  it("私信列表和直接会话均由授权弹窗保护", () => {
+    const messages = fs.readFileSync(path.resolve(__dirname, "../../page.tsx"), "utf8");
+    const thread = fs.readFileSync(path.resolve(__dirname, "../[threadId]/page.tsx"), "utf8");
+    const dialog = fs.readFileSync(path.resolve(__dirname, "../../../../components/dm/DMConsentDialog.tsx"), "utf8");
+    expect(messages).toContain("<DMConsentGate><DMThreadList /></DMConsentGate>");
+    expect(thread).toContain("<DMConsentGate><DMThreadContent /></DMConsentGate>");
+    expect(dialog).toContain('method: "POST"');
+    expect(dialog).toContain("不同意");
   });
 
   it("管理员审查入口仅存在于管理导航", () => {
-    const adminNav = fs.readFileSync(path.resolve(__dirname, "../../../../components/layout/AdminNav.tsx"), "utf8");
+    const adminNav = fs.readFileSync(path.resolve(__dirname, "../../../../components/layout/navigation-config.ts"), "utf8");
     const userMessages = fs.readFileSync(path.resolve(__dirname, "../../page.tsx"), "utf8");
     expect(adminNav).toContain('/admin/dm');
     expect(userMessages).not.toContain('/admin/dm');

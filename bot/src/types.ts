@@ -51,6 +51,8 @@ export interface QQBotRuntimeStatus {
   oneBotConnected: boolean;
   accountOnline: boolean;
   checkedAt: string;
+  reconnectAttemptedAt?: string;
+  reconnectFailed?: boolean;
 }
 
 export interface OneBotPrivateMessageEvent {

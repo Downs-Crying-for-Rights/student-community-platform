@@ -1,4 +1,5 @@
 import redis from "@/lib/redis";
+import { sendAdminActionMail } from "@/lib/mail";
 
 const HEARTBEAT_KEY = "qq-bot:worker:heartbeat";
 export const QQ_BOT_HEARTBEAT_TTL_SECONDS = 30;
@@ -9,11 +10,14 @@ export interface QQBotHeartbeat {
   oneBotConnected: boolean;
   accountOnline: boolean;
   checkedAt: string;
+  reconnectAttemptedAt?: string;
+  reconnectFailed?: boolean;
 }
 
 export async function recordQQBotHeartbeat(
   selfId: string,
-  status: Pick<QQBotHeartbeat, "oneBotConnected" | "accountOnline" | "checkedAt">,
+  status: Pick<QQBotHeartbeat, "oneBotConnected" | "accountOnline" | "checkedAt"> &
+    Partial<Pick<QQBotHeartbeat, "reconnectAttemptedAt" | "reconnectFailed">>,
   now = new Date(),
 ): Promise<void> {
   const heartbeat: QQBotHeartbeat = { selfId, recordedAt: now.toISOString(), ...status };
@@ -36,5 +40,38 @@ export async function getQQBotHeartbeat(): Promise<QQBotHeartbeat | null> {
     return parsed as QQBotHeartbeat;
   } catch {
     return null;
+  }
+}
+
+export async function alertQQBotReconnectFailure(
+  selfId: string,
+  status: Pick<QQBotHeartbeat, "accountOnline" | "reconnectAttemptedAt" | "reconnectFailed">,
+): Promise<void> {
+  const key = `qq-bot:alert:login-failed:${selfId}`;
+  try {
+    if (status.accountOnline) {
+      await redis.del(key);
+      return;
+    }
+    if (!status.reconnectFailed || !status.reconnectAttemptedAt) return;
+    const acquired = await redis.set(key, status.reconnectAttemptedAt, "EX", 21_600, "NX");
+    if (acquired !== "OK") return;
+  } catch {
+    // A Redis failure must not turn a frequent heartbeat into an email storm.
+    return;
+  }
+
+  const result = await sendAdminActionMail({
+    minimumRole: "ADMIN",
+    subject: "QQ 机器人自动重连失败",
+    text: `机器人 QQ ${selfId} 已尝试自动重连，但账号仍未登录。请尽快检查 NapCat 登录状态并重新扫码。`,
+    actionUrl: "/admin/qq-bot",
+  });
+  if (!result.sent) {
+    try {
+      await redis.del(key);
+    } catch {
+      // The next online transition or key expiry will release the alert.
+    }
   }
 }

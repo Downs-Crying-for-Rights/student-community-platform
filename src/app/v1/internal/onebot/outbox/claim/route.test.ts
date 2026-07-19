@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ authorize: vi.fn(), claim: vi.fn(), heartbeat: vi.fn() }));
+const mocks = vi.hoisted(() => ({ authorize: vi.fn(), claim: vi.fn(), heartbeat: vi.fn(), alert: vi.fn() }));
 vi.mock("@/lib/qq-outbox", () => ({
   authorizeQQInternalRequest: mocks.authorize,
   claimQQOutboxMessages: mocks.claim,
 }));
-vi.mock("@/lib/qq-bot-monitor", () => ({ recordQQBotHeartbeat: mocks.heartbeat }));
+vi.mock("@/lib/qq-bot-monitor", () => ({
+  recordQQBotHeartbeat: mocks.heartbeat,
+  alertQQBotReconnectFailure: mocks.alert,
+}));
 
 describe("POST /v1/internal/onebot/outbox/claim", () => {
   beforeEach(() => {
@@ -14,6 +17,7 @@ describe("POST /v1/internal/onebot/outbox/claim", () => {
     mocks.authorize.mockReturnValue({ ok: true });
     mocks.claim.mockResolvedValue([]);
     mocks.heartbeat.mockResolvedValue(undefined);
+    mocks.alert.mockResolvedValue(undefined);
   });
 
   it("records a heartbeat only after an authenticated worker successfully claims", async () => {
@@ -25,7 +29,13 @@ describe("POST /v1/internal/onebot/outbox/claim", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.claim).toHaveBeenCalledWith(undefined, expect.any(Date), 10);
-    expect(mocks.heartbeat).toHaveBeenCalledWith("3917673573", { oneBotConnected: true, accountOnline: true, checkedAt: "2026-07-19T10:00:00.000Z" }, expect.any(Date));
+    expect(mocks.heartbeat).toHaveBeenCalledWith("3917673573", {
+      oneBotConnected: true,
+      accountOnline: true,
+      checkedAt: "2026-07-19T10:00:00.000Z",
+      reconnectAttemptedAt: undefined,
+      reconnectFailed: undefined,
+    }, expect.any(Date));
   });
 
   it("does not record a heartbeat for the wrong bot identity", async () => {
@@ -49,5 +59,28 @@ describe("POST /v1/internal/onebot/outbox/claim", () => {
     expect(response.status).toBe(200);
     expect(mocks.claim).not.toHaveBeenCalled();
     expect(mocks.heartbeat).toHaveBeenCalledWith("3917673573", expect.objectContaining({ accountOnline: false }), expect.any(Date));
+  });
+
+  it("evaluates a reconnect failure alert after recording the worker status", async () => {
+    const { POST } = await import("./route");
+    const reconnectAttemptedAt = "2026-07-19T10:00:00.000Z";
+    const response = await POST(new Request("http://localhost/v1/internal/onebot/outbox/claim", {
+      method: "POST",
+      body: JSON.stringify({
+        selfId: "3917673573",
+        limit: 10,
+        oneBotConnected: false,
+        accountOnline: false,
+        checkedAt: "2026-07-19T10:01:00.000Z",
+        reconnectAttemptedAt,
+        reconnectFailed: true,
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.alert).toHaveBeenCalledWith("3917673573", expect.objectContaining({
+      reconnectAttemptedAt,
+      reconnectFailed: true,
+    }));
   });
 });

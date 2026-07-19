@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ListSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
+import { DMConsentGate } from "@/components/dm/DMConsentDialog";
 
 /* ---------- Types ---------- */
 
@@ -617,7 +618,7 @@ function MessagesPageContent() {
               <ChatRoomList />
             </TabsContent>
             <TabsContent value="dm">
-              <DMThreadList />
+              <DMConsentGate><DMThreadList /></DMConsentGate>
             </TabsContent>
           </Tabs>
       </main>

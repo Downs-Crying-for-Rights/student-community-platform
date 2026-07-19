@@ -111,12 +111,14 @@ describe("OneBotWorker outbox", () => {
     if (typeof address === "string" || address === null) throw new Error("WebSocket server has no TCP address");
     let connection: WebSocket | undefined;
     let loginRequest: OneBotAction | undefined;
+    let restartRequest: OneBotAction | undefined;
     server.on("connection", (socket) => {
       connection = socket;
       socket.on("message", (raw) => {
         const action = JSON.parse(raw.toString()) as OneBotAction;
         if (action.action === "get_login_info") loginRequest = action;
         if (action.action === "get_status") socket.send(JSON.stringify({ status: "ok", retcode: 0, data: { online: false, good: false }, echo: action.echo }));
+        if (action.action === "set_restart") restartRequest = action;
       });
     });
     const app: AppApi = {
@@ -137,6 +139,7 @@ describe("OneBotWorker outbox", () => {
       await waitFor(() => expect(loginRequest).toBeDefined());
       connection?.send(JSON.stringify({ status: "ok", retcode: 0, data: { user_id: 42 }, echo: loginRequest?.echo }));
       await waitFor(() => expect(app.claimOutbox).toHaveBeenCalledWith("42", expect.objectContaining({ accountOnline: false })));
+      await waitFor(() => expect(restartRequest).toBeDefined());
       expect(worker.isReady()).toBe(false);
       expect(app.ackOutbox).not.toHaveBeenCalled();
     } finally {
