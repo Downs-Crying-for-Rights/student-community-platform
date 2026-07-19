@@ -46,6 +46,13 @@ describe("QQ delegation drafts", () => {
     expect(hashQQDelegationDraft(draft)).toBe(hashQQDelegationDraft({ ...draft }));
   });
 
+  it("accepts the persisted JSON shape with null optional fields", () => {
+    const persisted = JSON.parse(canonicalizeQQDelegationDraft(draft));
+
+    expect(() => validateQQDelegationDraft(persisted)).not.toThrow();
+    expect(hashQQDelegationDraft(persisted)).toBe(hashQQDelegationDraft(draft));
+  });
+
   it("rejects unknown fields and incomplete charged-fee data", () => {
     expect(() => validateQQDelegationDraft({ ...draft, unexpected: true })).toThrow();
     expect(() =>

@@ -69,6 +69,7 @@ describe("OneBotWorker outbox", () => {
       oneBotWsUrl: `ws://127.0.0.1:${address.port}/`,
       oneBotAccessToken: "onebot-secret",
       expectedSelfId: "42",
+      allowedUserIds: new Set(["100"]),
       internalApiBaseUrl: "http://127.0.0.1/",
       internalApiToken: "internal-secret",
       maxMessageBytes: 65_536,

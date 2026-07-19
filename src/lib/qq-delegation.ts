@@ -7,7 +7,7 @@ const optionalText = (max: number) =>
     .string()
     .trim()
     .max(max)
-    .optional()
+    .nullish()
     .transform((value) => value || undefined);
 
 export const QQ_DELEGATION_SCHEMA_VERSION = 1 as const;
