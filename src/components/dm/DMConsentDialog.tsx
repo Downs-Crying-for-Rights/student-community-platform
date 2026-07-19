@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 
 interface ConsentStatus {
   title: string;
@@ -79,9 +80,7 @@ export function useDMConsent() {
     <Dialog open={open} onOpenChange={(next) => { if (!next) pendingAction.current = null; setOpen(next); }}>
       <DialogContent className="max-w-lg" onInteractOutside={(event) => event.preventDefault()}>
         <DialogHeader><DialogTitle>{status?.title || "私信使用须知"}</DialogTitle></DialogHeader>
-        <div className="max-h-[55vh] overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-foreground">
-          {status?.content || "正在加载授权文本..."}
-        </div>
+        <SafeMarkdown content={status?.content || "正在加载授权文本..."} className="max-h-[55vh] overflow-y-auto text-foreground" />
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>不同意</Button>

@@ -816,13 +816,13 @@ export default function DelegatePage() {
                 {CONFIRMATION_LABELS.map((label, index) => (
                   <label
                     key={label}
-                    className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-muted/50"
+                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/50"
                   >
                     <input
                       type="checkbox"
                       checked={confirmations?.[index] === true}
                       onChange={() => handleConfirmationToggle(index)}
-                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-primary"
                       aria-label={label}
                     />
                     <span className="text-sm text-foreground leading-relaxed">

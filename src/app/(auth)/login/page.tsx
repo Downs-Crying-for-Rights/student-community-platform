@@ -33,6 +33,7 @@ import {
   registerSchema,
   inviteRegisterSchema,
 } from "@/lib/validators";
+import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 
 type ViewState = "form" | "verify" | "expired" | "error" | "register";
 export type LoginTab = "email" | "password" | "sms";
@@ -779,13 +780,13 @@ function LoginContent() {
               {/* 用户协议 */}
               <div className="space-y-2">
                 {allKeys.map(({ key, title }) => (
-                  <div key={key} className="flex items-start gap-2">
+                  <div key={key} className="flex min-h-11 items-center gap-2">
                     <input
                       type="checkbox"
                       id={`reg-${key}`}
                       checked={agreedKeys[key] ?? false}
                       onChange={(e) => setAgreedKeys(prev => ({ ...prev, [key]: e.target.checked }))}
-                      className="mt-1 h-4 w-4 accent-primary"
+                      className="h-4 w-4 shrink-0 accent-primary"
                     />
                     <label htmlFor={`reg-${key}`} className="text-xs text-muted-foreground leading-relaxed">
                       我已阅读并同意
@@ -1064,9 +1065,7 @@ function LoginContent() {
             <DialogHeader>
               <DialogTitle>{allKeys.find(k => k.key === showAgreement)?.title ?? "协议"}</DialogTitle>
             </DialogHeader>
-            <div className="prose prose-sm dark:prose-invert max-w-none text-sm whitespace-pre-wrap">
-              {agreementContent || "暂无内容"}
-            </div>
+            <SafeMarkdown content={agreementContent || "暂无内容"} />
           </DialogContent>
         </Dialog>
       </div>

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Search, X } from "lucide-react";
 
 interface UserItem {
   id: string;
@@ -68,6 +70,8 @@ export default function AdminUsersPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [roleFilter, setRoleFilter] = useState("");
   const [bannedFilter, setBannedFilter] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
   const [overrideForm, setOverrideForm] = useState<Record<string, unknown>>({});
@@ -92,6 +96,7 @@ export default function AdminUsersPage() {
       const params = new URLSearchParams({ page: String(page), pageSize: "20" });
       if (roleFilter) params.set("role", roleFilter);
       if (bannedFilter) params.set("isBanned", bannedFilter);
+      if (search) params.set("search", search);
 
       const res = await fetch(`/api/admin/users?${params}`);
       if (res.ok) {
@@ -103,7 +108,19 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, roleFilter, bannedFilter]);
+  }, [page, roleFilter, bannedFilter, search]);
+
+  const handleSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    setPage(1);
+    setSearch(searchInput.trim());
+  };
+
+  const clearSearch = () => {
+    setSearchInput("");
+    setSearch("");
+    setPage(1);
+  };
 
   useEffect(() => {
     fetchUsers();
@@ -289,7 +306,24 @@ export default function AdminUsersPage() {
         <CardHeader>
           <CardTitle className="text-base">筛选条件</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
+        <CardContent className="space-y-4">
+          <form onSubmit={handleSearch} className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="搜索 ID、昵称、姓名、邮箱、手机号、简介或角色"
+                aria-label="搜索用户"
+                maxLength={100}
+                className="pl-9"
+              />
+            </div>
+            <Button type="submit">搜索</Button>
+            {(search || searchInput) && <Button type="button" variant="outline" onClick={clearSearch}><X className="mr-1 h-4 w-4" />清除</Button>}
+          </form>
+          <div className="flex flex-wrap gap-4">
           <select
             aria-label="按角色筛选"
             className="border rounded px-3 py-2 text-sm"
@@ -312,6 +346,8 @@ export default function AdminUsersPage() {
             <option value="true">已封禁</option>
             <option value="false">正常</option>
           </select>
+          </div>
+          {search && <p className="text-xs text-muted-foreground">正在模糊匹配：{search}</p>}
         </CardContent>
       </Card>
 

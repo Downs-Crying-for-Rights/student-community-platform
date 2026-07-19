@@ -10,7 +10,7 @@ const querySchema = paginationSchema.extend({
   isShadowBanned: z.enum(["true", "false"]).optional(),
   startDate: z.string().datetime({ offset: true }).optional(),
   endDate: z.string().datetime({ offset: true }).optional(),
-  search: z.string().max(100).optional(),
+  search: z.string().trim().max(100).optional(),
 });
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
@@ -42,9 +42,26 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     }
 
     if (search) {
+      const normalizedSearch = search.toLowerCase();
+      const roleNames = [
+        ["USER", "普通用户"],
+        ["TRUSTED_USER", "可信用户"],
+        ["MODERATOR", "内容版主"],
+        ["ADMIN", "管理员"],
+        ["DCR_HELPER", "DCR 互助员"],
+        ["SUPER_ADMIN", "超级管理员"],
+      ] as const;
+      const matchingRoles = roleNames
+        .filter(([roleValue, label]) => roleValue.toLowerCase().includes(normalizedSearch) || label.includes(search))
+        .map(([roleValue]) => roleValue);
       where.OR = [
+        { id: { contains: search, mode: "insensitive" } },
+        { name: { contains: search, mode: "insensitive" } },
         { nickname: { contains: search, mode: "insensitive" } },
         { email: { contains: search, mode: "insensitive" } },
+        { phone: { contains: search } },
+        { bio: { contains: search, mode: "insensitive" } },
+        ...(matchingRoles.length > 0 ? [{ role: { in: matchingRoles } }] : []),
       ];
     }
 

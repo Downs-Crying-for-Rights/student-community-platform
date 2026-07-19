@@ -503,14 +503,14 @@ export default function EvidenceRoomPage() {
                       </div>
 
                       {/* Sensitive confirmed checkbox */}
-                      <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+                      <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                         <input
                           type="checkbox"
                           checked={formSensitiveConfirmed}
                           onChange={(e) =>
                             setFormSensitiveConfirmed(e.target.checked)
                           }
-                          className="mt-0.5 rounded"
+                          className="h-4 w-4 shrink-0 rounded"
                         />
                         <span>
                           我确认上传内容不包含敏感个人信息

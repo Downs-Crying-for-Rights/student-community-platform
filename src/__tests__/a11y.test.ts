@@ -367,6 +367,12 @@ describe("global a11y CSS", () => {
     expect(css).toContain("min-width: 44px");
   });
 
+  it("should keep native checkbox indicators compact on coarse pointers", () => {
+    expect(css).toContain('input[type="checkbox"]');
+    expect(css).toContain("min-height: 1rem");
+    expect(css).toContain("min-width: 1rem");
+  });
+
   it("should include button press feedback", () => {
     expect(css).toContain("button:active");
     expect(css).toContain("scale(0.97)");

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
@@ -79,6 +81,14 @@ describe("AdminUsersPage", () => {
     // The component uses ROLES internally; verify by checking the module exports the component
     // Since ROLES is not exported, we verify the component renders with SUPER_ADMIN in the role options
     expect(source.default).toBeDefined();
+  });
+
+  it("提供多字段模糊搜索并与分页查询联动", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../users/page.tsx"), "utf8");
+    expect(source).toContain('aria-label="搜索用户"');
+    expect(source).toContain('params.set("search", search)');
+    expect(source).toContain("setSearch(searchInput.trim())");
+    expect(source).toContain("setPage(1)");
   });
 });
 

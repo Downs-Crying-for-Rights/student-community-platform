@@ -127,8 +127,8 @@ export default function QQDraftPage() {
               <CardHeader><CardTitle className="text-base">提交前逐项确认</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {CONFIRMATIONS.map((label, index) => (
-                  <label key={label} className="flex cursor-pointer items-start gap-3 rounded-xl border p-3">
-                    <input type="checkbox" className="mt-1 h-4 w-4" checked={confirmations[index]} onChange={() => setConfirmations((current) => current.map((value, item) => item === index ? !value : value))} />
+                  <label key={label} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border p-3">
+                    <input type="checkbox" className="h-4 w-4 shrink-0" checked={confirmations[index]} onChange={() => setConfirmations((current) => current.map((value, item) => item === index ? !value : value))} />
                     <span className="text-sm leading-6">{label}</span>
                   </label>
                 ))}

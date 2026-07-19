@@ -45,15 +45,21 @@ textarea:focus-visible,
   border-radius: inherit;
 }
 
-/* ===== Minimum touch target sizes ===== */
+/* ===== Minimum touch target sizes =====
+ * Checkbox/radio labels provide the large hit area; the native indicators stay compact.
+ */
 @media (pointer: coarse) {
   button,
   a[role="button"],
-  [role="button"],
-  input[type="checkbox"],
-  input[type="radio"] {
+  [role="button"] {
     min-height: 44px;
     min-width: 44px;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 1rem;
+    min-width: 1rem;
   }
 }
 

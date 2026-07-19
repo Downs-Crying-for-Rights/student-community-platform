@@ -663,13 +663,13 @@ function StepPledge({
             {PLEDGE_STATEMENTS.map((statement, index) => (
               <label
                 key={statement}
-                className="flex cursor-pointer items-start gap-3 rounded-lg p-3 transition-colors hover:bg-muted/50"
+                className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors hover:bg-muted/50"
               >
                 <input
                   type="checkbox"
                   checked={pledges[index] ?? false}
                   onChange={() => onToggle(index)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-primary"
+                  className="h-4 w-4 shrink-0 rounded border-gray-300 text-primary focus:ring-primary"
                   aria-label={statement}
                 />
                 <span className="text-sm text-foreground leading-relaxed">

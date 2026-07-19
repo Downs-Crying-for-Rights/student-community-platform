@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Save, Eye, Edit3, Plus, Trash2 } from "lucide-react";
+import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 
 interface SiteKey {
   key: string;
@@ -180,7 +181,7 @@ export default function SiteContentPage() {
                   </Button>
                 </div>
                 {preview ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none min-h-[200px] rounded border p-4 bg-muted/20" dangerouslySetInnerHTML={{ __html: content.replace(/\n/g, "<br>") }} />
+                   <SafeMarkdown content={content} className="min-h-[200px] rounded border bg-muted/20 p-4" />
                 ) : (
                   <textarea
                     value={content}

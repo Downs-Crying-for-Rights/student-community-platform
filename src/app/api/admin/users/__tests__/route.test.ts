@@ -215,11 +215,37 @@ describe("GET /api/admin/users", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           OR: expect.arrayContaining([
+            expect.objectContaining({ id: expect.objectContaining({ contains: "用户1" }) }),
+            expect.objectContaining({ name: expect.objectContaining({ contains: "用户1" }) }),
             expect.objectContaining({ nickname: expect.objectContaining({ contains: "用户1" }) }),
             expect.objectContaining({ email: expect.objectContaining({ contains: "用户1" }) }),
+            expect.objectContaining({ phone: expect.objectContaining({ contains: "用户1" }) }),
+            expect.objectContaining({ bio: expect.objectContaining({ contains: "用户1" }) }),
           ]),
         }),
       }),
     );
+  });
+
+  it("应忽略搜索值两端空格并支持中文角色名称", async () => {
+    setSession("admin1", "ADMIN");
+    mockUserFindMany.mockResolvedValue([]);
+    mockUserCount.mockResolvedValue(0);
+
+    const { GET } = await import("../route");
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/admin/users?search=%20%E7%AE%A1%E7%90%86%E5%91%98%20"),
+      { params: {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockUserFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          expect.objectContaining({ nickname: expect.objectContaining({ contains: "管理员" }) }),
+          expect.objectContaining({ role: { in: ["ADMIN", "SUPER_ADMIN"] } }),
+        ]),
+      }),
+    }));
   });
 });
