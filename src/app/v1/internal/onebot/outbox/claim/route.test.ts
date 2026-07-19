@@ -20,23 +20,34 @@ describe("POST /v1/internal/onebot/outbox/claim", () => {
     const { POST } = await import("./route");
     const response = await POST(new Request("http://localhost/v1/internal/onebot/outbox/claim", {
       method: "POST",
-      body: JSON.stringify({ selfId: "3917673573", limit: 10 }),
+      body: JSON.stringify({ selfId: "3917673573", limit: 10, oneBotConnected: true, accountOnline: true, checkedAt: "2026-07-19T10:00:00.000Z" }),
     }));
 
     expect(response.status).toBe(200);
     expect(mocks.claim).toHaveBeenCalledWith(undefined, expect.any(Date), 10);
-    expect(mocks.heartbeat).toHaveBeenCalledWith("3917673573", expect.any(Date));
+    expect(mocks.heartbeat).toHaveBeenCalledWith("3917673573", { oneBotConnected: true, accountOnline: true, checkedAt: "2026-07-19T10:00:00.000Z" }, expect.any(Date));
   });
 
   it("does not record a heartbeat for the wrong bot identity", async () => {
     const { POST } = await import("./route");
     const response = await POST(new Request("http://localhost/v1/internal/onebot/outbox/claim", {
       method: "POST",
-      body: JSON.stringify({ selfId: "123456789", limit: 10 }),
+      body: JSON.stringify({ selfId: "123456789", limit: 10, oneBotConnected: true, accountOnline: true, checkedAt: "2026-07-19T10:00:00.000Z" }),
     }));
 
     expect(response.status).toBe(403);
     expect(mocks.claim).not.toHaveBeenCalled();
     expect(mocks.heartbeat).not.toHaveBeenCalled();
+  });
+
+  it("records account offline status without claiming messages", async () => {
+    const { POST } = await import("./route");
+    const response = await POST(new Request("http://localhost/v1/internal/onebot/outbox/claim", {
+      method: "POST",
+      body: JSON.stringify({ selfId: "3917673573", limit: 10, oneBotConnected: true, accountOnline: false, checkedAt: "2026-07-19T10:00:00.000Z" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.heartbeat).toHaveBeenCalledWith("3917673573", expect.objectContaining({ accountOnline: false }), expect.any(Date));
   });
 });

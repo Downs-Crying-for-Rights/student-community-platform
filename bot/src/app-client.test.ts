@@ -53,10 +53,10 @@ describe("AppClient", () => {
     const port = (server.address() as AddressInfo).port;
     const client = new AppClient(`http://127.0.0.1:${port}`, "internal-secret", 1_000, 65_536);
 
-    await expect(client.claimOutbox("42")).resolves.toEqual([{ id: "outbox-1", userId: "7", content: "通知" }]);
+    await expect(client.claimOutbox("42", { oneBotConnected: true, accountOnline: true, checkedAt: "2026-07-19T10:00:00.000Z" })).resolves.toEqual([{ id: "outbox-1", userId: "7", content: "通知" }]);
     expect(path).toBe("/v1/internal/onebot/outbox/claim");
     expect(authorization).toBe("Bearer internal-secret");
-    expect(JSON.parse(body)).toEqual({ selfId: "42", limit: 10 });
+    expect(JSON.parse(body)).toEqual({ selfId: "42", limit: 10, oneBotConnected: true, accountOnline: true, checkedAt: "2026-07-19T10:00:00.000Z" });
   });
 
   it("acknowledges encoded outbox ids with the delivery result", async () => {

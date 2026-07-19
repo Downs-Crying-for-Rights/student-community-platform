@@ -30,6 +30,8 @@ export class OneBotWorker {
   private messageQueue: Promise<void> = Promise.resolve();
   private outboxTimer: NodeJS.Timeout | null = null;
   private outboxFailures = 0;
+  private accountOnline = false;
+  private accountStatusCheckedAt = 0;
   private readonly pendingActions = new Map<string, PendingAction>();
 
   constructor(
@@ -46,6 +48,7 @@ export class OneBotWorker {
   stop(): void {
     this.stopped = true;
     this.verified = false;
+    this.accountOnline = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.outboxTimer) clearTimeout(this.outboxTimer);
@@ -55,15 +58,21 @@ export class OneBotWorker {
 
   isReady(): boolean {
     return (
-      this.socket?.readyState === WebSocket.OPEN &&
-      this.verified &&
-      Date.now() - this.lastPong <= this.config.heartbeatMs * 2
+      this.isTransportReady() &&
+      this.accountOnline &&
+      Date.now() - this.accountStatusCheckedAt <= this.config.heartbeatMs * 2
     );
+  }
+
+  private isTransportReady(): boolean {
+    return this.socket?.readyState === WebSocket.OPEN && this.verified &&
+      Date.now() - this.lastPong <= this.config.heartbeatMs * 2;
   }
 
   private connect(): void {
     if (this.stopped) return;
     this.verified = false;
+    this.accountOnline = false;
     const socket = new WebSocket(this.config.oneBotWsUrl, {
       headers: { authorization: `Bearer ${this.config.oneBotAccessToken}` },
       maxPayload: this.config.maxMessageBytes,
@@ -93,6 +102,7 @@ export class OneBotWorker {
     });
     socket.on("close", (code) => {
       this.verified = false;
+      this.accountOnline = false;
       if (this.outboxTimer) clearTimeout(this.outboxTimer);
       this.outboxTimer = null;
       this.rejectPendingActions("CONNECTION_LOST");
@@ -188,18 +198,17 @@ export class OneBotWorker {
   }
 
   private sendOutboxItem(item: OutboxItem): Promise<OneBotActionResponse> {
+    return this.sendAction("send_private_msg", { user_id: item.userId, message: item.content });
+  }
+
+  private sendAction(action: string, params: Record<string, unknown>): Promise<OneBotActionResponse> {
     return new Promise((resolve, reject: (errorCode: OutboxErrorCode) => void) => {
-      if (!this.isReady()) {
+      if (!this.isTransportReady()) {
         reject("CONNECTION_LOST");
         return;
       }
-      const echo = `outbox:${randomUUID()}`;
-      const action: OneBotAction = {
-        action: "send_private_msg",
-        params: { user_id: item.userId, message: item.content },
-        echo,
-      };
-      const payload = JSON.stringify(action);
+      const echo = `action:${randomUUID()}`;
+      const payload = JSON.stringify({ action, params, echo });
       if (Buffer.byteLength(payload, "utf8") > this.config.maxMessageBytes) {
         reject("ACTION_TOO_LARGE");
         return;
@@ -229,10 +238,18 @@ export class OneBotWorker {
   }
 
   private async pollOutbox(): Promise<void> {
-    if (!this.isReady()) return;
+    if (!this.isTransportReady()) return;
     try {
-      const items = await this.app.claimOutbox(this.config.expectedSelfId);
+      const checkedAt = new Date();
+      this.accountOnline = await this.probeAccountStatus();
+      this.accountStatusCheckedAt = checkedAt.getTime();
+      const items = await this.app.claimOutbox(this.config.expectedSelfId, {
+        oneBotConnected: true,
+        accountOnline: this.accountOnline,
+        checkedAt: checkedAt.toISOString(),
+      });
       this.outboxFailures = 0;
+      if (!this.accountOnline) logger.warn("qq_account_offline");
       for (const item of items) await this.deliverOutboxItem(item);
       this.scheduleOutboxPoll(this.config.outboxPollMs);
     } catch {
@@ -242,6 +259,16 @@ export class OneBotWorker {
         this.config.outboxPollMs * 2 ** Math.min(this.outboxFailures++, 10),
       );
       this.scheduleOutboxPoll(delay);
+    }
+  }
+
+  private async probeAccountStatus(): Promise<boolean> {
+    try {
+      const response = await this.sendAction("get_status", {});
+      return response.status === "ok" && response.retcode === 0 &&
+        response.data?.online === true && response.data.good !== false;
+    } catch {
+      return false;
     }
   }
 

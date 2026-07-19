@@ -130,16 +130,23 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const botEnabled = enabled(process.env.QQ_BOT_ENABLED);
   const expectedSelfId = process.env.QQ_BOT_EXPECTED_SELF_ID || null;
   const heartbeatMatches = Boolean(heartbeat && expectedSelfId && heartbeat.selfId === expectedSelfId);
+  const runtimeStatus = !botEnabled ? "DISABLED"
+    : !heartbeatMatches ? "WORKER_OFFLINE"
+      : !heartbeat?.oneBotConnected ? "ONEBOT_OFFLINE"
+        : !heartbeat.accountOnline ? "ACCOUNT_OFFLINE" : "ONLINE";
 
   return NextResponse.json({
     generatedAt: now,
     hours,
     worker: {
       enabled: botEnabled,
-      status: !botEnabled ? "DISABLED" : heartbeatMatches ? "ONLINE" : "OFFLINE",
+      status: runtimeStatus,
       expectedSelfId,
       heartbeatAt: heartbeat?.recordedAt ?? null,
       heartbeatMatches,
+      oneBotConnected: heartbeat?.oneBotConnected ?? false,
+      accountOnline: heartbeat?.accountOnline ?? false,
+      accountCheckedAt: heartbeat?.checkedAt ?? null,
     },
     summary: {
       identities,

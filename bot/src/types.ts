@@ -43,8 +43,14 @@ export type OutboxAck =
   | { success: false; errorCode: OutboxErrorCode };
 
 export interface AppApi extends MessageApi {
-  claimOutbox(selfId: string): Promise<OutboxItem[]>;
+  claimOutbox(selfId: string, status: QQBotRuntimeStatus): Promise<OutboxItem[]>;
   ackOutbox(id: string, ack: OutboxAck): Promise<void>;
+}
+
+export interface QQBotRuntimeStatus {
+  oneBotConnected: boolean;
+  accountOnline: boolean;
+  checkedAt: string;
 }
 
 export interface OneBotPrivateMessageEvent {
@@ -68,6 +74,6 @@ export interface OneBotAction {
 export interface OneBotActionResponse {
   status: "ok" | "failed";
   retcode: number;
-  data?: { message_id?: string | number } | null;
+  data?: Record<string, unknown> | null;
   echo: string;
 }

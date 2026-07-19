@@ -14,6 +14,9 @@ const claimSchema = z
   .object({
     selfId: z.string().regex(/^[1-9]\d{4,11}$/),
     limit: z.number().int().min(1).max(10),
+    oneBotConnected: z.boolean(),
+    accountOnline: z.boolean(),
+    checkedAt: z.string().datetime({ offset: true }),
   })
   .strict();
 
@@ -38,8 +41,14 @@ export async function POST(request: Request) {
 
   try {
     const now = new Date();
-    const messages = await claimQQOutboxMessages(undefined, now, input.limit);
-    await recordQQBotHeartbeat(input.selfId, now);
+    const messages = input.oneBotConnected && input.accountOnline
+      ? await claimQQOutboxMessages(undefined, now, input.limit)
+      : [];
+    await recordQQBotHeartbeat(input.selfId, {
+      oneBotConnected: input.oneBotConnected,
+      accountOnline: input.accountOnline,
+      checkedAt: input.checkedAt,
+    }, now);
     return NextResponse.json(messages);
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

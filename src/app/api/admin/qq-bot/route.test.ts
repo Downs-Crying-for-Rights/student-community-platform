@@ -34,7 +34,15 @@ describe("GET /api/admin/qq-bot", () => {
     mocks.outboxCount.mockResolvedValueOnce(1).mockResolvedValueOnce(0).mockResolvedValueOnce(0);
     mocks.inboxFindMany.mockResolvedValue([{ id: "inbox-1", eventId: "very-long-sensitive-event-reference", selfId: "3917673573", createdAt: new Date("2026-07-19T10:00:00Z"), processedAt: new Date("2026-07-19T10:00:01Z") }]);
     mocks.outboxFindMany.mockResolvedValue([{ id: "outbox-1", status: "FAILED", attemptCount: 5, nextAttemptAt: new Date(), lastError: "ONEBOT_REJECTED", createdAt: new Date("2026-07-19T10:00:02Z"), updatedAt: new Date("2026-07-19T10:00:03Z"), deliveredAt: null }]);
-    mocks.heartbeat.mockResolvedValue({ selfId: "3917673573", recordedAt: "2026-07-19T10:00:04.000Z" });
+    mocks.heartbeat.mockResolvedValue({ selfId: "3917673573", recordedAt: "2026-07-19T10:00:04.000Z", oneBotConnected: true, accountOnline: true, checkedAt: "2026-07-19T10:00:03.000Z" });
+  });
+
+  it("distinguishes a connected worker from an offline QQ account", async () => {
+    mocks.session.mockResolvedValue({ user: { id: "root-1", role: "SUPER_ADMIN" } });
+    mocks.heartbeat.mockResolvedValue({ selfId: "3917673573", recordedAt: "2026-07-19T10:00:04.000Z", oneBotConnected: true, accountOnline: false, checkedAt: "2026-07-19T10:00:03.000Z" });
+    const { GET } = await import("./route");
+    const body = await (await GET(request(), { params: {} })).json();
+    expect(body.worker).toMatchObject({ status: "ACCOUNT_OFFLINE", heartbeatMatches: true, oneBotConnected: true, accountOnline: false });
   });
 
   it("rejects non-super administrators", async () => {

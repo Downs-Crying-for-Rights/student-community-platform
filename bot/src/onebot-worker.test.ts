@@ -52,6 +52,7 @@ describe("OneBotWorker outbox", () => {
       socket.on("message", (raw) => {
         const action = JSON.parse(raw.toString()) as OneBotAction;
         if (action.action === "get_login_info") loginRequest = action;
+        if (action.action === "get_status") socket.send(JSON.stringify({ status: "ok", retcode: 0, data: { online: true, good: true }, echo: action.echo }));
         if (action.action === "send_private_msg") socket.send(JSON.stringify({ ...response, echo: action.echo }));
       });
     });
@@ -95,7 +96,49 @@ describe("OneBotWorker outbox", () => {
       connection?.send(JSON.stringify({ status: "ok", retcode: 0, data: { user_id: 42 }, echo: loginRequest?.echo }));
 
       await waitFor(() => expect(app.ackOutbox).toHaveBeenCalledWith("private-outbox-id", expectedAck));
-      expect(app.claimOutbox).toHaveBeenCalledWith("42");
+      expect(app.claimOutbox).toHaveBeenCalledWith("42", expect.objectContaining({ oneBotConnected: true, accountOnline: true }));
+    } finally {
+      worker.stop();
+      for (const socket of server.clients) socket.terminate();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("reports an offline QQ account and does not deliver queued messages", async () => {
+    const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await once(server, "listening");
+    const address = server.address();
+    if (typeof address === "string" || address === null) throw new Error("WebSocket server has no TCP address");
+    let connection: WebSocket | undefined;
+    let loginRequest: OneBotAction | undefined;
+    server.on("connection", (socket) => {
+      connection = socket;
+      socket.on("message", (raw) => {
+        const action = JSON.parse(raw.toString()) as OneBotAction;
+        if (action.action === "get_login_info") loginRequest = action;
+        if (action.action === "get_status") socket.send(JSON.stringify({ status: "ok", retcode: 0, data: { online: false, good: false }, echo: action.echo }));
+      });
+    });
+    const app: AppApi = {
+      processMessage: vi.fn().mockResolvedValue(messageResponse),
+      claimOutbox: vi.fn().mockResolvedValue([]),
+      ackOutbox: vi.fn().mockResolvedValue(undefined),
+    };
+    const config: Config = {
+      oneBotWsUrl: `ws://127.0.0.1:${address.port}/`, oneBotAccessToken: "secret", expectedSelfId: "42",
+      allowedUserIds: new Set(["100"]), internalApiBaseUrl: "http://127.0.0.1/", internalApiToken: "secret",
+      maxMessageBytes: 65_536, httpTimeoutMs: 1_000, heartbeatMs: 30_000, reconnectMinMs: 1_000,
+      reconnectMaxMs: 30_000, outboxPollMs: 30_000, outboxRetryMaxMs: 30_000, actionTimeoutMs: 1_000,
+      healthHost: "127.0.0.1", healthPort: 8_081,
+    };
+    const worker = new OneBotWorker(config, new EventProcessor(app, "42", new Set(["100"]), 65_536), app);
+    try {
+      worker.start();
+      await waitFor(() => expect(loginRequest).toBeDefined());
+      connection?.send(JSON.stringify({ status: "ok", retcode: 0, data: { user_id: 42 }, echo: loginRequest?.echo }));
+      await waitFor(() => expect(app.claimOutbox).toHaveBeenCalledWith("42", expect.objectContaining({ accountOnline: false })));
+      expect(worker.isReady()).toBe(false);
+      expect(app.ackOutbox).not.toHaveBeenCalled();
     } finally {
       worker.stop();
       for (const socket of server.clients) socket.terminate();

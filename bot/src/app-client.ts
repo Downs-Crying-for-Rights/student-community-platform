@@ -4,6 +4,7 @@ import type {
   InternalMessageResponse,
   OutboxAck,
   OutboxItem,
+  QQBotRuntimeStatus,
 } from "./types.js";
 
 export class AppApiError extends Error {
@@ -100,10 +101,11 @@ export class AppClient implements AppApi {
     return parsed;
   }
 
-  async claimOutbox(selfId: string): Promise<OutboxItem[]> {
+  async claimOutbox(selfId: string, status: QQBotRuntimeStatus): Promise<OutboxItem[]> {
     const parsed = await this.postJson(new URL("outbox/claim", this.internalBaseUrl), {
       selfId,
       limit: 10,
+      ...status,
     });
     if (!isOutboxItems(parsed, this.maxMessageBytes)) throw new AppApiError("contract");
     return parsed;

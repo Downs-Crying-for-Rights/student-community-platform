@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { cn } from "@/lib/utils";
 
 type OutboxStatus = "PENDING" | "PROCESSING" | "DELIVERED" | "RETRY" | "FAILED";
-type WorkerStatus = "ONLINE" | "OFFLINE" | "DISABLED";
+type WorkerStatus = "ONLINE" | "WORKER_OFFLINE" | "ONEBOT_OFFLINE" | "ACCOUNT_OFFLINE" | "DISABLED";
 
 interface QQBotEvent {
   id: string;
@@ -36,6 +36,9 @@ interface QQBotData {
     expectedSelfId: string | null;
     heartbeatAt: string | null;
     heartbeatMatches: boolean;
+    oneBotConnected: boolean;
+    accountOnline: boolean;
+    accountCheckedAt: string | null;
   };
   summary: {
     identities: number;
@@ -118,11 +121,16 @@ export function QQBotMonitor() {
     }
   }, [hours, kind, page, status]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => void load(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
   const resetPage = () => setPage(1);
   const worker = data?.worker;
   const summary = data?.summary;
-  const workerLabel = worker?.status === "ONLINE" ? "在线" : worker?.status === "DISABLED" ? "已停用" : "失联";
+  const workerLabel = worker?.status === "ONLINE" ? "完全在线" : worker?.status === "DISABLED" ? "已停用" :
+    worker?.status === "ACCOUNT_OFFLINE" ? "QQ 账号已掉线" : worker?.status === "ONEBOT_OFFLINE" ? "OneBot 已断开" : "Worker 失联";
   const cards = [
     ["已绑定账号", summary?.identities ?? 0, Users],
     ["进行中表单", summary?.activeConversations ?? 0, MessageSquareText],
@@ -135,7 +143,7 @@ export function QQBotMonitor() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Bot className="h-6 w-6" />QQ 机器人监控</h1>
-          <p className="mt-1 text-sm text-muted-foreground">查看 worker 在线状态、消息队列、委托流程和安全脱敏后的事件日志。</p>
+          <p className="mt-1 text-sm text-muted-foreground">分别检测 Worker、OneBot 和 QQ 账号登录状态，每 15 秒自动刷新。</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={cn("mr-1 h-4 w-4", loading && "animate-spin")} />刷新
@@ -154,17 +162,22 @@ export function QQBotMonitor() {
               {worker?.status === "ONLINE" ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
             </div>
             <div>
-              <p className="text-lg font-semibold">Worker {workerLabel}</p>
+              <p className="text-lg font-semibold">机器人状态：{workerLabel}</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {worker?.status === "ONLINE" ? "OneBot 身份已验证，worker 正在持续领取发送队列。" :
-                  worker?.status === "DISABLED" ? "主站环境变量已关闭 QQ 机器人。" : "最近 30 秒未收到已验证 worker 的队列心跳。"}
+                {worker?.status === "ONLINE" ? "Worker、OneBot 和 QQ 登录状态均正常。" :
+                  worker?.status === "DISABLED" ? "主站环境变量已关闭 QQ 机器人。" :
+                    worker?.status === "ACCOUNT_OFFLINE" ? "OneBot 仍可连接，但 QQ 返回账号离线；请重新登录机器人 QQ。" :
+                      worker?.status === "ONEBOT_OFFLINE" ? "Worker 正常上报，但无法连接 OneBot。" : "最近 30 秒未收到 worker 状态心跳。"}
               </p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:text-right">
             <span className="text-muted-foreground">机器人 QQ</span><span className="font-mono">{worker?.expectedSelfId ?? "未配置"}</span>
             <span className="text-muted-foreground">最近心跳</span><span>{formatTime(worker?.heartbeatAt ?? null)}</span>
-            <span className="text-muted-foreground">身份匹配</span><span>{worker?.heartbeatMatches ? "正常" : "未确认"}</span>
+            <span className="text-muted-foreground">Worker</span><span>{worker?.heartbeatMatches ? "在线" : "失联"}</span>
+            <span className="text-muted-foreground">OneBot</span><span className={worker?.oneBotConnected ? "text-emerald-700" : "text-red-700"}>{worker?.oneBotConnected ? "已连接" : "已断开"}</span>
+            <span className="text-muted-foreground">QQ 账号</span><span className={worker?.accountOnline ? "font-semibold text-emerald-700" : "font-semibold text-red-700"}>{worker?.accountOnline ? "在线" : "已掉线"}</span>
+            <span className="text-muted-foreground">账号检查</span><span>{formatTime(worker?.accountCheckedAt ?? null)}</span>
             <span className="text-muted-foreground">数据刷新</span><span>{formatTime(data?.generatedAt ?? null)}</span>
           </div>
         </CardContent>

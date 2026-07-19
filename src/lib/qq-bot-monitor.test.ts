@@ -10,10 +10,10 @@ describe("QQ bot heartbeat", () => {
 
   it("stores a short-lived worker heartbeat", async () => {
     mocks.set.mockResolvedValue("OK");
-    await recordQQBotHeartbeat("3917673573", new Date("2026-07-19T10:00:00.000Z"));
+    await recordQQBotHeartbeat("3917673573", { oneBotConnected: true, accountOnline: false, checkedAt: "2026-07-19T09:59:59.000Z" }, new Date("2026-07-19T10:00:00.000Z"));
     expect(mocks.set).toHaveBeenCalledWith(
       "qq-bot:worker:heartbeat",
-      JSON.stringify({ selfId: "3917673573", recordedAt: "2026-07-19T10:00:00.000Z" }),
+      JSON.stringify({ selfId: "3917673573", recordedAt: "2026-07-19T10:00:00.000Z", oneBotConnected: true, accountOnline: false, checkedAt: "2026-07-19T09:59:59.000Z" }),
       "EX",
       QQ_BOT_HEARTBEAT_TTL_SECONDS,
     );
