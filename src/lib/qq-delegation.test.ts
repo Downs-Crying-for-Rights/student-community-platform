@@ -53,6 +53,14 @@ describe("QQ delegation drafts", () => {
     expect(hashQQDelegationDraft(persisted)).toBe(hashQQDelegationDraft(draft));
   });
 
+  it("allows an omitted preference and an explicit unrestricted preference", () => {
+    const withoutPreference = { ...draft, riskPreference: undefined };
+
+    expect(validateQQDelegationDraft(withoutPreference).riskPreference).toBeUndefined();
+    expect(JSON.parse(canonicalizeQQDelegationDraft(withoutPreference)).riskPreference).toBeNull();
+    expect(validateQQDelegationDraft({ ...draft, riskPreference: "不限" }).riskPreference).toBe("不限");
+  });
+
   it("rejects unknown fields and incomplete charged-fee data", () => {
     expect(() => validateQQDelegationDraft({ ...draft, unexpected: true })).toThrow();
     expect(() =>

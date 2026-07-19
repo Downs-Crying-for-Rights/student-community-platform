@@ -59,6 +59,7 @@ export default function AdminContentPage() {
   const [postsSearch, setPostsSearch] = useState("");
   const [postsSearchInput, setPostsSearchInput] = useState("");
   const [postsLoading, setPostsLoading] = useState(false);
+  const [postsActionError, setPostsActionError] = useState("");
 
   // Comments state
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -123,12 +124,21 @@ export default function AdminContentPage() {
   // ==================== Actions ====================
 
   const handlePostStatusChange = async (postId: string, status: string) => {
+    const reason = window.prompt("请输入帖子状态调整原因：");
+    if (!reason?.trim()) return;
+
+    setPostsActionError("");
     const res = await fetch(`/api/admin/posts/${postId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, reason: reason.trim() }),
     });
-    if (res.ok) fetchPosts();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setPostsActionError(data.error || "帖子状态更新失败");
+      return;
+    }
+    await fetchPosts();
   };
 
   const handleCommentToggle = async (commentId: string, isDeleted: boolean) => {
@@ -204,6 +214,11 @@ export default function AdminContentPage() {
 
           <Card>
             <CardContent className="p-0">
+              {postsActionError && (
+                <div className="border-b bg-red-50 p-3 text-sm text-red-700" role="alert">
+                  {postsActionError}
+                </div>
+              )}
               {postsLoading ? (
                 <div className="p-8 text-center text-muted-foreground">加载中...</div>
               ) : (

@@ -52,7 +52,7 @@ export function getAvailableActions(
 
   switch (status) {
     case "OPENED": {
-      if (hasHelperAccess || role === "DCR_HELPER" || role === "ADMIN" || role === "SUPER_ADMIN") {
+      if (!isSubmitter && (hasHelperAccess || role === "DCR_HELPER" || role === "ADMIN" || role === "SUPER_ADMIN")) {
         actions.push({
           label: "接单",
           targetStatus: "IN_PROGRESS",

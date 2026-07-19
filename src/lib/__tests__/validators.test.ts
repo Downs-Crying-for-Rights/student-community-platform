@@ -68,6 +68,14 @@ describe("canonicalCaseRequestSchema", () => {
     expect(canonicalCaseRequestSchema.safeParse(request).success).toBe(true);
   });
 
+  it("keeps risk preference optional and accepts an explicit unrestricted choice", () => {
+    expect(canonicalCaseRequestSchema.safeParse(request).success).toBe(true);
+    expect(canonicalCaseRequestSchema.safeParse({
+      ...request,
+      formData: { ...request.formData, riskPreference: "不限" },
+    }).success).toBe(true);
+  });
+
   it("requires all confirmations and consistent category", () => {
     expect(canonicalCaseRequestSchema.safeParse({
       ...request,

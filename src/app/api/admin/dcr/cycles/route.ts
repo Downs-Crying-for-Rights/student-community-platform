@@ -62,7 +62,7 @@ async function loadCandidates(): Promise<CycleCandidate[]> {
 
 export const GET = withAuth(async () => {
   try {
-    const [candidates, cycles] = await Promise.all([
+    const [candidates, cycles, disputedLinks] = await Promise.all([
       loadCandidates(),
       prisma.mutualAidCycle.findMany({
         orderBy: { createdAt: "desc" },
@@ -77,9 +77,19 @@ export const GET = withAuth(async () => {
           },
         },
       }),
+      prisma.mutualAidLink.findMany({
+        where: { status: "DISPUTED" },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          cycle: { select: { id: true, mode: true, status: true, createdAt: true } },
+          fromUser: { select: { id: true, nickname: true } },
+          toUser: { select: { id: true, nickname: true } },
+        },
+      }),
     ]);
     return NextResponse.json({
       cycles,
+      disputedLinks,
       candidates,
       recommendations: buildCycleRecommendations(candidates),
     });

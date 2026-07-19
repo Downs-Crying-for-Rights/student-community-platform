@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import * as fc from "fast-check";
 
 // Feature: multi-auth-login, Property 13: 标签页切换清空表单状态
@@ -189,5 +191,30 @@ describe("computeTabChangeState", () => {
     const result = computeTabChangeState(dirty, "sms");
     const empty = getEmptyFormState();
     expect(result.formState).toEqual(empty);
+  });
+});
+
+describe("注册方式分流", () => {
+  it("普通注册明确无需邀请码，邀请码入口仅为可选方式", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+    expect(source).toContain("普通注册无需邀请码");
+    expect(source).toContain("邀请码注册（可选）");
+    expect(source).toContain("我有邀请码，使用邀请码注册");
+
+    const standardRegistration = source.slice(
+      source.indexOf('fetch("/api/auth/register"'),
+      source.indexOf("const data = await res.json();", source.indexOf('fetch("/api/auth/register"')),
+    );
+    expect(standardRegistration).not.toContain("inviteCode");
+  });
+});
+
+describe("忘记密码", () => {
+  it("密码登录页提供手机号验证码重置入口", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+    expect(source).toContain("忘记密码？");
+    expect(source).toContain('fetch("/api/auth/password/reset/send"');
+    expect(source).toContain('fetch("/api/auth/password/reset"');
+    expect(source).toContain("使用账户已绑定的手机号验证身份");
   });
 });

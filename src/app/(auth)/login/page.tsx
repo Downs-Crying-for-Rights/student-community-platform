@@ -32,10 +32,11 @@ import {
   phoneSchema,
   registerSchema,
   inviteRegisterSchema,
+  resetPasswordSchema,
 } from "@/lib/validators";
 import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 
-type ViewState = "form" | "verify" | "expired" | "error" | "register";
+type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
 export type LoginTab = "email" | "password" | "sms";
 
 /** All tabs available on the login page */
@@ -107,6 +108,7 @@ function LoginContent() {
   // View state
   const [view, setView] = useState<ViewState>("form");
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Active tab
@@ -126,6 +128,15 @@ function LoginContent() {
   const [smsErrors, setSmsErrors] = useState<Record<string, string>>({});
   const [countdown, setCountdown] = useState(0);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Password reset state
+  const [resetPhone, setResetPhone] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetErrors, setResetErrors] = useState<Record<string, string>>({});
+  const [resetCountdown, setResetCountdown] = useState(0);
+  const resetCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Invite code state
   const [showInvite, setShowInvite] = useState(false);
@@ -183,6 +194,7 @@ function LoginContent() {
   useEffect(() => {
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
+      if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
       if (inviteCountdownRef.current) clearInterval(inviteCountdownRef.current);
     };
   }, []);
@@ -381,6 +393,88 @@ function LoginContent() {
       }
     } catch {
       setErrorMessage("网络错误，请检查网络连接后重试。");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResetSendCode() {
+    setResetErrors({});
+    const parsed = phoneSchema.safeParse(resetPhone.trim());
+    if (!parsed.success) {
+      setResetErrors({ phone: parsed.error.issues[0].message });
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/password/reset/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: resetPhone.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setResetErrors({ phone: data.error || "验证码发送失败" });
+        return;
+      }
+      setResetCountdown(60);
+      if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
+      resetCountdownRef.current = setInterval(() => {
+        setResetCountdown((previous) => {
+          if (previous <= 1) {
+            if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
+            resetCountdownRef.current = null;
+            return 0;
+          }
+          return previous - 1;
+        });
+      }, 1000);
+    } catch {
+      setResetErrors({ phone: "网络错误，请稍后重试" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setResetErrors({});
+    const parsed = resetPasswordSchema.safeParse({
+      phone: resetPhone.trim(),
+      code: resetCode.trim(),
+      password: resetPassword,
+      confirmPassword: resetConfirmPassword,
+    });
+    if (!parsed.success) {
+      const errors: Record<string, string> = {};
+      for (const issue of parsed.error.issues) {
+        const field = String(issue.path[0]);
+        if (!errors[field]) errors[field] = issue.message;
+      }
+      setResetErrors(errors);
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/password/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.data),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setResetErrors({ form: data.error || "密码重置失败" });
+        return;
+      }
+      setResetPhone("");
+      setResetCode("");
+      setResetPassword("");
+      setResetConfirmPassword("");
+      setActiveTab("password");
+      setSuccessMessage("密码已重置，请使用新密码登录");
+      setView("form");
+    } catch {
+      setResetErrors({ form: "网络错误，请稍后重试" });
     } finally {
       setLoading(false);
     }
@@ -686,6 +780,59 @@ function LoginContent() {
     );
   }
 
+  // ===== Password reset view =====
+  if (view === "reset-password") {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <KeyRound className="h-7 w-7 text-primary" />
+            </div>
+            <CardTitle>重置密码</CardTitle>
+            <CardDescription>使用账户已绑定的手机号验证身份</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              {resetErrors.form && <p className="rounded-md bg-red-50 p-3 text-sm text-red-600" role="alert">{resetErrors.form}</p>}
+              <div className="space-y-2">
+                <Label htmlFor="reset-phone">已绑定手机号</Label>
+                <div className="flex gap-2">
+                  <Input id="reset-phone" type="tel" value={resetPhone} maxLength={11} autoComplete="tel" onChange={(event) => setResetPhone(event.target.value)} disabled={loading} />
+                  <Button type="button" variant="outline" onClick={() => void handleResetSendCode()} disabled={loading || resetCountdown > 0 || !resetPhone.trim()}>
+                    {resetCountdown > 0 ? `${resetCountdown}s` : "发送验证码"}
+                  </Button>
+                </div>
+                {resetErrors.phone && <p className="text-xs text-red-500" role="alert">{resetErrors.phone}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reset-code">验证码</Label>
+                <Input id="reset-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={resetCode} onChange={(event) => setResetCode(event.target.value)} disabled={loading} />
+                {resetErrors.code && <p className="text-xs text-red-500" role="alert">{resetErrors.code}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reset-password">新密码</Label>
+                <Input id="reset-password" type="password" autoComplete="new-password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} disabled={loading} />
+                {resetErrors.password && <p className="text-xs text-red-500" role="alert">{resetErrors.password}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reset-confirm-password">确认新密码</Label>
+                <Input id="reset-confirm-password" type="password" autoComplete="new-password" value={resetConfirmPassword} onChange={(event) => setResetConfirmPassword(event.target.value)} disabled={loading} />
+                {resetErrors.confirmPassword && <p className="text-xs text-red-500" role="alert">{resetErrors.confirmPassword}</p>}
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>{loading ? "重置中..." : "确认重置密码"}</Button>
+            </form>
+          </CardContent>
+          <CardFooter className="justify-center">
+            <Button type="button" variant="ghost" onClick={() => { setResetErrors({}); setView("form"); }}>
+              <ArrowLeft className="mr-2 h-4 w-4" />返回登录
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
   // ===== Register view =====
   if (view === "register") {
     return (
@@ -707,6 +854,9 @@ function LoginContent() {
               </div>
             )}
 
+            <div className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+              普通注册无需邀请码，填写以下信息并同意协议即可注册。
+            </div>
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="reg-nickname">用户名</Label>
@@ -831,7 +981,7 @@ function LoginContent() {
               </div>
               <div className="relative flex justify-center text-xs">
                 <span className="bg-card px-2 text-muted-foreground">
-                  或者
+                   邀请码注册（可选）
                 </span>
               </div>
             </div>
@@ -848,7 +998,7 @@ function LoginContent() {
                 }}
               >
                 <KeyRound className="mr-2 h-4 w-4" />
-                使用邀请码注册
+                 我有邀请码，使用邀请码注册
               </Button>
             ) : (
               <form onSubmit={handleInviteSubmit} className="space-y-3">
@@ -1092,6 +1242,11 @@ function LoginContent() {
               {errorMessage}
             </div>
           )}
+          {successMessage && (
+            <div role="status" className="flex items-center gap-2 rounded-md bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+              <CheckCircle className="h-4 w-4 shrink-0" />{successMessage}
+            </div>
+          )}
 
           {/* Login Tabs */}
           <Tabs
@@ -1218,6 +1373,13 @@ function LoginContent() {
                     </span>
                   )}
                 </Button>
+                <button
+                  type="button"
+                  className="w-full text-center text-sm text-primary hover:underline"
+                  onClick={() => { setResetErrors({}); setSuccessMessage(""); setView("reset-password"); }}
+                >
+                  忘记密码？
+                </button>
               </form>
             </TabsContent>
 

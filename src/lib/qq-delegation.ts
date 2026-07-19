@@ -37,7 +37,10 @@ export const qqDelegationDraftSchema = z
     province: trimmedString(50),
     city: trimmedString(50),
     expectedHelperProvince: optionalText(50),
-    riskPreference: z.enum(["仅站内沟通", "可电话", "仅模板咨询"]),
+    riskPreference: z
+      .enum(["不限", "仅站内沟通", "可电话", "仅模板咨询"])
+      .nullish()
+      .transform((value) => value || undefined),
   })
   .strict()
   .superRefine((draft, context) => {
@@ -81,7 +84,7 @@ export function canonicalizeQQDelegationDraft(input: unknown): string {
     province: draft.province,
     city: draft.city,
     expectedHelperProvince: draft.expectedHelperProvince ?? null,
-    riskPreference: draft.riskPreference,
+    riskPreference: draft.riskPreference ?? null,
   });
 }
 

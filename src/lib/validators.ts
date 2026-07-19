@@ -236,6 +236,16 @@ export const sendCodeSchema = z.object({
   purpose: z.enum(["login", "bindphone"]),
 });
 
+export const resetPasswordSchema = z.object({
+  phone: phoneSchema,
+  code: verificationCodeSchema,
+  password: passwordSchema,
+  confirmPassword: passwordSchema,
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "两次输入的密码不一致",
+  path: ["confirmPassword"],
+});
+
 export const bindPhoneSchema = z.object({
   phone: phoneSchema,
   code: verificationCodeSchema,
@@ -281,7 +291,7 @@ export const delegationFormSchema = z.object({
   province: z.string().max(50).optional(),
   city: z.string().max(50).optional(),
   expectedHelperProvince: z.string().max(50).optional(),
-  riskPreference: z.enum(['仅站内沟通', '可电话', '仅模板咨询']).optional(),
+  riskPreference: z.enum(['不限', '仅站内沟通', '可电话', '仅模板咨询']).optional(),
 });
 
 export const canonicalCaseRequestSchema = z.object({

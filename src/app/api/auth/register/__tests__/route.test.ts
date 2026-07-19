@@ -55,7 +55,7 @@ describe("POST /api/auth/register", () => {
     expect((await res.json()).error).toBe("该邮箱已被注册");
   });
 
-  it("普通注册不要求手机号和短信验证码", async () => {
+  it("普通注册不要求邀请码、手机号和短信验证码", async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.user.create).mockResolvedValue({ id: "new-user-id" } as never);
 

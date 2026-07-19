@@ -41,11 +41,11 @@ describe("getAvailableActions", () => {
     ]);
   });
 
-  it("OPENED + ADMIN 且为提交者 → 接单 + 取消工单", () => {
+  it("OPENED + ADMIN 且为提交者 → 只能取消工单", () => {
     const actions = getAvailableActions("OPENED", "ADMIN", true, false);
-    expect(actions).toHaveLength(2);
-    expect(actions[0].label).toBe("接单");
-    expect(actions[1].label).toBe("取消工单");
+    expect(actions).toEqual([
+      { label: "取消工单", targetStatus: "CLOSED", variant: "destructive" },
+    ]);
   });
 
   it("OPENED + 普通用户（非提交者）→ 空", () => {

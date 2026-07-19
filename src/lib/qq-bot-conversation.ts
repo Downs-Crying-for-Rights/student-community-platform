@@ -10,6 +10,7 @@ interface FormField {
   label: string;
   key: string;
   parse: (answer: string, payload: Payload) => unknown;
+  optional?: boolean;
 }
 
 function required(max: number, minimum = 1): FormField["parse"] {
@@ -87,7 +88,13 @@ const FIELDS: readonly FormField[] = [
   {
     label: "风险偏好",
     key: "riskPreference",
-    parse: choice({ "仅站内沟通": "仅站内沟通", "可电话": "可电话", "仅模板咨询": "仅模板咨询" }, "请填写仅站内沟通、可电话或仅模板咨询。"),
+    optional: true,
+    parse: (answer) => {
+      const value = answer.trim();
+      if (!value || value === "无") return undefined;
+      if (["不限", "仅站内沟通", "可电话", "仅模板咨询"].includes(value)) return value;
+      throw new Error("可留空，或填写不限、仅站内沟通、可电话、仅模板咨询。");
+    },
   },
 ] as const;
 
@@ -112,7 +119,7 @@ export const QQ_DELEGATION_TEMPLATE = `请一次填写并发送以下完整模�
 所在省份：
 所在城市：
 期望互助人省份：无
-风险偏好：仅站内沟通/可电话/仅模板咨询
+风险偏好：不限/仅站内沟通/可电话/仅模板咨询（选填，可删除本行）
 
 自愿与真实性声明、最终核对和正式提交仅在登录后的网页中完成。`;
 
@@ -135,13 +142,13 @@ export function parseQQDelegationForm(text: string): Payload {
     values.set(currentLabel, `${values.get(currentLabel)}\n${line}`.trim());
   }
 
-  const missing = FIELDS.filter((field) => !values.get(field.label)).map((field) => field.label);
+  const missing = FIELDS.filter((field) => !field.optional && !values.get(field.label)).map((field) => field.label);
   if (missing.length > 0) throw new Error(`请补全以下字段：${missing.join("、")}。没有相关信息时请填写“无”。`);
 
   let payload: Payload = {};
   for (const field of FIELDS) {
     try {
-      payload = { ...payload, [field.key]: field.parse(values.get(field.label)!, payload) };
+      payload = { ...payload, [field.key]: field.parse(values.get(field.label) ?? "无", payload) };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "格式不正确。";
       throw new Error(`${field.label}：${reason}`);

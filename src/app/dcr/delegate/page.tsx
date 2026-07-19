@@ -756,7 +756,8 @@ export default function DelegatePage() {
                     {...register("grade")}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <option value="">不限</option>
+                    <option value="">未选择（选填）</option>
+                    <option value="不限">不限</option>
                     <option value="高一">高一</option>
                     <option value="高二">高二</option>
                     <option value="高三">高三</option>
