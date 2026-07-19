@@ -5,8 +5,6 @@ const validInput = {
   inviteCode: "VALID123",
   email: "test@example.com",
   password: "password123",
-  phone: "13800138000",
-  code: "123456",
   nickname: "测试用户",
 };
 
@@ -34,15 +32,7 @@ describe("inviteRegisterSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("缺少 phone 时校验失败", () => {
-    const { phone, ...rest } = validInput;
-    const result = inviteRegisterSchema.safeParse(rest);
-    expect(result.success).toBe(false);
-  });
-
-  it("缺少 code 时校验失败", () => {
-    const { code, ...rest } = validInput;
-    const result = inviteRegisterSchema.safeParse(rest);
-    expect(result.success).toBe(false);
+  it("不要求手机号和短信验证码", () => {
+    expect(inviteRegisterSchema.safeParse(validInput).success).toBe(true);
   });
 });

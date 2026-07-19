@@ -265,9 +265,7 @@ export const inviteRegisterSchema = z.object({
   inviteCode: inviteCodeSchema,
   email: emailSchema,
   password: passwordSchema,
-  phone: phoneSchema,
   nickname: nicknameSchema,
-  code: verificationCodeSchema,
 });
 
 // ==================== DCR 委托表相关 ====================

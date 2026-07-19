@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { inviteRegisterSchema } from "@/lib/validators";
-import { verifyCode } from "@/lib/sms/verification";
 import { createUserWithSession, validateNickname } from "@/lib/auth/register-helpers";
 
 export async function POST(request: NextRequest) {
@@ -17,7 +16,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { inviteCode: code, email, password, phone, nickname, code: smsCode } = parsed.data;
+    const { inviteCode: code, email, password, nickname } = parsed.data;
 
     // 校验 nickname 非空
     const nicknameError = validateNickname(nickname);
@@ -61,20 +60,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 验证短信验证码
-    const isValid = await verifyCode(phone, smsCode, "login");
-    if (!isValid) {
-      return NextResponse.json(
-        { error: "验证码错误或已过期" },
-        { status: 400 }
-      );
-    }
-
-    // 创建用户并生成 session（含邮箱/手机号唯一性检查），在同一事务中标记邀请码已使用
+    // 创建用户并生成 session，在同一事务中标记邀请码已使用
     const result = await createUserWithSession({
       email,
       password,
-      phone,
       nickname,
       extraData: {
         isAnonymous: false,

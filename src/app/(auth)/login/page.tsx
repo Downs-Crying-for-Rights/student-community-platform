@@ -143,14 +143,7 @@ function LoginContent() {
   // Invite code state
   const [showInvite, setShowInvite] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [invitePassword, setInvitePassword] = useState("");
-  const [invitePhone, setInvitePhone] = useState("");
-  const [inviteNickname, setInviteNickname] = useState("");
-  const [inviteSmsCode, setInviteSmsCode] = useState("");
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({});
-  const [inviteCountdown, setInviteCountdown] = useState(0);
-  const inviteCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Registration state
   const [regEmail, setRegEmail] = useState("");
@@ -200,7 +193,6 @@ function LoginContent() {
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
       if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
-      if (inviteCountdownRef.current) clearInterval(inviteCountdownRef.current);
     };
   }, []);
 
@@ -490,138 +482,20 @@ function LoginContent() {
     signIn("qq");
   }
 
-  // ===== Invite code =====
-  async function handleInviteSendCode() {
-    setInviteErrors({});
-
-    const result = phoneSchema.safeParse(invitePhone.trim());
-    if (!result.success) {
-      setInviteErrors((prev) => ({ ...prev, phone: result.error.issues[0].message }));
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/sms/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: invitePhone.trim(), purpose: "login" }),
-      });
-
-      if (res.status === 429) {
-        setInviteErrors((prev) => ({ ...prev, phone: "请求过于频繁，请稍后再试" }));
-        return;
-      }
-
-      if (!res.ok) {
-        const data = await res.json();
-        setInviteErrors((prev) => ({ ...prev, phone: data.error || "验证码发送失败" }));
-        return;
-      }
-
-      setInviteCountdown(60);
-      if (inviteCountdownRef.current) clearInterval(inviteCountdownRef.current);
-      inviteCountdownRef.current = setInterval(() => {
-        setInviteCountdown((prev) => {
-          if (prev <= 1) {
-            if (inviteCountdownRef.current) clearInterval(inviteCountdownRef.current);
-            inviteCountdownRef.current = null;
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } catch {
-      setInviteErrors((prev) => ({ ...prev, phone: "网络错误，请检查网络连接后重试" }));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleInviteSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setInviteErrors({});
-    setErrorMessage("");
-
-    const result = inviteRegisterSchema.safeParse({
-      inviteCode: inviteCode.trim(),
-      email: inviteEmail.trim(),
-      password: invitePassword,
-      phone: invitePhone.trim(),
-      nickname: inviteNickname.trim(),
-      code: inviteSmsCode.trim(),
-    });
-
-    if (!result.success) {
-      const fieldErrors: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        const field = issue.path[0] as string;
-        if (!fieldErrors[field]) fieldErrors[field] = issue.message;
-      }
-      setInviteErrors(fieldErrors);
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/auth/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inviteCode: inviteCode.trim(),
-          email: inviteEmail.trim(),
-          password: invitePassword,
-          phone: invitePhone.trim(),
-          nickname: inviteNickname.trim(),
-          code: inviteSmsCode.trim(),
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMessage(data.error || "邀请码注册失败，请重试。");
-        return;
-      }
-
-      // 自动登录：注册成功后用密码登录以获取 JWT
-      const signInRes = await signIn("credentials-password", {
-        email: inviteEmail.trim(),
-        password: invitePassword,
-        redirect: false,
-        callbackUrl: "/",
-      });
-
-      if (signInRes?.error) {
-        setErrorMessage("注册成功但自动登录失败，请手动登录");
-        setView("form");
-        return;
-      }
-
-      if (signInRes?.url) {
-        router.push(signInRes.url);
-        router.refresh();
-      }
-    } catch {
-      setErrorMessage("网络错误，请检查网络连接后重试。");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   // ===== Registration =====
   async function handleRegisterSubmit(e: React.FormEvent) {
     e.preventDefault();
     setRegErrors({});
+    setInviteErrors({});
     setErrorMessage("");
 
-    const result = registerSchema.safeParse({
+    const registrationData = {
       email: regEmail.trim(),
       password: regPassword,
       nickname: regNickname.trim(),
-    });
+      ...(showInvite ? { inviteCode: inviteCode.trim() } : {}),
+    };
+    const result = (showInvite ? inviteRegisterSchema : registerSchema).safeParse(registrationData);
 
     if (!result.success) {
       const fieldErrors: Record<string, string> = {};
@@ -630,20 +504,17 @@ function LoginContent() {
         if (!fieldErrors[field]) fieldErrors[field] = issue.message;
       }
       setRegErrors(fieldErrors);
+      if (fieldErrors.inviteCode) setInviteErrors({ inviteCode: fieldErrors.inviteCode });
       return;
     }
 
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch(showInvite ? "/api/auth/invite" : "/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: regEmail.trim(),
-          password: regPassword,
-          nickname: regNickname.trim(),
-        }),
+        body: JSON.stringify(registrationData),
       });
 
       const data = await res.json();
@@ -932,6 +803,32 @@ function LoginContent() {
                 )}
               </div>
 
+              {showInvite && (
+                <div className="space-y-2">
+                  <Label htmlFor="reg-invite-code">邀请码</Label>
+                  <Input
+                    id="reg-invite-code"
+                    type="text"
+                    placeholder="请输入邀请码"
+                    value={inviteCode}
+                    onChange={(event) => {
+                      setInviteCode(event.target.value);
+                      if (inviteErrors.inviteCode) setInviteErrors({});
+                    }}
+                    maxLength={32}
+                    disabled={loading}
+                    aria-invalid={Boolean(inviteErrors.inviteCode)}
+                    aria-describedby={inviteErrors.inviteCode ? "reg-invite-code-error" : undefined}
+                  />
+                  {inviteErrors.inviteCode && (
+                    <p id="reg-invite-code-error" className="text-xs text-red-500" role="alert">
+                      {inviteErrors.inviteCode}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">邀请码只用于注册资格，不会跳过 DCR 安全准入流程。</p>
+                </div>
+              )}
+
               {/* 用户协议 */}
               <div className="space-y-2">
                 {allKeys.map(({ key, title }) => (
@@ -979,224 +876,20 @@ function LoginContent() {
               </Button>
             </form>
 
-            {/* Divider for invite */}
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-card px-2 text-muted-foreground">
-                   邀请码注册（可选）
-                </span>
-              </div>
-            </div>
-
-            {/* Invite code registration */}
-            {!showInvite ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                onClick={() => {
-                  setShowInvite(true);
-                  setErrorMessage("");
-                }}
-              >
-                <KeyRound className="mr-2 h-4 w-4" />
-                 我有邀请码，使用邀请码注册
-              </Button>
-            ) : (
-              <form onSubmit={handleInviteSubmit} className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="invite-code-reg">邀请码</Label>
-                  <Input
-                    id="invite-code-reg"
-                    type="text"
-                    placeholder="请输入邀请码"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                    required
-                    disabled={loading}
-                    maxLength={32}
-                    aria-invalid={!!inviteErrors.inviteCode}
-                    aria-describedby={inviteErrors.inviteCode ? "invite-code-error" : undefined}
-                  />
-                  {inviteErrors.inviteCode && (
-                    <p id="invite-code-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.inviteCode}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-nickname">用户名</Label>
-                  <Input
-                    id="invite-nickname"
-                    type="text"
-                    placeholder="设置你的用户名"
-                    value={inviteNickname}
-                    onChange={(e) => {
-                      setInviteNickname(e.target.value);
-                      if (inviteErrors.nickname) setInviteErrors((prev) => ({ ...prev, nickname: "" }));
-                    }}
-                    autoComplete="username"
-                    disabled={loading}
-                    aria-invalid={!!inviteErrors.nickname}
-                    aria-describedby={inviteErrors.nickname ? "invite-nickname-error" : undefined}
-                  />
-                  {inviteErrors.nickname && (
-                    <p id="invite-nickname-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.nickname}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-email">邮箱地址</Label>
-                  <Input
-                    id="invite-email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={inviteEmail}
-                    onChange={(e) => {
-                      setInviteEmail(e.target.value);
-                      if (inviteErrors.email) setInviteErrors((prev) => ({ ...prev, email: "" }));
-                    }}
-                    autoComplete="email"
-                    disabled={loading}
-                    aria-invalid={!!inviteErrors.email}
-                    aria-describedby={inviteErrors.email ? "invite-email-error" : undefined}
-                  />
-                  {inviteErrors.email && (
-                    <p id="invite-email-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.email}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-password">密码</Label>
-                  <Input
-                    id="invite-password"
-                    type="password"
-                    placeholder="至少 8 个字符"
-                    value={invitePassword}
-                    onChange={(e) => {
-                      setInvitePassword(e.target.value);
-                      if (inviteErrors.password) setInviteErrors((prev) => ({ ...prev, password: "" }));
-                    }}
-                    autoComplete="new-password"
-                    disabled={loading}
-                    aria-invalid={!!inviteErrors.password}
-                    aria-describedby={inviteErrors.password ? "invite-password-error" : undefined}
-                  />
-                  {inviteErrors.password && (
-                    <p id="invite-password-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.password}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-phone">手机号</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="invite-phone"
-                      type="tel"
-                      placeholder="请输入手机号"
-                      value={invitePhone}
-                      onChange={(e) => {
-                        setInvitePhone(e.target.value);
-                        if (inviteErrors.phone) setInviteErrors((prev) => ({ ...prev, phone: "" }));
-                      }}
-                      autoComplete="tel"
-                      disabled={loading}
-                      className="flex-1"
-                      maxLength={11}
-                      aria-invalid={!!inviteErrors.phone}
-                      aria-describedby={inviteErrors.phone ? "invite-phone-error" : undefined}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleInviteSendCode}
-                      disabled={loading || inviteCountdown > 0 || !invitePhone.trim()}
-                      className="shrink-0 whitespace-nowrap"
-                      aria-label={inviteCountdown > 0 ? `${inviteCountdown} 秒后可重新发送` : "发送验证码"}
-                    >
-                      {inviteCountdown > 0 ? `${inviteCountdown}s` : "发送验证码"}
-                    </Button>
-                  </div>
-                  {inviteErrors.phone && (
-                    <p id="invite-phone-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.phone}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-sms-code">验证码</Label>
-                  <Input
-                    id="invite-sms-code"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="请输入 6 位验证码"
-                    value={inviteSmsCode}
-                    onChange={(e) => {
-                      setInviteSmsCode(e.target.value);
-                      if (inviteErrors.code) setInviteErrors((prev) => ({ ...prev, code: "" }));
-                    }}
-                    autoComplete="one-time-code"
-                    disabled={loading}
-                    maxLength={6}
-                    aria-invalid={!!inviteErrors.code}
-                    aria-describedby={inviteErrors.code ? "invite-sms-code-error" : undefined}
-                  />
-                  {inviteErrors.code && (
-                    <p id="invite-sms-code-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.code}
-                    </p>
-                  )}
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  使用邀请码完成注册后，仍需通过 DCR 安全准入流程
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="flex-1"
-                    onClick={() => {
-                      setShowInvite(false);
-                      setInviteCode("");
-                      setInviteEmail("");
-                      setInvitePassword("");
-                      setInvitePhone("");
-                      setInviteSmsCode("");
-                      setInviteErrors({});
-                      setErrorMessage("");
-                    }}
-                  >
-                    取消
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <span className="flex items-center">
-                        <LoadingSpinner />
-                        注册中...
-                      </span>
-                    ) : (
-                      "注册"
-                    )}
-                  </Button>
-                </div>
-              </form>
-            )}
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                setShowInvite((current) => !current);
+                setInviteCode("");
+                setInviteErrors({});
+                setErrorMessage("");
+              }}
+            >
+              <KeyRound className="mr-2 h-4 w-4" />
+              {showInvite ? "不使用邀请码" : "我有邀请码"}
+            </Button>
 
             <div className="text-center">
               <Button

@@ -9,12 +9,6 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
-// Mock verifyCode
-const mockVerifyCode = vi.fn();
-vi.mock("@/lib/sms/verification", () => ({
-  verifyCode: (...args: unknown[]) => mockVerifyCode(...args),
-}));
-
 // Mock Prisma client
 const mockFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
@@ -41,9 +35,7 @@ const validBody = {
   inviteCode: "VALID123",
   email: "test@example.com",
   password: "password123",
-  phone: "13800138000",
   nickname: "测试用户",
-  code: "123456",
 };
 
 // Helper to create a NextRequest with JSON body
@@ -76,7 +68,6 @@ describe("POST /api/auth/invite", () => {
     vi.clearAllMocks();
     mockUserFindUnique.mockResolvedValue(null); // no existing email
     mockUserFindFirst.mockResolvedValue(null); // no existing phone
-    mockVerifyCode.mockResolvedValue(true); // SMS code valid
   });
 
   // ========== 邀请码格式验证 ==========
@@ -143,25 +134,6 @@ describe("POST /api/auth/invite", () => {
       expect(data.error).toBe("参数校验失败");
     });
 
-    it("应拒绝缺少 phone 的请求", async () => {
-      const { phone, ...rest } = validBody;
-      const req = createRequest(rest);
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(400);
-      expect(data.error).toBe("参数校验失败");
-    });
-
-    it("应拒绝缺少短信验证码 code 的请求", async () => {
-      const { code, ...rest } = validBody;
-      const req = createRequest(rest);
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(400);
-      expect(data.error).toBe("参数校验失败");
-    });
   });
 
   // ========== 邀请码有效性验证 ==========
@@ -223,9 +195,9 @@ describe("POST /api/auth/invite", () => {
     });
   });
 
-  // ========== 唯一性检查和短信验证 ==========
+  // ========== 唯一性检查 ==========
 
-  describe("唯一性检查和短信验证", () => {
+  describe("唯一性检查", () => {
     it("应拒绝已注册的邮箱", async () => {
       mockFindUnique.mockResolvedValue(buildInviteCode());
       mockUserFindUnique.mockResolvedValue({ id: "existing-user" });
@@ -238,29 +210,6 @@ describe("POST /api/auth/invite", () => {
       expect(data.error).toBe("该邮箱已被注册");
     });
 
-    it("应拒绝已绑定的手机号", async () => {
-      mockFindUnique.mockResolvedValue(buildInviteCode());
-      mockUserFindFirst.mockResolvedValue({ id: "existing-user" });
-
-      const req = createRequest(validBody);
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(409);
-      expect(data.error).toBe("该手机号已被其他账户绑定");
-    });
-
-    it("应拒绝错误的短信验证码", async () => {
-      mockFindUnique.mockResolvedValue(buildInviteCode());
-      mockVerifyCode.mockResolvedValue(false);
-
-      const req = createRequest(validBody);
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(400);
-      expect(data.error).toBe("验证码错误或已过期");
-    });
   });
 
   // ========== 成功注册流程 ==========
@@ -302,7 +251,6 @@ describe("POST /api/auth/invite", () => {
         data: {
           email: "test@example.com",
           passwordHash: "hashed_password",
-          phone: "13800138000",
           nickname: "测试用户",
           isAnonymous: false,
         },

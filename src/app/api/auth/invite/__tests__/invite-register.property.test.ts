@@ -9,12 +9,6 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
-// Mock verifyCode
-const mockVerifyCode = vi.fn();
-vi.mock("@/lib/sms/verification", () => ({
-  verifyCode: (...args: unknown[]) => mockVerifyCode(...args),
-}));
-
 // Mock Prisma
 const mockInviteCodeFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
@@ -57,33 +51,20 @@ const validEmail = fc
   .map(([user, domain, tld]) => `${user}@${domain}.${tld}`);
 // password: 8-72 printable chars (avoid control chars)
 const validPassword = fc.stringMatching(/^[A-Za-z0-9!@#$%^&*]{8,32}$/);
-// phone: matches /^1\d{10}$/
-const validPhone = fc
-  .tuple(
-    fc.integer({ min: 3, max: 9 }),
-    fc.stringMatching(/^\d{9}$/)
-  )
-  .map(([second, rest]) => `1${second}${rest}`);
-// code: matches /^\d{6}$/
-const validSmsCode = fc.stringMatching(/^\d{6}$/);
 const validNickname = fc.stringMatching(/^[A-Za-z][A-Za-z0-9_-]{1,15}$/);
 
 const validBodyArb = fc.record({
   inviteCode: validInviteCode,
   email: validEmail,
   password: validPassword,
-  phone: validPhone,
   nickname: validNickname,
-  code: validSmsCode,
 });
 
 const requiredFields = [
   "inviteCode",
   "email",
   "password",
-  "phone",
   "nickname",
-  "code",
 ] as const;
 
 describe("邀请码注册属性测试", () => {
@@ -91,7 +72,6 @@ describe("邀请码注册属性测试", () => {
     vi.clearAllMocks();
     mockUserFindUnique.mockResolvedValue(null);
     mockUserFindFirst.mockResolvedValue(null);
-    mockVerifyCode.mockResolvedValue(true);
   });
 
   /**
@@ -126,7 +106,6 @@ describe("邀请码注册属性测试", () => {
         vi.clearAllMocks();
         mockUserFindUnique.mockResolvedValue(null);
         mockUserFindFirst.mockResolvedValue(null);
-        mockVerifyCode.mockResolvedValue(true);
 
         mockInviteCodeFindUnique.mockResolvedValue({
           id: "invite1",

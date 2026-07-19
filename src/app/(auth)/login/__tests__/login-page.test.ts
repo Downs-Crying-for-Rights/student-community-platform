@@ -195,17 +195,16 @@ describe("computeTabChangeState", () => {
 });
 
 describe("注册方式分流", () => {
-  it("普通注册明确无需邀请码，邀请码入口仅为可选方式", () => {
+  it("邀请码注册复用普通注册字段且只增加邀请码输入框", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
     expect(source).toContain("普通注册无需邀请码");
-    expect(source).toContain("邀请码注册（可选）");
-    expect(source).toContain("我有邀请码，使用邀请码注册");
-
-    const standardRegistration = source.slice(
-      source.indexOf('fetch("/api/auth/register"'),
-      source.indexOf("const data = await res.json();", source.indexOf('fetch("/api/auth/register"')),
-    );
-    expect(standardRegistration).not.toContain("inviteCode");
+    expect(source).toContain('id="reg-invite-code"');
+    expect(source).toContain('showInvite ? "/api/auth/invite" : "/api/auth/register"');
+    expect(source).not.toContain('id="invite-phone"');
+    expect(source).not.toContain('id="invite-sms-code"');
+    expect(source).not.toContain('id="invite-nickname"');
+    expect(source).not.toContain('id="invite-email"');
+    expect(source).not.toContain('id="invite-password"');
   });
 
   it("注册页不展示私信和群聊的使用时授权协议", () => {
