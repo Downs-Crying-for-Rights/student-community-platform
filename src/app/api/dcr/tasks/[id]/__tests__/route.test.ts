@@ -34,6 +34,13 @@ const task = {
   requesterId: "requester",
   requester: { id: "requester", nickname: "请求者", avatar: null },
   timeline: [{ id: "event1", details: "敏感时间线" }],
+  structuredFields: {
+    source: "APPROVED_DELEGATION_CASE",
+    approvedFormData: { schoolName: "私密学校", description: "私密描述" },
+    province: "私密省份",
+  },
+  attachments: ["private-object-key"],
+  caseId: "case-private",
   helpSession: {
     id: "session1",
     helperId: "helper",
@@ -67,6 +74,11 @@ describe("GET /api/dcr/tasks/[id]", () => {
     expect(data.helpSession).toBeUndefined();
     expect(data.helpSessions).toEqual([]);
     expect(data.timeline).toBeUndefined();
+    expect(data.title).toBe("校园事务互助委托");
+    expect(data.summary).not.toBe(task.title);
+    expect(data.structuredFields).toBeUndefined();
+    expect(data.attachments).toBeUndefined();
+    expect(data.caseId).toBeUndefined();
   });
 
   it("请求者可以查看完整任务", async () => {
@@ -97,5 +109,10 @@ describe("GET /api/dcr/tasks/[id]", () => {
     expect(data.requesterId).toBeUndefined();
     expect(data.riskFlags).toBeUndefined();
     expect(data.completionReport).toBeUndefined();
+    expect(data.title).toBe("校园事务互助委托");
+    expect(data.summary).not.toContain("私密");
+    expect(data.structuredFields).toBeUndefined();
+    expect(data.attachments).toBeUndefined();
+    expect(data.caseId).toBeUndefined();
   });
 });

@@ -9,7 +9,15 @@ const mockTaskCreate = vi.fn();
 const mockLogAudit = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
-  default: {
+  default: (() => {
+    const tx = {
+      case: { findUnique: (...args: unknown[]) => mockCaseFindUnique(...args) },
+      mutualAidTask: {
+        findFirst: (...args: unknown[]) => mockTaskFindFirst(...args),
+        create: (...args: unknown[]) => mockTaskCreate(...args),
+      },
+    };
+    return {
     user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
     case: {
       findUnique: (...args: unknown[]) => mockCaseFindUnique(...args),
@@ -19,7 +27,9 @@ vi.mock("@/lib/prisma", () => ({
       findFirst: (...args: unknown[]) => mockTaskFindFirst(...args),
       create: (...args: unknown[]) => mockTaskCreate(...args),
     },
-  },
+      $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
+    };
+  })(),
 }));
 vi.mock("@/lib/rate-limiter", () => ({ enforceRateLimit: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/lib/audit", () => ({ logAudit: (...args: unknown[]) => mockLogAudit(...args) }));
@@ -110,7 +120,7 @@ describe("POST /api/dcr/tasks/from-case", () => {
     expect(mockTaskCreate).not.toHaveBeenCalled();
   });
 
-  it("publishes the approved snapshot directly as OPEN", async () => {
+  it("publishes a safe allowlisted projection directly as OPEN", async () => {
     const response = await POST(request({ caseId: "case-1" }), {} as never);
     const data = await response.json();
 
@@ -121,8 +131,10 @@ describe("POST /api/dcr/tasks/from-case", () => {
         caseId: "case-1",
         requesterId: "user-1",
         status: "OPEN",
-        title: "示例中学 · 学校补课类",
-        summary: "这是管理员已经审核通过的委托内容。",
+        title: "补课相关互助委托",
+        summary: "一份已通过管理员审核的补课相关委托，具体信息仅向参与者开放。",
+        expectedHelpType: "协助核实情况并提供合规互助",
+        structuredFields: { source: "APPROVED_DELEGATION_CASE" },
         timeline: {
           create: expect.objectContaining({ newStatus: "OPEN", operatorId: "user-1" }),
         },
@@ -134,6 +146,12 @@ describe("POST /api/dcr/tasks/from-case", () => {
       "TASK",
       "task-1",
       expect.objectContaining({ caseId: "case-1" }),
+      undefined,
+      expect.anything(),
     );
+    const createData = mockTaskCreate.mock.calls[0][0].data;
+    expect(JSON.stringify(createData)).not.toContain("approvedFormData");
+    expect(JSON.stringify(createData)).not.toContain("示例中学");
+    expect(JSON.stringify(createData)).not.toContain("管理员已经审核通过的委托内容");
   });
 });

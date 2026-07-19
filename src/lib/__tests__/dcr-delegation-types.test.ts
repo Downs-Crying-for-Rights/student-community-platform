@@ -96,6 +96,9 @@ describe("dcr-delegation-types", () => {
     it("includes 声明文本", () => {
       const result = formatDelegation(baseData);
       expect(result).toContain("【声明】");
+      expect(result).toContain("我确认以上信息真实有效");
+      expect(result).toContain("我已移除所有可识别个人信息");
+      expect(result).toContain("我了解平台不组织、不指挥、不实施任何举报或对抗行动");
     });
 
     it("includes 学校名称", () => {

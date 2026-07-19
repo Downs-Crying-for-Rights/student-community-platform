@@ -56,9 +56,9 @@ const body = {
     description: "这是更新后的详细情况描述，包含足够的信息用于管理员重新审核。",
     feeStatus: "none",
     demands: ["停止补课"],
+    confirmations: [true, true, true],
+    grade: "高二",
   },
-  pledgeText: "更新后的完整委托声明",
-  grade: "高二",
 };
 
 function request() {
@@ -90,15 +90,20 @@ describe("PATCH /api/cases/[id] supplement", () => {
     expect(mocks.caseUpdateMany).toHaveBeenCalledWith({
       where: { id: "case-1", submitterId: "user-1", requestStatus: "NEED_MORE_INFO" },
       data: expect.objectContaining({
-        formData: body.formData,
-        pledgeText: body.pledgeText,
+        formData: expect.objectContaining({
+          contentType: "学校补课类",
+          schoolName: "更新后学校",
+        }),
+        pledgeText: expect.stringContaining("【生成时间】"),
         grade: "高二",
         requestStatus: "PENDING",
       }),
     });
+    expect(mocks.caseUpdateMany.mock.calls[0][0].data.formData).not.toHaveProperty("confirmations");
+    expect(mocks.caseUpdateMany.mock.calls[0][0].data.formData).not.toHaveProperty("grade");
     expect(mocks.applicationUpdateMany).toHaveBeenCalledWith({
       where: { caseId: "case-1", applicantId: "user-1", type: "DCR", status: "PENDING" },
-      data: { pledgeText: body.pledgeText },
+      data: { pledgeText: expect.stringContaining("【生成时间】") },
     });
     expect(mocks.timelineCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: "提交补充材料", oldStatus: "NEED_MORE_INFO", newStatus: "PENDING" }),
@@ -146,6 +151,42 @@ describe("PATCH /api/cases/[id] supplement", () => {
     const response = await PATCH(invalid, { params: { id: "case-1" } } as never);
 
     expect(response.status).toBe(400);
+    expect(mocks.caseUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("requires all canonical fields and confirmations", async () => {
+    const invalid = new NextRequest("http://localhost/api/cases/case-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...body,
+        formData: { ...body.formData, confirmations: [true, false, true] },
+      }),
+    });
+
+    const response = await PATCH(invalid, { params: { id: "case-1" } } as never);
+
+    expect(response.status).toBe(400);
+    expect(mocks.caseUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("blocks sensitive content without updating the case", async () => {
+    mocks.scanContent.mockResolvedValueOnce([{ word: "测试" }]);
+
+    const response = await PATCH(request(), { params: { id: "case-1" } } as never);
+
+    expect(response.status).toBe(422);
+    expect((await response.json()).code).toBe("SENSITIVE_CONTENT");
+    expect(mocks.caseUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when sensitive scanning fails", async () => {
+    mocks.scanContent.mockRejectedValueOnce(new Error("scanner unavailable"));
+
+    const response = await PATCH(request(), { params: { id: "case-1" } } as never);
+
+    expect(response.status).toBe(503);
+    expect((await response.json()).code).toBe("SENSITIVE_SCAN_FAILED");
     expect(mocks.caseUpdateMany).not.toHaveBeenCalled();
   });
 

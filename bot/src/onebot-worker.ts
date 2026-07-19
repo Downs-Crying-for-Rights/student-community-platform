@@ -1,0 +1,294 @@
+import { randomUUID } from "node:crypto";
+import WebSocket, { type RawData } from "ws";
+import type { Config } from "./config.js";
+import { EventProcessor } from "./event-processor.js";
+import { logger } from "./logger.js";
+import type {
+  AppApi,
+  OneBotAction,
+  OneBotActionResponse,
+  OutboxAck,
+  OutboxErrorCode,
+  OutboxItem,
+} from "./types.js";
+
+interface PendingAction {
+  resolve: (response: OneBotActionResponse) => void;
+  reject: (errorCode: OutboxErrorCode) => void;
+  timer: NodeJS.Timeout;
+}
+
+export class OneBotWorker {
+  private socket: WebSocket | null = null;
+  private stopped = false;
+  private verified = false;
+  private lastPong = 0;
+  private attempt = 0;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private loginEcho = "";
+  private messageQueue: Promise<void> = Promise.resolve();
+  private outboxTimer: NodeJS.Timeout | null = null;
+  private outboxFailures = 0;
+  private readonly pendingActions = new Map<string, PendingAction>();
+
+  constructor(
+    private readonly config: Config,
+    private readonly processor: EventProcessor,
+    private readonly app: AppApi,
+  ) {}
+
+  start(): void {
+    this.stopped = false;
+    this.connect();
+  }
+
+  stop(): void {
+    this.stopped = true;
+    this.verified = false;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (this.outboxTimer) clearTimeout(this.outboxTimer);
+    this.rejectPendingActions("CONNECTION_LOST");
+    this.socket?.close(1000, "shutdown");
+  }
+
+  isReady(): boolean {
+    return (
+      this.socket?.readyState === WebSocket.OPEN &&
+      this.verified &&
+      Date.now() - this.lastPong <= this.config.heartbeatMs * 2
+    );
+  }
+
+  private connect(): void {
+    if (this.stopped) return;
+    this.verified = false;
+    const socket = new WebSocket(this.config.oneBotWsUrl, {
+      headers: { authorization: `Bearer ${this.config.oneBotAccessToken}` },
+      maxPayload: this.config.maxMessageBytes,
+      handshakeTimeout: this.config.httpTimeoutMs,
+    });
+    this.socket = socket;
+
+    socket.on("open", () => {
+      this.attempt = 0;
+      this.lastPong = Date.now();
+      this.loginEcho = `login:${randomUUID()}`;
+      this.send({ action: "get_login_info", params: {}, echo: this.loginEcho });
+      this.startHeartbeat(socket);
+      logger.info("onebot_connected");
+    });
+    socket.on("pong", () => {
+      this.lastPong = Date.now();
+    });
+    socket.on("message", (data, isBinary) => {
+      this.messageQueue = this.messageQueue
+        .then(() => this.onMessage(socket, data, isBinary))
+        .catch(() => logger.error("onebot_message_handler_failed"));
+    });
+    socket.on("error", () => logger.warn("onebot_socket_error"));
+    socket.on("unexpected-response", (_request, response) => {
+      logger.warn("onebot_handshake_rejected", { status: response.statusCode ?? 0 });
+    });
+    socket.on("close", (code) => {
+      this.verified = false;
+      if (this.outboxTimer) clearTimeout(this.outboxTimer);
+      this.outboxTimer = null;
+      this.rejectPendingActions("CONNECTION_LOST");
+      if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+      logger.warn("onebot_disconnected", { code });
+      this.scheduleReconnect();
+    });
+  }
+
+  private startHeartbeat(socket: WebSocket): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = setInterval(() => {
+      if (Date.now() - this.lastPong > this.config.heartbeatMs * 2) {
+        socket.terminate();
+        return;
+      }
+      if (socket.readyState === WebSocket.OPEN) socket.ping();
+    }, this.config.heartbeatMs);
+  }
+
+  private async onMessage(socket: WebSocket, data: RawData, isBinary: boolean): Promise<void> {
+    const payload = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer);
+    if (isBinary || payload.byteLength > this.config.maxMessageBytes) return;
+    let value: unknown;
+    try {
+      value = JSON.parse(payload.toString("utf8"));
+    } catch {
+      logger.warn("onebot_invalid_json");
+      return;
+    }
+
+    if (this.isLoginResponse(value)) {
+      if (value.status !== "ok" || !value.data || !("user_id" in value.data)) {
+        logger.error("onebot_identity_check_failed");
+        socket.close(1011, "identity check failed");
+        return;
+      }
+      const selfId = String(value.data.user_id);
+      if (selfId !== this.config.expectedSelfId) {
+        logger.error("onebot_self_id_mismatch");
+        socket.close(1008, "unexpected self_id");
+        return;
+      }
+      this.verified = true;
+      this.outboxFailures = 0;
+      this.scheduleOutboxPoll(0);
+      logger.info("onebot_identity_verified");
+      return;
+    }
+    if (this.resolveActionResponse(value)) return;
+    if (!this.verified) return;
+
+    const outcome = await this.processor.process(value, (action) => this.send(action));
+    if (outcome === "failed") logger.warn("message_processing_failed");
+  }
+
+  private isLoginResponse(value: unknown): value is {
+    echo: string;
+    status?: unknown;
+    data?: { user_id?: unknown } | null;
+  } {
+    if (!value || typeof value !== "object") return false;
+    return (value as { echo?: unknown }).echo === this.loginEcho;
+  }
+
+  private send(action: OneBotAction): void {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    const payload = JSON.stringify(action);
+    if (Buffer.byteLength(payload, "utf8") > this.config.maxMessageBytes) {
+      logger.warn("onebot_action_too_large");
+      return;
+    }
+    this.socket.send(payload);
+  }
+
+  private resolveActionResponse(value: unknown): boolean {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as Partial<OneBotActionResponse>;
+    if (typeof candidate.echo !== "string") return false;
+    const pending = this.pendingActions.get(candidate.echo);
+    if (!pending) return false;
+    this.pendingActions.delete(candidate.echo);
+    clearTimeout(pending.timer);
+    if (
+      (candidate.status !== "ok" && candidate.status !== "failed") ||
+      typeof candidate.retcode !== "number"
+    ) {
+      pending.reject("ONEBOT_REJECTED");
+      return true;
+    }
+    pending.resolve(candidate as OneBotActionResponse);
+    return true;
+  }
+
+  private sendOutboxItem(item: OutboxItem): Promise<OneBotActionResponse> {
+    return new Promise((resolve, reject: (errorCode: OutboxErrorCode) => void) => {
+      if (!this.isReady()) {
+        reject("CONNECTION_LOST");
+        return;
+      }
+      const echo = `outbox:${randomUUID()}`;
+      const action: OneBotAction = {
+        action: "send_private_msg",
+        params: { user_id: item.userId, message: item.content },
+        echo,
+      };
+      const payload = JSON.stringify(action);
+      if (Buffer.byteLength(payload, "utf8") > this.config.maxMessageBytes) {
+        reject("ACTION_TOO_LARGE");
+        return;
+      }
+      const timer = setTimeout(() => {
+        this.pendingActions.delete(echo);
+        reject("ONEBOT_TIMEOUT");
+      }, this.config.actionTimeoutMs);
+      this.pendingActions.set(echo, { resolve, reject, timer });
+      this.socket?.send(payload, (error) => {
+        if (!error) return;
+        const pending = this.pendingActions.get(echo);
+        if (!pending) return;
+        this.pendingActions.delete(echo);
+        clearTimeout(pending.timer);
+        pending.reject("CONNECTION_LOST");
+      });
+    });
+  }
+
+  private scheduleOutboxPoll(delay: number): void {
+    if (this.stopped || !this.verified || this.outboxTimer) return;
+    this.outboxTimer = setTimeout(() => {
+      this.outboxTimer = null;
+      void this.pollOutbox();
+    }, delay);
+  }
+
+  private async pollOutbox(): Promise<void> {
+    if (!this.isReady()) return;
+    try {
+      const items = await this.app.claimOutbox(this.config.expectedSelfId);
+      this.outboxFailures = 0;
+      for (const item of items) await this.deliverOutboxItem(item);
+      this.scheduleOutboxPoll(this.config.outboxPollMs);
+    } catch {
+      logger.warn("outbox_claim_failed");
+      const delay = Math.min(
+        this.config.outboxRetryMaxMs,
+        this.config.outboxPollMs * 2 ** Math.min(this.outboxFailures++, 10),
+      );
+      this.scheduleOutboxPoll(delay);
+    }
+  }
+
+  private async deliverOutboxItem(item: OutboxItem): Promise<void> {
+    let ack: OutboxAck;
+    try {
+      const response = await this.sendOutboxItem(item);
+      if (response.status === "ok" && response.retcode === 0) {
+        const candidateMessageId = response.data?.message_id;
+        const messageId =
+          typeof candidateMessageId === "string" || typeof candidateMessageId === "number"
+            ? String(candidateMessageId)
+            : undefined;
+        ack = {
+          success: true,
+          ...(messageId === undefined ? {} : { providerMessageId: String(messageId) }),
+        };
+      } else {
+        ack = { success: false, errorCode: "ONEBOT_REJECTED" };
+      }
+    } catch (errorCode) {
+      ack = { success: false, errorCode: errorCode as OutboxErrorCode };
+    }
+
+    try {
+      await this.app.ackOutbox(item.id, ack);
+    } catch {
+      logger.warn("outbox_ack_failed");
+    }
+  }
+
+  private rejectPendingActions(errorCode: OutboxErrorCode): void {
+    for (const pending of this.pendingActions.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(errorCode);
+    }
+    this.pendingActions.clear();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.stopped || this.reconnectTimer) return;
+    const exponential = Math.min(this.config.reconnectMaxMs, this.config.reconnectMinMs * 2 ** this.attempt++);
+    const delay = Math.round(exponential * (0.75 + Math.random() * 0.5));
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
+    logger.info("onebot_reconnect_scheduled", { delayMs: delay });
+  }
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   BookOpen,
@@ -224,6 +224,9 @@ export function combineFormText(data: Record<string, string>): string {
 
 export default function NewTicketWizardPage() {
   const router = useRouter();
+  useEffect(() => {
+    router.replace("/dcr/delegate?source=backup");
+  }, [router]);
   const [currentStep, setCurrentStep] = useState(0);
   const [category, setCategory] = useState<DCRCategory | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});

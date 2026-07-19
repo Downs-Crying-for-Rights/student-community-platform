@@ -44,7 +44,7 @@ export default async function middleware(req: NextRequest) {
   // 未认证 → 重定向至登录页
   if (!token) {
     const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("callbackUrl", req.url);
+    loginUrl.searchParams.set("callbackUrl", `${req.nextUrl.pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -95,5 +95,6 @@ export const config = {
     "/help/:path*",
     "/chat/:path*",
     "/psych/:path*",
+    "/qq/:path*",
   ],
 };

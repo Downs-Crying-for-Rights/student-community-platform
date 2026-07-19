@@ -2,29 +2,17 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
-import { dcrCategorySchema, paginationSchema } from "@/lib/validators";
+import { canonicalCaseRequestSchema, paginationSchema } from "@/lib/validators";
 import { extractFields, type DelegationInput } from "@/lib/dcr-field-extractor";
 import { reviewDelegation } from "@/lib/dcr-review-rules";
 import { scanContent } from "@/lib/sensitive-engine";
+import { prepareCanonicalDelegation } from "@/lib/dcr-delegation-types";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
 import { sendAdminActionMail } from "@/lib/mail";
 
 // ==================== Schemas ====================
-
-const createCaseSchema = z.object({
-  category: dcrCategorySchema,
-  formData: z.record(z.unknown()),
-  pledgeText: z.string().min(1, "强制声明不能为空"),
-  // 委托表结构化字段
-  grade: z.string().optional(),
-  timeRange: z.string().optional(),
-  province: z.string().optional(),
-  city: z.string().optional(),
-  expectedHelperProvince: z.string().optional(),
-  riskPreference: z.string().optional(),
-});
 
 class DcrAdmissionError extends Error {
   constructor(
@@ -98,7 +86,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
 
     const body = await req.json();
-    const parsed = createCaseSchema.safeParse(body);
+    const parsed = canonicalCaseRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "参数校验失败", details: parsed.error.flatten().fieldErrors },
@@ -106,30 +94,35 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
+    const { category } = parsed.data;
     const {
-      category, formData, pledgeText,
-      grade, timeRange, province, city,
+      formData, pledgeText, grade, timeRange, province, city,
       expectedHelperProvince, riskPreference,
-    } = parsed.data;
+    } = prepareCanonicalDelegation(parsed.data.formData);
 
     // ---- 敏感词扫描 ----
-    const formText = Object.values(formData).join(" ");
-    const sensitiveMatches = await scanContent(formText + " " + pledgeText);
-    const sensitiveHitCount = sensitiveMatches.length;
+    const formText = Object.values(parsed.data.formData).join(" ");
+    let sensitiveMatches;
+    try {
+      sensitiveMatches = await scanContent(formText + " " + pledgeText);
+    } catch (error) {
+      console.error("POST /api/cases sensitive scan error:", error);
+      return NextResponse.json(
+        { error: "内容安全检查暂时不可用，请稍后重试", code: "SENSITIVE_SCAN_FAILED" },
+        { status: 503 },
+      );
+    }
+    if (sensitiveMatches.length > 0) {
+      return NextResponse.json(
+        { error: "委托内容包含敏感或可识别信息，请修改后重试", code: "SENSITIVE_CONTENT" },
+        { status: 422 },
+      );
+    }
+    const sensitiveHitCount = 0;
 
     // ---- 字段抽取 ----
     const input: DelegationInput = {
-      contentType: (formData as Record<string, unknown>).contentType as string | undefined,
-      schoolName: (formData as Record<string, unknown>).schoolName as string | undefined,
-      schoolCategory: (formData as Record<string, unknown>).schoolCategory as string | undefined,
-      schoolType: (formData as Record<string, unknown>).schoolType as string | undefined,
-      schoolAddress: (formData as Record<string, unknown>).schoolAddress as string | undefined,
-      reportChannels: (formData as Record<string, unknown>).reportChannels as string | undefined,
-      description: (formData as Record<string, unknown>).description as string | undefined,
-      feeStatus: (formData as Record<string, unknown>).feeStatus as string | undefined,
-      feeDetails: (formData as Record<string, unknown>).feeDetails as string | undefined,
-      demands: (formData as Record<string, unknown>).demands as string[] | undefined,
-      otherDemand: (formData as Record<string, unknown>).otherDemand as string | undefined,
+      ...formData,
       pledgeText,
       grade,
       timeRange,
@@ -376,12 +369,6 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         ] },
       ];
       const statusValues = status && status.length > 0 ? status : null;
-      if (!statusValues || statusValues.includes("OPENED")) {
-        orClauses.push({ AND: [
-          { status: "OPENED" as const },
-          { requestStatus: "APPROVED" },
-        ] });
-      }
       where.AND = [
         { OR: orClauses },
         ...(statusValues ? [{ status: statusValues.length === 1 ? statusValues[0] : { in: statusValues } }] : []),

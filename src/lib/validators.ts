@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTENT_TYPE_MAP } from "@/lib/dcr-delegation-types";
 
 // ==================== 用户相关 ====================
 
@@ -281,6 +282,19 @@ export const delegationFormSchema = z.object({
   city: z.string().max(50).optional(),
   expectedHelperProvince: z.string().max(50).optional(),
   riskPreference: z.enum(['仅站内沟通', '可电话', '仅模板咨询']).optional(),
+});
+
+export const canonicalCaseRequestSchema = z.object({
+  category: dcrCategorySchema,
+  formData: delegationFormSchema,
+}).superRefine(({ category, formData }, ctx) => {
+  if (CONTENT_TYPE_MAP[formData.contentType] !== category) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["category"],
+      message: "委托分类与表单内容不一致",
+    });
+  }
 });
 
 export const quizAnswerSchema = z.object({

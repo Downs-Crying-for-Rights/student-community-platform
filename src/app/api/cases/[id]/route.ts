@@ -4,13 +4,20 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
 import { sendAdminActionMail, sendUserMail } from "@/lib/mail";
+import { enqueueQQCaseReviewResult } from "@/lib/qq-notifications";
 import { generateAnonymousId } from "@/lib/utils";
 import { CaseStatus } from "@prisma/client";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { dcrCategorySchema } from "@/lib/validators";
+import { canonicalCaseRequestSchema } from "@/lib/validators";
 import { extractFields, type DelegationInput } from "@/lib/dcr-field-extractor";
 import { scanContent } from "@/lib/sensitive-engine";
+import { prepareCanonicalDelegation } from "@/lib/dcr-delegation-types";
+import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
+import {
+  runSerializableTransaction,
+  SerializableTransactionConflict,
+} from "@/lib/serializable-transaction";
 
 // ==================== Status Flow Rules ====================
 
@@ -30,26 +37,25 @@ const updateStatusSchema = z.union([
   }),
   z.object({
     _action: z.literal("review"),
+    expectedStatus: z.enum(["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"]),
     requestStatus: z.enum(["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"]),
     reviewNote: z.string().max(1000).optional(),
   }),
 ]);
 
+class CaseReviewError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CaseReviewError";
+  }
+}
+
 const joinActionSchema = z.object({
   action: z.literal("JOIN"),
-});
-
-const supplementSchema = z.object({
-  _action: z.literal("supplement"),
-  category: dcrCategorySchema,
-  formData: z.record(z.unknown()),
-  pledgeText: z.string().min(1),
-  grade: z.string().optional(),
-  timeRange: z.string().optional(),
-  province: z.string().optional(),
-  city: z.string().optional(),
-  expectedHelperProvince: z.string().optional(),
-  riskPreference: z.string().optional(),
 });
 
 /**
@@ -81,32 +87,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
       return NextResponse.json({ error: "委托不存在" }, { status: 404 });
     }
 
-    // Access control: submitter, handler, Admin, or DCRHelper viewing OPENED cases
+    // Full case data is restricted to the submitter, assigned handlers, and administrators.
     const isSubmitter = caseRecord.submitterId === userId;
     const isHandler = caseRecord.handlerId === userId ||
       (caseRecord as any).handlers?.some((h: { userId: string }) => h.userId === userId);
     const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
-    // DCR helpers can view OPENED cases only after admin approval.
-    let isDCRHelperViewingOpen = false;
-    if (
-      !isSubmitter && !isHandler && !isAdmin &&
-      caseRecord.status === "OPENED" && caseRecord.requestStatus === "APPROVED"
-    ) {
-      if (userRole === "DCR_HELPER") {
-        isDCRHelperViewingOpen = true;
-      } else {
-        const viewer = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { dcrAccess: true },
-        });
-        if (viewer?.dcrAccess) {
-          isDCRHelperViewingOpen = true;
-        }
-      }
-    }
-
-    if (!isSubmitter && !isHandler && !isAdmin && !isDCRHelperViewingOpen) {
+    if (!isSubmitter && !isHandler && !isAdmin) {
       return NextResponse.json({ error: "无权访问此委托" }, { status: 403 });
     }
 
@@ -154,25 +141,19 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
     const body = await req.json();
 
-    const supplement = supplementSchema.safeParse(body);
-    if (supplement.success) {
+    const isSupplement = body?._action === "supplement";
+    const supplement = canonicalCaseRequestSchema.safeParse(body);
+    if (isSupplement && supplement.success) {
       const current = await prisma.case.findUnique({ where: { id } });
       if (!current) return NextResponse.json({ error: "委托不存在" }, { status: 404 });
       if (current.submitterId !== userId) return NextResponse.json({ error: "仅提交者可补充材料" }, { status: 403 });
       if (current.requestStatus !== "NEED_MORE_INFO") {
         return NextResponse.json({ error: "当前委托不在待补充状态", code: "CASE_NOT_AWAITING_SUPPLEMENT" }, { status: 409 });
       }
-      const data = supplement.data;
-      const contentType = typeof data.formData.contentType === "string" ? data.formData.contentType : "";
-      const expectedCategory = contentType.includes("补课") ? "TUTORING"
-        : contentType.includes("收费") ? "FEES"
-          : contentType.includes("双休") ? "WEEKENDS"
-            : "OTHER";
-      if (data.category !== expectedCategory) {
-        return NextResponse.json({ error: "委托分类与表单内容不一致" }, { status: 400 });
-      }
+      const { category } = supplement.data;
+      const data = prepareCanonicalDelegation(supplement.data.formData);
       const input: DelegationInput = {
-        ...(data.formData as DelegationInput),
+        ...data.formData,
         pledgeText: data.pledgeText,
         grade: data.grade,
         timeRange: data.timeRange,
@@ -182,13 +163,28 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         riskPreference: data.riskPreference,
       };
       const extraction = extractFields(input);
-      const matches = await scanContent(`${Object.values(data.formData).join(" ")} ${data.pledgeText}`);
+      let matches;
+      try {
+        matches = await scanContent(`${Object.values(supplement.data.formData).join(" ")} ${data.pledgeText}`);
+      } catch (error) {
+        console.error("PATCH /api/cases/[id] sensitive scan error:", error);
+        return NextResponse.json(
+          { error: "内容安全检查暂时不可用，请稍后重试", code: "SENSITIVE_SCAN_FAILED" },
+          { status: 503 },
+        );
+      }
+      if (matches.length > 0) {
+        return NextResponse.json(
+          { error: "委托内容包含敏感或可识别信息，请修改后重试", code: "SENSITIVE_CONTENT" },
+          { status: 422 },
+        );
+      }
       const updated = await prisma.$transaction(async (tx) => {
         const result = await tx.case.updateMany({
           where: { id, submitterId: userId, requestStatus: "NEED_MORE_INFO" },
           data: {
-            category: data.category,
-            formData: data.formData as Prisma.InputJsonValue,
+            category,
+            formData: data.formData as unknown as Prisma.InputJsonValue,
             pledgeText: data.pledgeText,
             grade: data.grade,
             timeRange: data.timeRange,
@@ -198,7 +194,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
             riskPreference: data.riskPreference,
             extractedFields: extraction.extractedFields as Prisma.InputJsonValue,
             missingFields: extraction.missingFields,
-            sensitiveHitCount: matches.length,
+            sensitiveHitCount: 0,
             requestStatus: "PENDING",
             reviewNote: "补充材料已提交，等待管理员重新审核",
           },
@@ -229,6 +225,13 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       return NextResponse.json({ case: updated });
     }
 
+    if (isSupplement && !supplement.success) {
+      return NextResponse.json(
+        { error: "参数校验失败", details: supplement.error.flatten().fieldErrors },
+        { status: 400 },
+      );
+    }
+
     // Check if this is a JOIN action
     const joinParsed = joinActionSchema.safeParse(body);
     if (joinParsed.success) {
@@ -247,50 +250,111 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
     // ---- 审核状态更新 (管理员专用) ----
     if (patchData._action === "review") {
-      const { requestStatus: newRequestStatus, reviewNote } = patchData;
+      const { expectedStatus, requestStatus: newRequestStatus, reviewNote } = patchData;
       if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN" && userRole !== "MODERATOR") {
         return NextResponse.json({ error: "仅管理员可修改审核状态" }, { status: 403 });
       }
 
-      const reviewResult = await prisma.$transaction(async (tx) => {
+      const reviewResult = await runSerializableTransaction(async (tx) => {
         const caseRecord = await tx.case.findUnique({
           where: { id },
           include: {
             accessApplication: {
-              select: { id: true, applicantId: true, type: true, status: true },
+              include: {
+                applicant: {
+                  select: {
+                    id: true,
+                    role: true,
+                    createdAt: true,
+                    phone: true,
+                    quizPassed: true,
+                    violationCount: true,
+                    dcrAccess: true,
+                    dcrPledgeSigned: true,
+                  },
+                },
+              },
             },
           },
         });
         if (!caseRecord) return null;
+        if (caseRecord.requestStatus !== expectedStatus) {
+          throw new CaseReviewError(409, "CASE_REVIEW_STATUS_CHANGED", "委托审核状态已变化，请刷新后重试");
+        }
 
-        const updated = await tx.case.update({
-          where: { id },
+        const updatedCount = await tx.case.updateMany({
+          where: { id, requestStatus: expectedStatus },
           data: {
             requestStatus: newRequestStatus,
             reviewNote: reviewNote ?? null,
           },
         });
+        if (updatedCount.count !== 1) {
+          throw new CaseReviewError(409, "CASE_REVIEW_STATUS_CHANGED", "委托审核状态已变化，请刷新后重试");
+        }
 
         let autoApprovedApplicationId: string | null = null;
+        let rejectedApplicationId: string | null = null;
         const application = caseRecord.accessApplication;
         if (
           newRequestStatus === "APPROVED"
           && application?.type === "DCR"
           && application.status === "PENDING"
         ) {
-          await tx.accessApplication.update({
-            where: { id: application.id },
+          const activeDcrUserCount = await tx.user.count({ where: { dcrAccess: true } });
+          const decision = evaluateDcrAdmission({
+            stage: "APPROVE_APPLICATION",
+            user: application.applicant,
+            application: {
+              id: application.id,
+              applicantId: application.applicantId,
+              caseId: application.caseId,
+              status: application.status,
+              pledgeText: application.pledgeText,
+            },
+            case: {
+              id: caseRecord.id,
+              submitterId: caseRecord.submitterId,
+              requestStatus: newRequestStatus,
+            },
+            activeDcrUserCount,
+          });
+          if (!decision.allowed) {
+            throw new CaseReviewError(403, decision.code, decision.reason);
+          }
+          const applicationUpdated = await tx.accessApplication.updateMany({
+            where: { id: application.id, status: "PENDING" },
             data: {
               status: "APPROVED",
               reviewNote: reviewNote ?? "委托表审核通过，准入申请自动通过",
               reviewedAt: new Date(),
             },
           });
+          if (applicationUpdated.count !== 1) {
+            throw new CaseReviewError(409, "APPLICATION_NOT_PENDING", "关联准入申请已被其他管理员处理");
+          }
           await tx.user.update({
             where: { id: application.applicantId },
             data: { dcrAccess: true, dcrPledgeSigned: true },
           });
           autoApprovedApplicationId = application.id;
+        } else if (
+          newRequestStatus === "REJECTED"
+          && application?.type === "DCR"
+          && application.status === "PENDING"
+        ) {
+          const applicationUpdated = await tx.accessApplication.updateMany({
+            where: { id: application.id, status: "PENDING" },
+            data: {
+              status: "REJECTED",
+              reviewNote: reviewNote ?? "关联委托审核未通过",
+              reviewedAt: new Date(),
+            },
+          });
+          if (applicationUpdated.count !== 1) {
+            throw new CaseReviewError(409, "APPLICATION_NOT_PENDING", "关联准入申请已被其他管理员处理");
+          }
+          rejectedApplicationId = application.id;
         }
 
         await tx.timelineEvent.create({
@@ -305,22 +369,14 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
           },
         });
 
-        return { caseRecord, updated, autoApprovedApplicationId };
+        const updated = await tx.case.findUnique({ where: { id } });
+        return { caseRecord, updated, autoApprovedApplicationId, rejectedApplicationId };
       });
 
       if (!reviewResult) {
         return NextResponse.json({ error: "委托不存在" }, { status: 404 });
       }
-      const { caseRecord, updated, autoApprovedApplicationId } = reviewResult;
-
-      if (newRequestStatus === "PENDING" || newRequestStatus === "MANUAL_REVIEW") {
-        await sendAdminActionMail({
-          minimumRole: "MODERATOR",
-          subject: "委托需要继续审核",
-          text: `委托 ${id} 已转为${newRequestStatus === "MANUAL_REVIEW" ? "人工审核" : "待审核"}状态。`,
-          actionUrl: `/admin/dcr/reviews?requestStatus=${newRequestStatus}`,
-        });
-      }
+      const { caseRecord, updated, autoApprovedApplicationId, rejectedApplicationId } = reviewResult;
 
       // Log audit
       await logAudit(
@@ -337,6 +393,15 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
           AuditTargetType.APPLICATION,
           autoApprovedApplicationId,
           { applicantId: caseRecord.submitterId, caseId: id, source: "CASE_REVIEW_APPROVED" },
+        );
+      }
+      if (rejectedApplicationId) {
+        await logAudit(
+          userId,
+          AuditAction.DCR_ACCESS_REVOKE,
+          AuditTargetType.APPLICATION,
+          rejectedApplicationId,
+          { applicantId: caseRecord.submitterId, caseId: id, source: "CASE_REVIEW_REJECTED" },
         );
       }
 
@@ -356,24 +421,37 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         ? `您的委托表${statusLabel}，DCR 准入申请已自动通过，现在可以进入 DCR 区${reviewNote ? `。审核说明：${reviewNote}` : ""}`
         : `您的委托表${statusLabel}${reviewNote ? `，审核说明：${reviewNote}` : ""}`;
 
-      // Notify the submitter in-app and by email after the review is recorded.
-      await createNotification(
-        caseRecord.submitterId,
-        "SYSTEM",
-        notificationTitle,
-        notificationContent,
-        `/dcr/tickets/${id}`,
-      );
-      await sendUserMail({
-        userId: caseRecord.submitterId,
-        subject: notificationTitle,
-        text: `${notificationContent}。\n\n查看委托：${(process.env.NEXTAUTH_URL || "https://forum.dcr2026.com").replace(/\/$/, "")}/dcr/tickets/${id}`,
-      });
+      // The review is already committed; delivery failures must not change its API result.
+      const sideEffects: Promise<unknown>[] = [
+        createNotification(
+          caseRecord.submitterId,
+          "SYSTEM",
+          notificationTitle,
+          notificationContent,
+          `/dcr/tickets/${id}`,
+        ),
+        sendUserMail({
+          userId: caseRecord.submitterId,
+          subject: notificationTitle,
+          text: `${notificationContent}。\n\n查看委托：${(process.env.NEXTAUTH_URL || "https://forum.dcr2026.com").replace(/\/$/, "")}/dcr/tickets/${id}`,
+        }),
+        enqueueQQCaseReviewResult(caseRecord.submitterId, id, String(caseRecord.category), newRequestStatus),
+      ];
+      if (newRequestStatus === "PENDING" || newRequestStatus === "MANUAL_REVIEW") {
+        sideEffects.push(sendAdminActionMail({
+          minimumRole: "MODERATOR",
+          subject: "委托需要继续审核",
+          text: `委托 ${id} 已转为${newRequestStatus === "MANUAL_REVIEW" ? "人工审核" : "待审核"}状态。`,
+          actionUrl: `/admin/dcr/reviews?requestStatus=${newRequestStatus}`,
+        }));
+      }
+      await Promise.allSettled(sideEffects);
 
       return NextResponse.json({
         case: updated,
         requestStatus: newRequestStatus,
         admissionAutoApproved: Boolean(autoApprovedApplicationId),
+        admissionAutoRejected: Boolean(rejectedApplicationId),
       });
     }
 
@@ -578,6 +656,15 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
     return NextResponse.json({ case: updatedCase });
   } catch (error) {
+    if (error instanceof CaseReviewError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (error instanceof SerializableTransactionConflict) {
+      return NextResponse.json(
+        { error: "委托审核状态冲突，请刷新后重试", code: "CASE_REVIEW_CONFLICT" },
+        { status: 409 },
+      );
+    }
     console.error("PATCH /api/cases/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

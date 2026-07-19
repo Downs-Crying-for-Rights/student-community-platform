@@ -17,6 +17,14 @@ services:
       - SMTP_FROM=${SMTP_FROM}
       - QQ_APP_ID=${QQ_APP_ID}
       - QQ_APP_SECRET=${QQ_APP_SECRET}
+      - QQ_BOT_ENABLED=${QQ_BOT_ENABLED:-false}
+      - QQ_BOT_EXPECTED_SELF_ID=${QQ_BOT_EXPECTED_SELF_ID}
+      - QQ_IDENTITY_ENCRYPTION_KEY=${QQ_IDENTITY_ENCRYPTION_KEY}
+      - QQ_IDENTITY_HMAC_KEY=${QQ_IDENTITY_HMAC_KEY}
+      - QQ_GRANT_HMAC_KEY=${QQ_GRANT_HMAC_KEY}
+      - QQ_IDENTITY_KEY_VERSION=${QQ_IDENTITY_KEY_VERSION:-1}
+      - QQ_GRANT_TTL_SECONDS=${QQ_GRANT_TTL_SECONDS:-900}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
       - SMS_TEST_MODE=${SMS_TEST_MODE}
       - OSS_REGION=${OSS_REGION}
       - OSS_BUCKET=${OSS_BUCKET}
@@ -43,6 +51,24 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  qq-bot:
+    profiles: ["qq-bot"]
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    environment:
+      - ONEBOT_WS_URL=${ONEBOT_WS_URL}
+      - ONEBOT_ACCESS_TOKEN=${ONEBOT_ACCESS_TOKEN}
+      - ONEBOT_EXPECTED_SELF_ID=${QQ_BOT_EXPECTED_SELF_ID}
+      - INTERNAL_API_BASE_URL=http://web:3000
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+      - HEALTH_HOST=0.0.0.0
+      - HEALTH_PORT=8081
+    depends_on:
+      web:
+        condition: service_started
     restart: unless-stopped
 
   postgres:

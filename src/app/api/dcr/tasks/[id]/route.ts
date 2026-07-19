@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { getPublicDcrTaskCopy } from "@/lib/dcr-task-public";
 
 /**
  * GET /api/dcr/tasks/[id]
@@ -77,17 +78,15 @@ export const GET = withAuth(async (
         return NextResponse.json({ error: "无权访问此任务详情" }, { status: 403 });
       }
 
-      const {
-        helpSessions: _,
-        timeline: __,
-        requesterId: ___,
-        completionReport: ____,
-        riskFlags: _____,
-        helpSession: _______legacy,
-        ...publicTask
-      } = task as typeof task & { helpSession?: unknown };
+      const publicCopy = getPublicDcrTaskCopy(task.category);
       return NextResponse.json({
-        ...publicTask,
+        id: task.id,
+        ...publicCopy,
+        category: task.category,
+        urgencyLevel: task.urgencyLevel,
+        status: task.status,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
         helpSessions: [],
         requester: { nickname: task.requester.nickname, avatar: task.requester.avatar },
       });

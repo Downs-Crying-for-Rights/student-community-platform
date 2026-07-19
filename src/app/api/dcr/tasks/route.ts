@@ -4,6 +4,7 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { paginationSchema } from "@/lib/validators";
 import { TaskStatus } from "@prisma/client";
 import { z } from "zod";
+import { getPublicDcrTaskCopy } from "@/lib/dcr-task-public";
 
 // ==================== Schemas ====================
 
@@ -125,7 +126,15 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       prisma.mutualAidTask.count({ where }),
     ]);
 
-    return NextResponse.json({ tasks, total, page, pageSize });
+    const visibleTasks = scope === "mine"
+      ? tasks
+      : tasks.map((task) => ({
+          ...task,
+          ...getPublicDcrTaskCopy(task.category),
+          requester: { nickname: task.requester.nickname },
+        }));
+
+    return NextResponse.json({ tasks: visibleTasks, total, page, pageSize });
   } catch (error) {
     console.error("GET /api/dcr/tasks error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

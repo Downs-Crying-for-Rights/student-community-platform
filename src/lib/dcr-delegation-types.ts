@@ -22,6 +22,17 @@ export interface DelegationFormData {
   otherDemand?: string;
 }
 
+export interface CanonicalDelegationFormData extends Omit<DelegationFormData, 'reportChannels'> {
+  reportChannels?: string;
+  confirmations: [true, true, true];
+  grade?: string;
+  timeRange?: string;
+  province?: string;
+  city?: string;
+  expectedHelperProvince?: string;
+  riskPreference?: '仅站内沟通' | '可电话' | '仅模板咨询';
+}
+
 /* ========== Constants ========== */
 
 /** 内容类型 → DCRCategory 映射 */
@@ -103,6 +114,9 @@ export function formatDelegation(data: DelegationFormData): string {
 
   // 声明文本
   lines.push('【声明】本人承诺以下信息真实有效，愿承担因虚假信息产生的一切后果。');
+  lines.push('【确认】我确认以上信息真实有效');
+  lines.push('【确认】我已移除所有可识别个人信息');
+  lines.push('【确认】我了解平台不组织、不指挥、不实施任何举报或对抗行动');
   lines.push('');
 
   // 学校名称
@@ -140,4 +154,32 @@ export function formatDelegation(data: DelegationFormData): string {
   lines.push(`【生成时间】${ts}`);
 
   return lines.join('\n');
+}
+
+export function prepareCanonicalDelegation(data: CanonicalDelegationFormData) {
+  const {
+    confirmations: _confirmations,
+    grade,
+    timeRange,
+    province,
+    city,
+    expectedHelperProvince,
+    riskPreference,
+    ...rawFormData
+  } = data;
+  const formData: DelegationFormData = {
+    ...rawFormData,
+    reportChannels: rawFormData.reportChannels ?? '',
+  };
+
+  return {
+    formData,
+    pledgeText: formatDelegation(formData),
+    grade,
+    timeRange,
+    province,
+    city,
+    expectedHelperProvince,
+    riskPreference,
+  };
 }

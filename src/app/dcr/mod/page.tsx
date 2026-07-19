@@ -84,7 +84,12 @@ export default function DCRModPage() {
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
 
-  async function handleUpdateStatus(caseId: string, newStatus: ReviewDecision, note?: string) {
+  async function handleUpdateStatus(
+    caseId: string,
+    expectedStatus: ReviewDecision,
+    newStatus: ReviewDecision,
+    note?: string,
+  ) {
     setActionLoading(caseId);
     setError(null);
     try {
@@ -93,6 +98,7 @@ export default function DCRModPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           _action: "review",
+          expectedStatus,
           requestStatus: newStatus,
           reviewNote: note || undefined,
         }),
@@ -220,7 +226,7 @@ export default function DCRModPage() {
                         size="sm"
                         variant="default"
                         disabled={actionLoading === c.id}
-                        onClick={() => handleUpdateStatus(c.id, "APPROVED", APPROVED_TEMPLATE)}
+                        onClick={() => handleUpdateStatus(c.id, c.requestStatus, "APPROVED", APPROVED_TEMPLATE)}
                       >
                         {actionLoading === c.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
                         通过
@@ -229,7 +235,7 @@ export default function DCRModPage() {
                         size="sm"
                         variant="secondary"
                         disabled={actionLoading === c.id}
-                        onClick={() => handleUpdateStatus(c.id, "NEED_MORE_INFO", NEED_MORE_INFO_TEMPLATE + c.missingFields.join("、"))}
+                        onClick={() => handleUpdateStatus(c.id, c.requestStatus, "NEED_MORE_INFO", NEED_MORE_INFO_TEMPLATE + c.missingFields.join("、"))}
                       >
                         需补充
                       </Button>
@@ -237,7 +243,7 @@ export default function DCRModPage() {
                         size="sm"
                         variant="outline"
                         disabled={actionLoading === c.id}
-                        onClick={() => handleUpdateStatus(c.id, "MANUAL_REVIEW", "管理员转人工审核")}
+                        onClick={() => handleUpdateStatus(c.id, c.requestStatus, "MANUAL_REVIEW", "管理员转人工审核")}
                       >
                         转人工
                       </Button>
@@ -247,7 +253,7 @@ export default function DCRModPage() {
                         disabled={actionLoading === c.id}
                         onClick={() => {
                           if (rejectingId === c.id) {
-                            handleUpdateStatus(c.id, "REJECTED", reviewNote || "管理员驳回");
+                            handleUpdateStatus(c.id, c.requestStatus, "REJECTED", reviewNote || "管理员驳回");
                           } else {
                             setRejectingId(c.id);
                             setReviewNote("");

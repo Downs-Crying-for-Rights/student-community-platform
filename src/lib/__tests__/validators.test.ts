@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { inviteCodeSchema, emailSchema } from "../validators";
+import { canonicalCaseRequestSchema, inviteCodeSchema, emailSchema } from "../validators";
 
 describe("inviteCodeSchema", () => {
   it("应接受有效的邀请码（6-32字符）", () => {
@@ -45,5 +45,34 @@ describe("emailSchema", () => {
   it("应拒绝超长邮箱地址", () => {
     const longEmail = "a".repeat(250) + "@b.com";
     expect(emailSchema.safeParse(longEmail).success).toBe(false);
+  });
+});
+
+describe("canonicalCaseRequestSchema", () => {
+  const request = {
+    category: "TUTORING",
+    formData: {
+      contentType: "学校补课类",
+      schoolName: "测试中学",
+      schoolCategory: "公立学历制学校",
+      schoolType: "高级中学",
+      schoolAddress: "测试地址",
+      description: "这是完整的委托事项描述，字数足够通过服务端的必填字段校验。",
+      feeStatus: "none",
+      demands: ["停止补课"],
+      confirmations: [true, true, true],
+    },
+  };
+
+  it("accepts a complete canonical delegation request", () => {
+    expect(canonicalCaseRequestSchema.safeParse(request).success).toBe(true);
+  });
+
+  it("requires all confirmations and consistent category", () => {
+    expect(canonicalCaseRequestSchema.safeParse({
+      ...request,
+      formData: { ...request.formData, confirmations: [true, false, true] },
+    }).success).toBe(false);
+    expect(canonicalCaseRequestSchema.safeParse({ ...request, category: "OTHER" }).success).toBe(false);
   });
 });

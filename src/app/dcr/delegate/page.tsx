@@ -21,7 +21,6 @@ import {
   SCHOOL_TYPE_OPTIONS,
   DEMAND_OPTIONS,
   DESCRIPTION_TEMPLATES,
-  formatDelegation,
   type DelegationFormData,
 } from "@/lib/dcr-delegation-types";
 
@@ -261,7 +260,6 @@ export default function DelegatePage() {
         otherDemand: data.otherDemand,
       };
 
-      const pledgeText = formatDelegation(formData);
       const category = CONTENT_TYPE_MAP[data.contentType];
 
       const res = await fetch(editCaseId ? `/api/cases/${encodeURIComponent(editCaseId)}` : "/api/cases", {
@@ -270,14 +268,16 @@ export default function DelegatePage() {
         body: JSON.stringify({
           ...(editCaseId ? { _action: "supplement" } : {}),
           category,
-          formData,
-          pledgeText,
-          grade: data.grade || undefined,
-          timeRange: data.timeRange || undefined,
-          province: data.province || undefined,
-          city: data.city || undefined,
-          expectedHelperProvince: data.expectedHelperProvince || undefined,
-          riskPreference: data.riskPreference || undefined,
+          formData: {
+            ...formData,
+            confirmations: data.confirmations,
+            grade: data.grade || undefined,
+            timeRange: data.timeRange || undefined,
+            province: data.province || undefined,
+            city: data.city || undefined,
+            expectedHelperProvince: data.expectedHelperProvince || undefined,
+            riskPreference: data.riskPreference || undefined,
+          },
         }),
       });
 

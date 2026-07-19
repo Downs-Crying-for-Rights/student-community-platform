@@ -167,8 +167,8 @@ describe("Property: GET /api/cases 对所有 (dcrAccess, role, hasCase) 组合�
 
         expect(res.status).toBe(200);
 
-        // DCR_HELPER can always see their own submissions. Cases handled by
-        // them and unassigned OPENED cases are visible only after approval.
+        // DCR_HELPER can see their own submissions and approved cases that
+        // are explicitly assigned to them. Unassigned forms remain private.
         const call = mockCaseFindMany.mock.calls[0][0];
         expect(call.where.AND).toBeDefined();
         expect(Array.isArray(call.where.AND)).toBe(true);
@@ -178,12 +178,6 @@ describe("Property: GET /api/cases 对所有 (dcrAccess, role, hasCase) 组合�
           {
             AND: [
               { handlers: { some: { userId } } },
-              { requestStatus: "APPROVED" },
-            ],
-          },
-          {
-            AND: [
-              { status: "OPENED" },
               { requestStatus: "APPROVED" },
             ],
           },

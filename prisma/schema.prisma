@@ -51,6 +51,27 @@ enum PostRevisionStatus {
   SUPERSEDED
 }
 
+enum QQGrantPurpose {
+  IDENTITY_BIND
+  DELEGATION_SUBMIT
+  CASE_REVIEW
+  TASK_PUBLISH
+}
+
+enum QQConversationState {
+  IDLE
+  DELEGATION_FORM
+  DRAFT_READY
+}
+
+enum QQOutboxStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  RETRY
+  FAILED
+}
+
 model User {
   id              String    @id @default(cuid())
   name            String?
@@ -144,6 +165,120 @@ model User {
   chatRoomBans     ChatRoomBan[]         @relation("ChatRoomBanUser")
   chatBansImposed  ChatRoomBan[]         @relation("ChatRoomBanImposedBy")
   chatBansRevoked  ChatRoomBan[]         @relation("ChatRoomBanRevokedBy")
+
+  // QQ data-security core
+  qqIdentity          QQIdentity?
+  qqDelegationDrafts  QQDelegationDraft[]
+  qqGrants            QQGrant[]
+  qqConversation      QQConversation?
+}
+
+model QQIdentity {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  lookupHash   String   @unique
+  ciphertext   String
+  iv           String
+  authTag      String
+  keyVersion   Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outboxMessages QQMessageOutbox[]
+
+  @@index([createdAt])
+}
+
+model QQDelegationDraft {
+  id            String   @id @default(cuid())
+  ownerId       String
+  schemaVersion Int      @default(1)
+  payload       Json
+  payloadHash   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  expiresAt     DateTime?
+  finalizedAt   DateTime?
+
+  owner  User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  grants QQGrant[]
+
+  @@index([ownerId, updatedAt])
+  @@index([expiresAt])
+}
+
+model QQGrant {
+  id         String         @id @default(cuid())
+  tokenHash  String         @unique
+  purpose    QQGrantPurpose
+  userId     String?
+  draftId    String?
+  targetId   String?
+  identityLookupHash String?
+  identityCiphertext String?
+  identityIv         String?
+  identityAuthTag    String?
+  identityKeyVersion Int?
+  createdAt  DateTime       @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+  revokedAt  DateTime?
+
+  user  User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  draft QQDelegationDraft? @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt])
+  @@index([draftId])
+  @@index([expiresAt])
+}
+
+model QQConversation {
+  id        String              @id @default(cuid())
+  ownerId   String              @unique
+  state     QQConversationState @default(IDLE)
+  step      Int                 @default(0)
+  revision  Int                 @default(1)
+  payload   Json
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  expiresAt DateTime
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([state, expiresAt])
+}
+
+model QQBotEventInbox {
+  id          String   @id @default(cuid())
+  eventId     String   @unique
+  selfId      String
+  lookupHash  String
+  response    Json?
+  createdAt   DateTime @default(now())
+  processedAt DateTime?
+
+  @@index([createdAt])
+}
+
+model QQMessageOutbox {
+  id                String         @id @default(cuid())
+  dedupeKey         String         @unique
+  identityId        String
+  content           String
+  status            QQOutboxStatus @default(PENDING)
+  attemptCount      Int            @default(0)
+  nextAttemptAt     DateTime       @default(now())
+  providerMessageId String?
+  lastError         String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deliveredAt       DateTime?
+
+  identity QQIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([identityId, createdAt])
 }
 
 model AiReview {

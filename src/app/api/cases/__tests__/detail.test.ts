@@ -126,13 +126,13 @@ describe("GET /api/cases/[id]", () => {
     expect(res.status).toBe(403);
   });
 
-  it("DCR_HELPER 可以查看 OPENED 状态的工单（用于决定是否接单）", async () => {
+  it("DCR_HELPER 不能读取未分配工单的完整表单", async () => {
     setSession("helper1", "DCR_HELPER");
     mockCaseFindUnique.mockResolvedValue({ ...baseCaseRecord, status: "OPENED" });
 
     const { GET } = await import("../[id]/route");
     const res = await GET(makeGetRequest("case1"), { params: Promise.resolve({ id: "case1" }) } as never);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
   it("DCR_HELPER 无法查看仍在管理员审核中的 OPENED 工单", async () => {
@@ -148,14 +148,14 @@ describe("GET /api/cases/[id]", () => {
     expect(res.status).toBe(403);
   });
 
-  it("有 dcrAccess 的用户可以查看 OPENED 状态的工单", async () => {
+  it("有 dcrAccess 的用户仍不能读取他人的完整表单", async () => {
     setSession("moderator1", "MODERATOR");
     mockCaseFindUnique.mockResolvedValue({ ...baseCaseRecord, status: "OPENED" });
     mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
 
     const { GET } = await import("../[id]/route");
     const res = await GET(makeGetRequest("case1"), { params: Promise.resolve({ id: "case1" }) } as never);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
   it("DCR_HELPER 无法查看非 OPENED 且非自己参与的工单", async () => {

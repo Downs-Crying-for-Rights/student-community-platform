@@ -23,5 +23,12 @@ describe("已审核委托表复用", () => {
     expect(source).toContain('requestStatus !== "NEED_MORE_INFO"');
     expect(source).toContain('_action: "supplement"');
     expect(source).toContain('method: editCaseId ? "PATCH" : "POST"');
+    expect(source).toContain("confirmations: data.confirmations");
+    expect(source).not.toContain("pledgeText,");
+  });
+
+  it("完整备份入口转到规范委托表", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../../tickets/new/page.tsx"), "utf8");
+    expect(source).toContain('router.replace("/dcr/delegate?source=backup")');
   });
 });

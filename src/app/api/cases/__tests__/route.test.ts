@@ -65,7 +65,23 @@ vi.mock("@/lib/dcr-review-rules", () => ({
 }));
 
 import { getServerSession } from "next-auth/next";
+import { scanContent } from "@/lib/sensitive-engine";
 const mockGetServerSession = vi.mocked(getServerSession);
+
+const validRequest = {
+  category: "TUTORING",
+  formData: {
+    contentType: "学校补课类",
+    schoolName: "测试中学",
+    schoolCategory: "公立学历制学校",
+    schoolType: "高级中学",
+    schoolAddress: "测试地址",
+    description: "这是用于测试的完整委托情况描述，包含足够的信息供管理员审核。",
+    feeStatus: "none",
+    demands: ["停止补课"],
+    confirmations: [true, true, true],
+  },
+};
 
 // ==================== Helpers ====================
 
@@ -100,7 +116,7 @@ describe("POST /api/cases", () => {
   it("应返回 401 当用户未登录", async () => {
     mockGetServerSession.mockResolvedValue(null);
     const { POST } = await import("../route");
-    const res = await POST(makePostRequest({ category: "TUTORING", formData: {}, pledgeText: "声明" }), { params: {} });
+    const res = await POST(makePostRequest(validRequest), { params: {} });
     expect(res.status).toBe(401);
   });
 
@@ -126,7 +142,7 @@ describe("POST /api/cases", () => {
     });
 
     const { POST } = await import("../route");
-    const res = await POST(makePostRequest({ category: "TUTORING", formData: {}, pledgeText: "声明" }), { params: {} });
+    const res = await POST(makePostRequest(validRequest), { params: {} });
     expect(res.status).toBe(201);
   });
 
@@ -163,9 +179,8 @@ describe("POST /api/cases", () => {
     const { POST } = await import("../route");
     const res = await POST(
       makePostRequest({
-        category: "TUTORING",
-        formData: { subject: "数学" },
-        pledgeText: "我确认已移除所有可识别信息",
+        ...validRequest,
+        pledgeText: "客户端伪造的声明",
       }),
       { params: {} },
     );
@@ -194,7 +209,7 @@ describe("POST /api/cases", () => {
       category: "TUTORING",
       formData: {},
       status: "OPENED",
-      pledgeText: "声明",
+      pledgeText: "服务端声明",
       submitterId: "user2",
       handlerId: null,
       createdAt: now,
@@ -205,7 +220,7 @@ describe("POST /api/cases", () => {
 
     const { POST } = await import("../route");
     const res = await POST(
-      makePostRequest({ category: "TUTORING", formData: {}, pledgeText: "声明" }),
+      makePostRequest(validRequest),
       { params: {} },
     );
 
@@ -214,7 +229,7 @@ describe("POST /api/cases", () => {
       data: {
         type: "DCR",
         status: "PENDING",
-        pledgeText: "声明",
+        pledgeText: expect.stringContaining("【生成时间】"),
         applicantId: "user2",
         caseId: "case2",
       },
@@ -243,7 +258,7 @@ describe("POST /api/cases", () => {
 
     const { POST } = await import("../route");
     const res = await POST(
-      makePostRequest({ category: "TUTORING", formData: {}, pledgeText: "声明" }),
+      makePostRequest(validRequest),
       { params: {} },
     );
 
@@ -274,13 +289,81 @@ describe("POST /api/cases", () => {
 
     const { POST } = await import("../route");
     const res = await POST(
-      makePostRequest({ category: "TUTORING", formData: {}, pledgeText: "声明" }),
+      makePostRequest(validRequest),
       { params: {} },
     );
 
     expect(res.status).toBe(201);
     expect(mockAppFindFirst).not.toHaveBeenCalled();
     expect(mockAppCreate).not.toHaveBeenCalled();
+  });
+
+  it("requires canonical fields and all three confirmations", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: true });
+
+    const { POST } = await import("../route");
+    const missingFields = await POST(makePostRequest({ category: "TUTORING", formData: {} }), { params: {} });
+    const missingConfirmation = await POST(makePostRequest({
+      ...validRequest,
+      formData: { ...validRequest.formData, confirmations: [true, true, false] },
+    }), { params: {} });
+
+    expect(missingFields.status).toBe(400);
+    expect(missingConfirmation.status).toBe(400);
+    expect(mockCaseCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects category and content type mismatches", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: true });
+
+    const { POST } = await import("../route");
+    const res = await POST(makePostRequest({ ...validRequest, category: "OTHER" }), { params: {} });
+
+    expect(res.status).toBe(400);
+    expect(mockCaseCreate).not.toHaveBeenCalled();
+  });
+
+  it("ignores client pledge text and stores a server-generated pledge", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: true });
+    mockCaseCreate.mockResolvedValue({ id: "case1", status: "OPENED", category: "TUTORING" });
+
+    const { POST } = await import("../route");
+    const res = await POST(makePostRequest({ ...validRequest, pledgeText: "伪造时间" }), { params: {} });
+
+    expect(res.status).toBe(201);
+    expect(mockCaseCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ pledgeText: expect.stringContaining("【生成时间】") }),
+    }));
+    expect(mockCaseCreate.mock.calls[0][0].data.pledgeText).not.toContain("伪造时间");
+  });
+
+  it("blocks sensitive matches with a stable 422 code", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: true });
+    vi.mocked(scanContent).mockResolvedValueOnce([{ word: "测试", category: "PII", severity: "HIGH", start: 0, end: 2 }] as never);
+
+    const { POST } = await import("../route");
+    const res = await POST(makePostRequest(validRequest), { params: {} });
+
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe("SENSITIVE_CONTENT");
+    expect(mockCaseCreate).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the sensitive scanner errors", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: true });
+    vi.mocked(scanContent).mockRejectedValueOnce(new Error("scanner unavailable"));
+
+    const { POST } = await import("../route");
+    const res = await POST(makePostRequest(validRequest), { params: {} });
+
+    expect(res.status).toBe(503);
+    expect((await res.json()).code).toBe("SENSITIVE_SCAN_FAILED");
+    expect(mockCaseCreate).not.toHaveBeenCalled();
   });
 });
 
