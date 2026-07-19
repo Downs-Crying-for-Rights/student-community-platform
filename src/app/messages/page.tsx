@@ -42,6 +42,12 @@ interface ChatRoom {
   updatedAt: string;
 }
 
+interface ChatMonitoringConsent {
+  title: string;
+  content: string;
+  version: number;
+}
+
 type MessagesTab = "all" | "interactive" | "system" | "dm" | "chat";
 
 export function getMessagesTab(value: string | null): MessagesTab {
@@ -184,6 +190,8 @@ function ChatRoomList() {
   const [newJoinMode, setNewJoinMode] = useState<"DIRECT" | "APPROVAL">("DIRECT");
   const [creating, setCreating] = useState(false);
   const [createNotice, setCreateNotice] = useState("");
+  const [monitoringConsent, setMonitoringConsent] = useState<ChatMonitoringConsent | null>(null);
+  const [monitoringAccepted, setMonitoringAccepted] = useState(false);
 
   const fetchRooms = useCallback(async () => {
     setLoading(true);
@@ -198,15 +206,35 @@ function ChatRoomList() {
 
   useEffect(() => { fetchRooms(); }, [fetchRooms]);
 
+  useEffect(() => {
+    if (!showCreate) return;
+    setMonitoringAccepted(false);
+    setMonitoringConsent(null);
+    fetch("/api/chat/consent", { cache: "no-store" })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "无法加载群聊巡查须知");
+        setMonitoringConsent(data);
+      })
+      .catch((error) => setCreateNotice(error instanceof Error ? error.message : "无法加载群聊巡查须知"));
+  }, [showCreate]);
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newName.trim()) return;
+    if (!newName.trim() || !monitoringAccepted || !monitoringConsent) return;
     setCreating(true);
     try {
       const res = await fetch("/api/chat/rooms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), description: newDesc, type: newType, joinMode: newType === "PUBLIC" ? newJoinMode : "APPROVAL" }),
+        body: JSON.stringify({
+          name: newName.trim(),
+          description: newDesc,
+          type: newType,
+          joinMode: newType === "PUBLIC" ? newJoinMode : "APPROVAL",
+          monitoringConsentAccepted: true,
+          monitoringConsentVersion: monitoringConsent.version,
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -216,6 +244,10 @@ function ChatRoomList() {
         fetchRooms();
       } else {
         const data = await res.json().catch(() => ({}));
+        if (data.consent) {
+          setMonitoringConsent(data.consent);
+          setMonitoringAccepted(false);
+        }
         setCreateNotice(data.error || "群聊创建失败");
       }
     } catch { setCreateNotice("网络错误，请稍后重试"); } finally { setCreating(false); }
@@ -332,9 +364,22 @@ function ChatRoomList() {
                 </div>
               </div>
             )}
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm leading-6">
+              <input
+                type="checkbox"
+                checked={monitoringAccepted}
+                onChange={(event) => setMonitoringAccepted(event.target.checked)}
+                disabled={!monitoringConsent}
+                className="mt-1 h-4 w-4 shrink-0 accent-primary"
+              />
+              <span>
+                <strong className="block font-medium">{monitoringConsent?.title || "正在加载群聊巡查须知..."}</strong>
+                <span className="mt-1 block whitespace-pre-wrap text-xs text-muted-foreground">{monitoringConsent?.content}</span>
+              </span>
+            </label>
             <div className="flex gap-2 justify-end">
               <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>取消</Button>
-              <Button type="submit" disabled={creating || !newName.trim()}>
+              <Button type="submit" disabled={creating || !newName.trim() || !monitoringAccepted || !monitoringConsent}>
                 {creating ? "创建中..." : "创建"}
               </Button>
             </div>

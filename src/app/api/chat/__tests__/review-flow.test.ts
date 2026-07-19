@@ -39,6 +39,29 @@ describe("群聊审核闭环", () => {
     expect(source).toContain("CHAT_ROOM_REJECT");
   });
 
+  it("管理员巡查列表和消息覆盖私密群聊并记录审计", () => {
+    const listSource = read("app/api/admin/chat-rooms/route.ts");
+    const detailSource = read("app/api/admin/chat-rooms/[id]/route.ts");
+    expect(listSource).toContain('z.enum(["ALL", "PUBLIC", "PRIVATE"])');
+    expect(listSource).not.toContain('where: { type: "PUBLIC"');
+    expect(listSource).toContain('}, "ADMIN")');
+    expect(detailSource).toContain("prisma.chatMessage.findMany");
+    expect(detailSource).toContain('"REVIEW_CHAT_ROOM"');
+    expect(detailSource).toContain('}, "ADMIN", { captureAllTelemetry: true })');
+  });
+
+  it("创建群聊必须确认后台可配置的最新巡查须知", () => {
+    const routeSource = read("app/api/chat/rooms/route.ts");
+    const pageSource = read("app/messages/page.tsx");
+    expect(routeSource).toContain("monitoringConsentAccepted: z.literal(true)");
+    expect(routeSource).toContain("monitoringConsentVersion");
+    expect(routeSource).toContain("CHAT_MONITORING_CONSENT_STALE");
+    expect(routeSource).toContain("CHAT_MONITORING_CONSENT_ACCEPT");
+    expect(pageSource).toContain('fetch("/api/chat/consent"');
+    expect(pageSource).toContain('type="checkbox"');
+    expect(pageSource).toContain("monitoringAccepted");
+  });
+
   it("群主处理加入申请使用 API 接受的动作值", () => {
     const source = read("app/chat/[id]/page.tsx");
     expect(source).toContain('action: "APPROVE"');

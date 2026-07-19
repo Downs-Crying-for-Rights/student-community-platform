@@ -10,6 +10,65 @@ const reviewSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
+const messagesQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+/** 巡查任意公开或私密群聊的消息（管理员及以上）。 */
+export const GET = withAuth(async (
+  req: AuthenticatedRequest,
+  context: { params: Record<string, string> },
+) => {
+  try {
+    const url = new URL(req.url);
+    const parsed = messagesQuerySchema.safeParse({
+      page: url.searchParams.get("page") || undefined,
+      pageSize: url.searchParams.get("pageSize") || undefined,
+    });
+    if (!parsed.success) return NextResponse.json({ error: "分页参数无效" }, { status: 400 });
+
+    const room = await prisma.chatRoom.findUnique({
+      where: { id: context.params.id },
+      include: {
+        createdBy: { select: { id: true, nickname: true } },
+        _count: { select: { members: true, messages: true } },
+      },
+    });
+    if (!room) return NextResponse.json({ error: "群聊不存在" }, { status: 404 });
+
+    const messages = await prisma.chatMessage.findMany({
+      where: { roomId: room.id },
+      orderBy: { createdAt: "desc" },
+      skip: (parsed.data.page - 1) * parsed.data.pageSize,
+      take: parsed.data.pageSize,
+    });
+    const senders = await prisma.user.findMany({
+      where: { id: { in: [...new Set(messages.map((message) => message.senderId))] } },
+      select: { id: true, nickname: true },
+    });
+    const senderById = new Map(senders.map((sender) => [sender.id, sender]));
+
+    await logAudit(req.user.id, "REVIEW_CHAT_ROOM", "CHAT_ROOM", room.id, {
+      roomType: room.type,
+      page: parsed.data.page,
+    });
+    return NextResponse.json({
+      room,
+      messages: messages.map((message) => ({
+        ...message,
+        sender: senderById.get(message.senderId) ?? { id: message.senderId, nickname: null },
+      })),
+      page: parsed.data.page,
+      pageSize: parsed.data.pageSize,
+      totalPages: Math.max(1, Math.ceil(room._count.messages / parsed.data.pageSize)),
+    });
+  } catch (error) {
+    console.error("GET /api/admin/chat-rooms/[id] error:", error);
+    return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
+  }
+}, "ADMIN", { captureAllTelemetry: true });
+
 /** 审核公开群聊（版主及以上）。 */
 export const PATCH = withAuth(async (
   req: AuthenticatedRequest,

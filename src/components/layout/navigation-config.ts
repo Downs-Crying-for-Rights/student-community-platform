@@ -87,7 +87,7 @@ export const adminMenuGroups: readonly AdminMenuGroup[] = [
     { href: "/admin/moderation", label: "审核看板", icon: "shield", minRole: "MODERATOR" },
     { href: "/admin/reports", label: "举报处理", icon: "flag", minRole: "MODERATOR" },
     { href: "/admin/content", label: "内容管理", icon: "file-text", minRole: "ADMIN" },
-    { href: "/admin/chat-rooms", label: "群聊审核", icon: "messages", minRole: "ADMIN" },
+    { href: "/admin/chat-rooms", label: "群聊巡查", icon: "messages", minRole: "ADMIN" },
     { href: "/admin/dm", label: "私信审查", icon: "message", minRole: "ADMIN" },
     { href: "/admin/disputes", label: "争议处理", icon: "scale", minRole: "ADMIN" },
   ] },

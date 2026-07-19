@@ -155,7 +155,7 @@ export default function SiteContentPage() {
         <Card className="mb-4">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">编辑：{title || selectedKey}</CardTitle>
-            {selectedKey !== "dm_consent" && (
+            {!(["dm_consent", "chat_monitoring_consent"].includes(selectedKey)) && (
               <Button variant="ghost" size="sm" className="text-red-500" onClick={() => setShowDelete(true)}>
                 <Trash2 className="mr-1 h-4 w-4" />
                 删除
@@ -168,8 +168,8 @@ export default function SiteContentPage() {
                 <div>
                   <Label>标题</Label>
                   <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="文档标题" className="mt-1" />
-                  {selectedKey === "dm_consent" && (
-                    <p className="mt-2 text-xs text-muted-foreground">保存后所有用户需要重新阅读并同意新版本，才能继续使用私信。</p>
+                  {(["dm_consent", "chat_monitoring_consent"].includes(selectedKey)) && (
+                    <p className="mt-2 text-xs text-muted-foreground">保存后文案版本会更新，用户执行对应操作时必须确认最新版本。</p>
                   )}
                 </div>
                 <div className="flex items-center justify-between">

@@ -64,7 +64,7 @@ function DMThreadContent() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-screen-md flex-col px-4 py-4">
+    <main className="mx-auto flex min-h-screen max-w-screen-md flex-col px-4 pb-40 pt-4 lg:pb-24">
       <div className="mb-4 flex items-center gap-3 border-b pb-3">
         <Button variant="ghost" size="sm" asChild><Link href="/messages?tab=dm"><ArrowLeft className="h-4 w-4" />返回私信</Link></Button>
         <h1 className="font-semibold">一对一私信</h1>
@@ -81,7 +81,7 @@ function DMThreadContent() {
         ))}
         <div ref={endRef} />
       </div>
-      <form onSubmit={send} className="fixed bottom-0 left-1/2 flex w-full max-w-screen-md -translate-x-1/2 gap-2 border-t bg-background p-4">
+      <form onSubmit={send} className="fixed bottom-20 left-0 right-0 z-30 mx-auto flex w-full max-w-screen-md gap-2 border-t bg-background p-4 lg:bottom-0 lg:left-60">
         <Input value={content} onChange={(e) => setContent(e.target.value)} maxLength={5000} placeholder="输入私信内容" />
         <Button type="submit" disabled={sending || !content.trim()}>{sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</Button>
       </form>

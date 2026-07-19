@@ -3,12 +3,16 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
 import { sendAdminActionMail } from "@/lib/mail";
+import { getChatMonitoringConsent } from "@/lib/chat-monitoring-consent";
+import { logAudit } from "@/lib/audit";
 
 const createRoomSchema = z.object({
   name: z.string().min(1).max(50),
   description: z.string().max(200).optional(),
   type: z.enum(["PUBLIC", "PRIVATE"]).default("PUBLIC"),
   joinMode: z.enum(["DIRECT", "APPROVAL"]).default("DIRECT"),
+  monitoringConsentAccepted: z.literal(true),
+  monitoringConsentVersion: z.number().int().positive(),
 });
 
 /**
@@ -92,26 +96,41 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     const { name, description, type, joinMode } = parsed.data;
     const userId = req.user.id;
+    const consent = await getChatMonitoringConsent();
+    if (parsed.data.monitoringConsentVersion !== consent.revision) {
+      return NextResponse.json({
+        error: "群聊巡查须知已更新，请重新阅读并确认",
+        code: "CHAT_MONITORING_CONSENT_STALE",
+        consent: { title: consent.title, content: consent.content, version: consent.revision },
+      }, { status: 409 });
+    }
 
-    const room = await prisma.chatRoom.create({
-      data: {
-        name,
-        description: description ?? "",
-        type,
-        status: type === "PUBLIC" ? "PENDING" : "APPROVED",
-        joinMode,
-        createdById: userId,
-        members: {
-          create: {
-            userId,
-            role: "OWNER",
+    const room = await prisma.$transaction(async (tx) => {
+      const created = await tx.chatRoom.create({
+        data: {
+          name,
+          description: description ?? "",
+          type,
+          status: type === "PUBLIC" ? "PENDING" : "APPROVED",
+          joinMode,
+          createdById: userId,
+          members: {
+            create: {
+              userId,
+              role: "OWNER",
+            },
           },
         },
-      },
-      include: {
-        createdBy: { select: { id: true, nickname: true } },
-        _count: { select: { members: true } },
-      },
+        include: {
+          createdBy: { select: { id: true, nickname: true } },
+          _count: { select: { members: true } },
+        },
+      });
+      await logAudit(userId, "CHAT_MONITORING_CONSENT_ACCEPT", "CHAT_ROOM", created.id, {
+        version: consent.revision,
+        roomType: type,
+      }, undefined, tx);
+      return created;
     });
 
     if (type === "PUBLIC") {

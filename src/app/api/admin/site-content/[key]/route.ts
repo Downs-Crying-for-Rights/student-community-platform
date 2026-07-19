@@ -3,6 +3,9 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
 import { DM_CONSENT_KEY } from "@/lib/dm-consent";
+import { CHAT_MONITORING_CONSENT_KEY } from "@/lib/chat-monitoring-consent";
+
+const VERSIONED_SYSTEM_CONTENT_KEYS = new Set([DM_CONSENT_KEY, CHAT_MONITORING_CONSENT_KEY]);
 
 const updateSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -24,8 +27,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context: { params:
  */
 export const DELETE = withAuth(async (req: AuthenticatedRequest, context: { params: Record<string, string> }) => {
   const { key } = context.params;
-  if (key === DM_CONSENT_KEY) {
-    return NextResponse.json({ error: "私信授权文本为系统必需内容，不能删除" }, { status: 400 });
+  if (VERSIONED_SYSTEM_CONTENT_KEYS.has(key)) {
+    return NextResponse.json({ error: "该巡查须知为系统必需内容，不能删除" }, { status: 400 });
   }
   await prisma.siteContent.deleteMany({ where: { key } });
   return NextResponse.json({ success: true });
@@ -46,7 +49,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context: { param
     update: {
       ...parsed.data,
       updatedBy: req.user.id,
-      ...(key === DM_CONSENT_KEY ? { revision: { increment: 1 } } : {}),
+      ...(VERSIONED_SYSTEM_CONTENT_KEYS.has(key) ? { revision: { increment: 1 } } : {}),
     },
     create: { key, title: parsed.data.title ?? key, content: parsed.data.content ?? "", updatedBy: req.user.id },
   });
