@@ -7,7 +7,7 @@ import { adminNavItems } from "@/components/layout/navigation-config";
 describe("admin changelog", () => {
   it("shows newest releases first with structured changes", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(4);
-    expect(CHANGELOG[0].version).toBe("0.2.99");
+    expect(CHANGELOG[0].version).toBe("0.3.0");
     expect(CHANGELOG[0].changes).toContain("新增全站强制弹窗公告和公告确认记录。");
   });
 

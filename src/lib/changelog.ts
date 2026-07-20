@@ -7,7 +7,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
-    version: "0.2.99",
+    version: "0.3.0",
     date: "2026-07-20",
     title: "公告与内容运营",
     changes: [
