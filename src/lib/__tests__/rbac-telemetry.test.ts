@@ -49,4 +49,17 @@ describe("RBAC request completion telemetry", () => {
     expect(response.headers.get("x-request-id")).toBe("test-request");
     expect(completed).toHaveBeenCalledOnce();
   });
+
+  it("passes through disabled telemetry persistence for polling routes", async () => {
+    getServerSession.mockResolvedValue({ user: { id: "root", role: "SUPER_ADMIN" } });
+    const response = await withAuth(
+      async () => NextResponse.json({ ok: true }),
+      "SUPER_ADMIN",
+      { route: "/api/admin/system/metrics", persist: false },
+    )(request(), { params: {} });
+    expect(completed).toHaveBeenCalledWith(expect.anything(), response, expect.any(Number), expect.objectContaining({
+      route: "/api/admin/system/metrics",
+      persist: false,
+    }));
+  });
 });

@@ -11,12 +11,16 @@ import {
   CirclePause,
   CirclePlay,
   Clipboard,
+  Cpu,
   Eraser,
   Info,
   Loader2,
   Mail,
+  MemoryStick,
+  Network,
   RefreshCw,
   Search,
+  Server,
   Terminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -57,6 +61,23 @@ interface MailLogDetail {
   error?: { message?: string; code?: string | null; response?: string | null };
 }
 
+interface SystemMetrics {
+  collectedAt: string;
+  identity: { serviceAddress: string | null; hostname: string; platform: string; release: string; arch: string; nodeVersion: string };
+  process: { pid: number; uptimeSeconds: number; cpuPercent: number | null; rssBytes: number; heapUsedBytes: number; heapTotalBytes: number; externalBytes: number };
+  runtime: {
+    scope: "container" | "os-visible"; logicalCpuCount: number; effectiveCpuCount: number;
+    cpuPercent: number | null; loadAverage: [number, number, number] | null;
+    memoryUsedBytes: number; memoryLimitBytes: number; memoryPercent: number; uptimeSeconds: number;
+  };
+  network: {
+    scope: "container" | "os-visible";
+    addresses: Array<{ interface: string; family: "IPv4" | "IPv6"; address: string }>;
+    rxBytes: number | null; txBytes: number | null; rxBytesPerSecond: number | null; txBytesPerSecond: number | null;
+  };
+  capabilities: { cgroup: boolean; networkCounters: boolean; hostMetrics: false };
+}
+
 const LEVEL_CONFIG = {
   DEBUG: { icon: Bug, className: "text-slate-500 bg-slate-100 dark:bg-slate-800" },
   INFO: { icon: Info, className: "text-blue-600 bg-blue-100 dark:bg-blue-900/40" },
@@ -81,7 +102,102 @@ const MAIL_STATUS_CONFIG = {
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function formatDuration(seconds: number) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return days > 0 ? `${days} 天 ${hours} 小时` : hours > 0 ? `${hours} 小时 ${minutes} 分` : `${minutes} 分钟`;
+}
+
+function metricPercent(value: number | null) {
+  return value === null ? "采样中" : `${value.toFixed(1)}%`;
+}
+
+function RuntimeMetrics() {
+  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchMetrics = useCallback(async (showLoader = false) => {
+    if (showLoader) setLoading(true);
+    try {
+      const response = await fetch("/api/admin/system/metrics", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "读取服务器运行状态失败");
+      setMetrics(data);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "读取服务器运行状态失败");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchMetrics(true);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void fetchMetrics();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [fetchMetrics]);
+
+  if (loading && !metrics) return <div className="flex justify-center py-24"><Loader2 className="h-7 w-7 animate-spin text-muted-foreground" /></div>;
+
+  const runtimeScope = metrics?.runtime.scope === "container" ? "容器可见值" : "操作系统可见值";
+  const networkScope = metrics?.network.scope === "container" ? "容器网络" : "操作系统网络";
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col justify-between gap-3 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center">
+        <div>
+          <p className="flex items-center gap-2 font-medium"><Server className="h-4 w-4 text-blue-600" />实时运行状态</p>
+          <p className="mt-1 text-xs text-muted-foreground">每 5 秒刷新。展示 Node 进程及容器/操作系统可见值，不代表物理宿主机全局指标。</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => void fetchMetrics(true)} disabled={loading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />刷新
+        </Button>
+      </div>
+      {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">{error}，当前显示最后一次成功采样。</div>}
+      {metrics && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card><CardContent className="p-5"><div className="flex items-center justify-between"><p className="text-sm text-muted-foreground">进程 CPU</p><Cpu className="h-5 w-5 text-blue-600" /></div><p className="mt-3 text-2xl font-bold">{metricPercent(metrics.process.cpuPercent)}</p><p className="mt-1 text-xs text-muted-foreground">PID {metrics.process.pid} · {metrics.runtime.effectiveCpuCount.toFixed(2)} 核配额</p></CardContent></Card>
+            <Card><CardContent className="p-5"><div className="flex items-center justify-between"><p className="text-sm text-muted-foreground">{runtimeScope} CPU</p><Cpu className="h-5 w-5 text-violet-600" /></div><p className="mt-3 text-2xl font-bold">{metricPercent(metrics.runtime.cpuPercent)}</p><p className="mt-1 text-xs text-muted-foreground">逻辑 CPU {metrics.runtime.logicalCpuCount} 核</p></CardContent></Card>
+            <Card><CardContent className="p-5"><div className="flex items-center justify-between"><p className="text-sm text-muted-foreground">{runtimeScope}内存</p><MemoryStick className="h-5 w-5 text-emerald-600" /></div><p className="mt-3 text-2xl font-bold">{metrics.runtime.memoryPercent.toFixed(1)}%</p><p className="mt-1 text-xs text-muted-foreground">{formatBytes(metrics.runtime.memoryUsedBytes)} / {formatBytes(metrics.runtime.memoryLimitBytes)}</p></CardContent></Card>
+            <Card><CardContent className="p-5"><div className="flex items-center justify-between"><p className="text-sm text-muted-foreground">进程 RSS</p><MemoryStick className="h-5 w-5 text-amber-600" /></div><p className="mt-3 text-2xl font-bold">{formatBytes(metrics.process.rssBytes)}</p><p className="mt-1 text-xs text-muted-foreground">堆 {formatBytes(metrics.process.heapUsedBytes)} / {formatBytes(metrics.process.heapTotalBytes)}</p></CardContent></Card>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card><CardContent className="space-y-4 p-5">
+              <div className="flex items-center gap-2"><Server className="h-5 w-5 text-blue-600" /><h2 className="font-semibold">运行环境</h2></div>
+              <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                <div><dt className="text-xs text-muted-foreground">服务地址</dt><dd className="mt-1 break-all font-mono">{metrics.identity.serviceAddress || "未配置"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">主机名</dt><dd className="mt-1 break-all font-mono">{metrics.identity.hostname}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">平台</dt><dd className="mt-1 font-mono">{metrics.identity.platform} {metrics.identity.release} / {metrics.identity.arch}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Node.js</dt><dd className="mt-1 font-mono">{metrics.identity.nodeVersion}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">进程运行时间</dt><dd className="mt-1">{formatDuration(metrics.process.uptimeSeconds)}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">系统运行时间</dt><dd className="mt-1">{formatDuration(metrics.runtime.uptimeSeconds)}</dd></div>
+              </dl>
+              <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">负载均值（1 / 5 / 15 分钟）：{metrics.runtime.loadAverage ? metrics.runtime.loadAverage.map((value) => value.toFixed(2)).join(" / ") : "当前平台不提供"}</div>
+            </CardContent></Card>
+
+            <Card><CardContent className="space-y-4 p-5">
+              <div className="flex items-center gap-2"><Network className="h-5 w-5 text-emerald-600" /><h2 className="font-semibold">{networkScope}</h2></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg bg-muted/40 p-3"><p className="text-xs text-muted-foreground">实时接收</p><p className="mt-1 text-lg font-semibold">{metrics.network.rxBytesPerSecond === null ? "采样中 / 不可用" : `${formatBytes(metrics.network.rxBytesPerSecond)}/s`}</p><p className="text-xs text-muted-foreground">累计 {metrics.network.rxBytes === null ? "不可用" : formatBytes(metrics.network.rxBytes)}</p></div>
+                <div className="rounded-lg bg-muted/40 p-3"><p className="text-xs text-muted-foreground">实时发送</p><p className="mt-1 text-lg font-semibold">{metrics.network.txBytesPerSecond === null ? "采样中 / 不可用" : `${formatBytes(metrics.network.txBytesPerSecond)}/s`}</p><p className="text-xs text-muted-foreground">累计 {metrics.network.txBytes === null ? "不可用" : formatBytes(metrics.network.txBytes)}</p></div>
+              </div>
+              <div><p className="mb-2 text-xs text-muted-foreground">网卡地址（容器内网或操作系统可见地址，不等同于公网 IP）</p><div className="space-y-1">{metrics.network.addresses.length > 0 ? metrics.network.addresses.map((item) => <p key={`${item.interface}-${item.address}`} className="break-all rounded bg-muted/40 px-3 py-2 font-mono text-xs">{item.interface} · {item.family} · {item.address}</p>) : <p className="text-sm text-muted-foreground">未发现非回环地址</p>}</div></div>
+            </CardContent></Card>
+          </div>
+          <p className="text-right text-xs text-muted-foreground">采样时间：{new Date(metrics.collectedAt).toLocaleString("zh-CN")}</p>
+        </>
+      )}
+    </div>
+  );
 }
 
 function parseMailDetail(value: string | null): MailLogDetail {
@@ -338,12 +454,14 @@ export default function AdminLogsPage() {
           <h1 className="text-xl font-bold">服务器控制台</h1>
           <p className="mt-1 text-xs text-muted-foreground">实时查看生产服务器输出；仅超级管理员可访问，不支持执行命令。</p>
         </div>
-        <Tabs defaultValue="terminal">
+        <Tabs defaultValue="runtime">
           <TabsList className="mb-4">
+            <TabsTrigger value="runtime">运行状态</TabsTrigger>
             <TabsTrigger value="terminal">实时终端</TabsTrigger>
             <TabsTrigger value="structured">结构化日志</TabsTrigger>
             <TabsTrigger value="mail">邮件投递</TabsTrigger>
           </TabsList>
+          <TabsContent value="runtime"><RuntimeMetrics /></TabsContent>
           <TabsContent value="terminal"><LiveTerminal /></TabsContent>
           <TabsContent value="structured"><StructuredLogs /></TabsContent>
           <TabsContent value="mail"><MailDeliveryLogs /></TabsContent>

@@ -36,4 +36,4 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     console.error("GET /api/admin/terminal error:", error);
     return NextResponse.json({ error: "读取服务器日志失败" }, { status: 500 });
   }
-}, "SUPER_ADMIN");
+}, "SUPER_ADMIN", { route: "/api/admin/terminal", persist: false });
