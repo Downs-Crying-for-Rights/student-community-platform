@@ -49,7 +49,7 @@ function arbNonNegInt() {
 // **Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.9**
 
 describe("Property 1: 操作按钮与状态/角色的映射正确性", () => {
-  it("OPENED + DCR_HELPER/ADMIN → 包含「接单」按钮", () => {
+  it("OPENED + DCR_HELPER/ADMIN 仅在非提交者时包含「接单」按钮", () => {
     fc.assert(
       fc.property(
         fc.constantFrom("DCR_HELPER", "ADMIN"),
@@ -58,9 +58,13 @@ describe("Property 1: 操作按钮与状态/角色的映射正确性", () => {
         (role, isSubmitter, isHandler) => {
           const actions = getAvailableActions("OPENED", role, isSubmitter, isHandler);
           const labels = actions.map((a) => a.label);
-          expect(labels).toContain("接单");
-          const accept = actions.find((a) => a.label === "接单")!;
-          expect(accept.targetStatus).toBe("IN_PROGRESS");
+          if (isSubmitter) {
+            expect(labels).not.toContain("接单");
+          } else {
+            expect(labels).toContain("接单");
+            const accept = actions.find((a) => a.label === "接单")!;
+            expect(accept.targetStatus).toBe("IN_PROGRESS");
+          }
         },
       ),
       { numRuns: 100 },

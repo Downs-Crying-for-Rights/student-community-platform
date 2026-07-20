@@ -44,11 +44,11 @@ describe("CaseActionButtons — 按钮渲染逻辑", () => {
       expect(actions[0].variant).toBe("destructive");
     });
 
-    it("ADMIN 且为提交者应看到「接单」和「取消工单」两个按钮", () => {
+    it("ADMIN 且为提交者只能看到「取消工单」按钮", () => {
       const actions = getAvailableActions("OPENED", "ADMIN", true, false);
-      expect(actions).toHaveLength(2);
+      expect(actions).toHaveLength(1);
       const labels = actions.map((a) => a.label);
-      expect(labels).toContain("接单");
+      expect(labels).not.toContain("接单");
       expect(labels).toContain("取消工单");
     });
 

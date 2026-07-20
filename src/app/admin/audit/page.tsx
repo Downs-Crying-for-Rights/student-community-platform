@@ -62,6 +62,10 @@ export const AUDIT_ACTIONS = [
   "UNAUTHORIZED_ACCESS",
   "INVITE_CREATE",
   "INVITE_REVOKE",
+  "ANNOUNCEMENT_CREATE",
+  "ANNOUNCEMENT_UPDATE",
+  "ANNOUNCEMENT_BROADCAST",
+  "POST_PIN_UPDATE",
 ] as const;
 
 export default function AdminAuditPage() {

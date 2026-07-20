@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerSchema } from "@/lib/validators";
-import { createUserWithSession, validateNickname } from "@/lib/auth/register-helpers";
+import {
+  checkEmailUnique,
+  checkPhoneUnique,
+  createUserWithSession,
+  validateNickname,
+} from "@/lib/auth/register-helpers";
+import { verifyCode } from "@/lib/sms/verification";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +19,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password, nickname } = parsed.data;
+    const { email, password, nickname, phone, code } = parsed.data;
 
     // 校验 nickname 非空
     const nicknameError = validateNickname(nickname);
@@ -21,10 +27,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: nicknameError.error }, { status: nicknameError.status });
     }
 
+    const identityError = await checkEmailUnique(email) ?? await checkPhoneUnique(phone);
+    if (identityError) {
+      return NextResponse.json({ error: identityError.error }, { status: identityError.status });
+    }
+
+    if (!(await verifyCode(phone, code, "register"))) {
+      return NextResponse.json({ error: "验证码错误或已过期" }, { status: 400 });
+    }
+
     const result = await createUserWithSession({
       email,
       password,
       nickname,
+      phone,
     });
 
     if (!result.success) {

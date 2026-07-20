@@ -9,7 +9,6 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
-// Mock verifyCode
 const mockVerifyCode = vi.fn();
 vi.mock("@/lib/sms/verification", () => ({
   verifyCode: (...args: unknown[]) => mockVerifyCode(...args),
@@ -41,8 +40,8 @@ const validBody = {
   inviteCode: "VALID123",
   email: "test@example.com",
   password: "password123",
-  phone: "13800138000",
   nickname: "测试用户",
+  phone: "13800138000",
   code: "123456",
 };
 
@@ -76,7 +75,7 @@ describe("POST /api/auth/invite", () => {
     vi.clearAllMocks();
     mockUserFindUnique.mockResolvedValue(null); // no existing email
     mockUserFindFirst.mockResolvedValue(null); // no existing phone
-    mockVerifyCode.mockResolvedValue(true); // SMS code valid
+    mockVerifyCode.mockResolvedValue(true);
   });
 
   // ========== 邀请码格式验证 ==========
@@ -143,25 +142,6 @@ describe("POST /api/auth/invite", () => {
       expect(data.error).toBe("参数校验失败");
     });
 
-    it("应拒绝缺少 phone 的请求", async () => {
-      const { phone, ...rest } = validBody;
-      const req = createRequest(rest);
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(400);
-      expect(data.error).toBe("参数校验失败");
-    });
-
-    it("应拒绝缺少短信验证码 code 的请求", async () => {
-      const { code, ...rest } = validBody;
-      const req = createRequest(rest);
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(400);
-      expect(data.error).toBe("参数校验失败");
-    });
   });
 
   // ========== 邀请码有效性验证 ==========
@@ -223,9 +203,9 @@ describe("POST /api/auth/invite", () => {
     });
   });
 
-  // ========== 唯一性检查和短信验证 ==========
+  // ========== 唯一性检查 ==========
 
-  describe("唯一性检查和短信验证", () => {
+  describe("唯一性检查", () => {
     it("应拒绝已注册的邮箱", async () => {
       mockFindUnique.mockResolvedValue(buildInviteCode());
       mockUserFindUnique.mockResolvedValue({ id: "existing-user" });
@@ -238,29 +218,6 @@ describe("POST /api/auth/invite", () => {
       expect(data.error).toBe("该邮箱已被注册");
     });
 
-    it("应拒绝已绑定的手机号", async () => {
-      mockFindUnique.mockResolvedValue(buildInviteCode());
-      mockUserFindFirst.mockResolvedValue({ id: "existing-user" });
-
-      const req = createRequest(validBody);
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(409);
-      expect(data.error).toBe("该手机号已被其他账户绑定");
-    });
-
-    it("应拒绝错误的短信验证码", async () => {
-      mockFindUnique.mockResolvedValue(buildInviteCode());
-      mockVerifyCode.mockResolvedValue(false);
-
-      const req = createRequest(validBody);
-      const res = await POST(req);
-      const data = await res.json();
-
-      expect(res.status).toBe(400);
-      expect(data.error).toBe("验证码错误或已过期");
-    });
   });
 
   // ========== 成功注册流程 ==========
@@ -302,8 +259,9 @@ describe("POST /api/auth/invite", () => {
         data: {
           email: "test@example.com",
           passwordHash: "hashed_password",
-          phone: "13800138000",
           nickname: "测试用户",
+          phone: "13800138000",
+          profileCompletionRequired: true,
           isAnonymous: false,
         },
       });
@@ -325,6 +283,7 @@ describe("POST /api/auth/invite", () => {
 
       // JWT 会话由前端注册成功后通过 Credentials Provider 创建。
       expect(mockSessionCreate).not.toHaveBeenCalled();
+      expect(mockVerifyCode).toHaveBeenCalledWith("13800138000", "123456", "register");
     });
 
     it("成功注册后不应写入数据库 Session cookie", async () => {

@@ -13,9 +13,11 @@ import {
   Repeat,
   Play,
   Flag,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useDMConsent } from "@/components/dm/DMConsentDialog";
 
 /* ========== Types ========== */
 
@@ -74,6 +76,8 @@ export default function CycleDetailPage() {
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState("");
+  const [contactLoading, setContactLoading] = useState("");
+  const { ensureConsent, dialog: dmConsentDialog } = useDMConsent();
 
   const fetchCycle = useCallback(async () => {
     try {
@@ -101,6 +105,30 @@ export default function CycleDetailPage() {
     } catch { setActionError("网络错误"); }
   }
 
+  function handleDispute(linkId: string) {
+    const reason = window.prompt("请填写争议原因，便于管理员处理：");
+    if (!reason?.trim()) return;
+    void handleLinkAction(linkId, "DISPUTED", reason.trim());
+  }
+
+  async function contactCounterpart(linkId: string) {
+    setContactLoading(linkId);
+    setActionError("");
+    try {
+      const res = await fetch(`/api/dcr/cycles/${id}/links/${linkId}/dm`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(data.error || "无法联系对方");
+        return;
+      }
+      router.push(`/messages/dm/${data.thread.id}`);
+    } catch {
+      setActionError("网络错误");
+    } finally {
+      setContactLoading("");
+    }
+  }
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   }
@@ -112,6 +140,7 @@ export default function CycleDetailPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
+      {dmConsentDialog}
       <Button variant="ghost" size="sm" className="mb-4" onClick={() => router.push("/dcr/cycles")}>
         <ArrowLeft className="mr-1.5 h-4 w-4" />返回列表
       </Button>
@@ -212,8 +241,19 @@ export default function CycleDetailPage() {
                     </Button>
                   )}
                   {canDispute && (
-                    <Button size="sm" variant="ghost" className="text-red-600" onClick={() => handleLinkAction(link.id, "DISPUTED", "发起争议")}>
+                    <Button size="sm" variant="ghost" className="text-red-600" onClick={() => handleDispute(link.id)}>
                       <Flag className="mr-1 h-3.5 w-3.5" />争议
+                    </Button>
+                  )}
+                  {(isFrom || isTo) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={Boolean(contactLoading)}
+                      onClick={() => void ensureConsent(() => { void contactCounterpart(link.id); })}
+                    >
+                      {contactLoading === link.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="mr-1 h-3.5 w-3.5" />}
+                      联系对方
                     </Button>
                   )}
                 </div>

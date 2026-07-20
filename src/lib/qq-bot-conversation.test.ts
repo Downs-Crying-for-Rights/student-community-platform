@@ -49,6 +49,13 @@ describe("QQ delegation conversation", () => {
     expect(() => parseQQDelegationForm(completeForm.replace("收费情况：已收费", "收费情况：很多"))).toThrow("收费情况");
   });
 
+  it("requires risk preference and supports unrestricted", () => {
+    expect(() => parseQQDelegationForm(completeForm.replace("风险偏好：仅站内沟通", ""))).toThrow("风险偏好");
+
+    const unrestricted = parseQQDelegationForm(completeForm.replace("风险偏好：仅站内沟通", "风险偏好：不限"));
+    expect(buildCanonicalQQDraft(unrestricted).payload.riskPreference).toBe("不限");
+  });
+
   it("requires category-specific details before AI or H5", () => {
     const tutoring = parseQQDelegationForm(completeForm.replace("涉及年级：高二", "涉及年级：无"));
     expect(validateQQDelegationRequirements(tutoring)).toContain("请填写涉及年级。");

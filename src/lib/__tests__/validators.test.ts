@@ -61,10 +61,19 @@ describe("canonicalCaseRequestSchema", () => {
       feeStatus: "none",
       demands: ["停止补课"],
       confirmations: [true, true, true],
+      riskPreference: "不限",
     },
   };
 
   it("accepts a complete canonical delegation request", () => {
+    expect(canonicalCaseRequestSchema.safeParse(request).success).toBe(true);
+  });
+
+  it("requires an explicit risk preference", () => {
+    expect(canonicalCaseRequestSchema.safeParse({
+      ...request,
+      formData: { ...request.formData, riskPreference: undefined },
+    }).success).toBe(false);
     expect(canonicalCaseRequestSchema.safeParse(request).success).toBe(true);
   });
 

@@ -116,12 +116,13 @@ describe("validateProfileForm", () => {
       nickname: "测试用户",
       avatar: "https://example.com/avatar.jpg",
       bio: "一段简介",
+      qqNumber: "12345678",
     };
     expect(validateProfileForm(data)).toEqual({});
   });
 
   it("全部为空返回空错误对象（均为可选）", () => {
-    const data: ProfileFormData = { nickname: "", avatar: "", bio: "" };
+    const data: ProfileFormData = { nickname: "", avatar: "", bio: "", qqNumber: "" };
     expect(validateProfileForm(data)).toEqual({});
   });
 
@@ -130,11 +131,19 @@ describe("validateProfileForm", () => {
       nickname: "a",
       avatar: "bad-url",
       bio: "x".repeat(201),
+      qqNumber: "abc",
     };
     const errors = validateProfileForm(data);
     expect(errors.nickname).toBeDefined();
     expect(errors.avatar).toBeDefined();
     expect(errors.bio).toBeDefined();
+    expect(errors.qqNumber).toBeDefined();
+  });
+
+  it("强制补全时要求昵称、头像和QQ号，但不要求简介", () => {
+    const data: ProfileFormData = { nickname: "测试用户", avatar: "https://example.com/a.jpg", bio: "", qqNumber: "12345678" };
+    expect(validateProfileForm(data, true)).toEqual({});
+    expect(validateProfileForm({ ...data, qqNumber: "" }, true).qqNumber).toBe("请填写QQ号");
   });
 });
 
@@ -157,6 +166,7 @@ describe("buildUpdatePayload", () => {
     nickname: "原始昵称",
     avatar: "https://example.com/old.jpg",
     bio: "原始简介",
+    qqNumber: "12345678",
   };
 
   it("无变更返回空对象", () => {
@@ -173,12 +183,14 @@ describe("buildUpdatePayload", () => {
       nickname: "新昵称",
       avatar: "https://example.com/new.jpg",
       bio: "新简介",
+      qqNumber: "87654321",
     };
     const payload = buildUpdatePayload(form, original);
     expect(payload).toEqual({
       nickname: "新昵称",
       avatar: "https://example.com/new.jpg",
       bio: "新简介",
+      qqNumber: "87654321",
     });
   });
 

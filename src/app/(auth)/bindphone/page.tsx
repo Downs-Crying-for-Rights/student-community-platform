@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Smartphone, AlertCircle } from "lucide-react";
 import { phoneSchema, verificationCodeSchema } from "@/lib/validators";
+import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required";
 
 export default function BindPhonePage() {
   return (
@@ -36,6 +37,7 @@ function BindPhoneContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, update } = useSession();
+  const verificationRequired = useSmsVerificationRequired();
 
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -146,9 +148,9 @@ function BindPhoneContent() {
     if (!phoneResult.success) {
       fieldErrors.phone = phoneResult.error.issues[0].message;
     }
-    const codeResult = verificationCodeSchema.safeParse(code.trim());
-    if (!codeResult.success) {
-      fieldErrors.code = codeResult.error.issues[0].message;
+    if (verificationRequired) {
+      const codeResult = verificationCodeSchema.safeParse(code.trim());
+      if (!codeResult.success) fieldErrors.code = codeResult.error.issues[0].message;
     }
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
@@ -161,7 +163,7 @@ function BindPhoneContent() {
       const res = await fetch("/api/auth/bindphone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone.trim(), code: code.trim() }),
+        body: JSON.stringify({ phone: phone.trim(), ...(verificationRequired ? { code: code.trim() } : {}) }),
       });
 
       if (!res.ok) {
@@ -235,7 +237,7 @@ function BindPhoneContent() {
                   aria-describedby={errors.phone ? "bind-phone-error" : undefined}
                   aria-label="手机号"
                 />
-                <Button
+                {verificationRequired && <Button
                   type="button"
                   variant="outline"
                   onClick={handleSendCode}
@@ -244,7 +246,7 @@ function BindPhoneContent() {
                   aria-label={countdown > 0 ? `${countdown} 秒后可重新发送` : "发送验证码"}
                 >
                   {countdown > 0 ? `${countdown}s` : "发送验证码"}
-                </Button>
+                </Button>}
               </div>
               {errors.phone && (
                 <p id="bind-phone-error" className="text-xs text-red-500" role="alert">
@@ -254,7 +256,7 @@ function BindPhoneContent() {
             </div>
 
             {/* Verification code input */}
-            <div className="space-y-2">
+            {verificationRequired && <div className="space-y-2">
               <Label htmlFor="bind-code">验证码</Label>
               <Input
                 id="bind-code"
@@ -278,7 +280,7 @@ function BindPhoneContent() {
                   {errors.code}
                 </p>
               )}
-            </div>
+            </div>}
 
             {/* Submit button */}
             <Button

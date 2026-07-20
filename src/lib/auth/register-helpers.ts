@@ -5,7 +5,7 @@ import type { Prisma } from "@prisma/client";
 export interface CreateUserParams {
   email: string;
   password: string;
-  phone?: string;
+  phone: string;
   nickname: string;
   /** Additional fields to set on the user record (e.g. dcrAccess, dcrPledgeSigned) */
   extraData?: Record<string, unknown>;
@@ -55,7 +55,7 @@ export async function checkPhoneUnique(phone: string): Promise<{ error: string; 
 /**
  * 创建用户。
  *
- * 封装邮箱唯一性检查、可选手机号唯一性检查和密码哈希，供
+ * 封装邮箱、手机号唯一性检查和密码哈希，供
  * register 和 invite 注册流程复用。登录会话由客户端在注册成功后通过
  * NextAuth Credentials Provider 创建，避免把数据库 Session 与 JWT 会话混用。
  *
@@ -75,12 +75,9 @@ export async function createUserWithSession({
     return { success: false, ...emailError };
   }
 
-  // 手机号只在 DCR 准入或邀请码注册场景提供。
-  if (phone) {
-    const phoneError = await checkPhoneUnique(phone);
-    if (phoneError) {
-      return { success: false, ...phoneError };
-    }
+  const phoneError = await checkPhoneUnique(phone);
+  if (phoneError) {
+    return { success: false, ...phoneError };
   }
 
   // 密码哈希
@@ -95,6 +92,7 @@ export async function createUserWithSession({
         phone,
         nickname,
         ...extraData,
+        profileCompletionRequired: true,
       },
     });
 

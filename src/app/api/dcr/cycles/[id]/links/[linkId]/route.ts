@@ -7,6 +7,7 @@ import {
 } from "@/lib/mutual-aid-cycle";
 import { z } from "zod";
 import { sendAdminActionMail } from "@/lib/mail";
+import prisma from "@/lib/prisma";
 
 const linkActionSchema = z.object({
   action: z.enum(["ACCEPTED", "REJECTED", "IN_PROGRESS", "COMPLETED", "DISPUTED"]),
@@ -27,6 +28,14 @@ export const PATCH = withAuth(async (
   try {
     const { id: cycleId, linkId } = context.params;
     const userId = req.user.id;
+
+    const linkExists = await prisma.mutualAidLink.findFirst({
+      where: { id: linkId, cycleId },
+      select: { id: true },
+    });
+    if (!linkExists) {
+      return NextResponse.json({ error: "互助关系不存在" }, { status: 404 });
+    }
 
     const body = await req.json();
     const parsed = linkActionSchema.safeParse(body);

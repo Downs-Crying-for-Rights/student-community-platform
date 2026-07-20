@@ -153,8 +153,8 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
     // Determine sort order
     const orderBy =
       sort === "popular"
-        ? [{ likeCount: "desc" as const }, { createdAt: "desc" as const }]
-        : [{ createdAt: "desc" as const }];
+        ? [{ isPinned: "desc" as const }, { pinnedAt: "desc" as const }, { likeCount: "desc" as const }, { createdAt: "desc" as const }]
+        : [{ isPinned: "desc" as const }, { pinnedAt: "desc" as const }, { createdAt: "desc" as const }];
 
     const [posts, total] = await Promise.all([
       prisma.post.findMany({

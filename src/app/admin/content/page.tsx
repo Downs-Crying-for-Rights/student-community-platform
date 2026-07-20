@@ -13,6 +13,7 @@ interface PostItem {
   title: string;
   content: string;
   status: string;
+  isPinned: boolean;
   createdAt: string;
   author: { id: string; nickname: string | null; email: string | null };
   board: { id: string; name: string };
@@ -59,6 +60,7 @@ export default function AdminContentPage() {
   const [postsSearch, setPostsSearch] = useState("");
   const [postsSearchInput, setPostsSearchInput] = useState("");
   const [postsLoading, setPostsLoading] = useState(false);
+  const [postsActionError, setPostsActionError] = useState("");
 
   // Comments state
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -123,12 +125,21 @@ export default function AdminContentPage() {
   // ==================== Actions ====================
 
   const handlePostStatusChange = async (postId: string, status: string) => {
+    const reason = window.prompt("请输入帖子状态调整原因：");
+    if (!reason?.trim()) return;
+
+    setPostsActionError("");
     const res = await fetch(`/api/admin/posts/${postId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, reason: reason.trim() }),
     });
-    if (res.ok) fetchPosts();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setPostsActionError(data.error || "帖子状态更新失败");
+      return;
+    }
+    await fetchPosts();
   };
 
   const handleCommentToggle = async (commentId: string, isDeleted: boolean) => {
@@ -138,6 +149,19 @@ export default function AdminContentPage() {
       body: JSON.stringify({ isDeleted }),
     });
     if (res.ok) fetchComments();
+  };
+
+  const handlePostPinToggle = async (post: PostItem) => {
+    const reason = window.prompt(`请输入${post.isPinned ? "取消置顶" : "置顶"}原因：`);
+    if (!reason?.trim()) return;
+    const res = await fetch(`/api/admin/posts/${post.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isPinned: !post.isPinned, reason: reason.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) setPostsActionError(data.error || "置顶状态更新失败");
+    else await fetchPosts();
   };
 
   // ==================== Render ====================
@@ -204,6 +228,11 @@ export default function AdminContentPage() {
 
           <Card>
             <CardContent className="p-0">
+              {postsActionError && (
+                <div className="border-b bg-red-50 p-3 text-sm text-red-700" role="alert">
+                  {postsActionError}
+                </div>
+              )}
               {postsLoading ? (
                 <div className="p-8 text-center text-muted-foreground">加载中...</div>
               ) : (
@@ -231,6 +260,7 @@ export default function AdminContentPage() {
                                 className="font-medium hover:underline line-clamp-1"
                               >
                                 {post.title}
+                                {post.isPinned && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">置顶</span>}
                               </a>
                             </td>
                             <td className="p-3 text-xs">
@@ -256,6 +286,7 @@ export default function AdminContentPage() {
                                   <option key={s} value={s}>{STATUS_LABELS[s]}</option>
                                 ))}
                               </select>
+                              <Button type="button" size="sm" variant="ghost" className="ml-2 h-7 px-2 text-xs" disabled={post.status !== "PUBLISHED" && !post.isPinned} onClick={() => void handlePostPinToggle(post)}>{post.isPinned ? "取消置顶" : "置顶"}</Button>
                             </td>
                           </tr>
                         ))}

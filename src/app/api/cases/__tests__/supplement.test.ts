@@ -58,6 +58,7 @@ const body = {
     demands: ["停止补课"],
     confirmations: [true, true, true],
     grade: "高二",
+    riskPreference: "仅站内沟通",
   },
 };
 

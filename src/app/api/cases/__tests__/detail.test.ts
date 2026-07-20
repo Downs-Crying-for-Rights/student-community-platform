@@ -283,6 +283,27 @@ describe("PATCH /api/cases/[id]", () => {
     expect(data.case.status).toBe("IN_PROGRESS");
   });
 
+  it("提交者即使有协助权限也不能接取自己的委托", async () => {
+    setSession("user1", "DCR_HELPER");
+    mockCaseFindUnique.mockResolvedValue({
+      ...baseCaseRecord,
+      status: "OPENED",
+      submitterId: "user1",
+      submitter: { id: "user1" },
+      handler: null,
+    });
+
+    const { PATCH } = await import("../[id]/route");
+    const res = await PATCH(
+      makePatchRequest("case1", { status: "IN_PROGRESS" }),
+      { params: Promise.resolve({ id: "case1" }) } as never,
+    );
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toContain("自己提交");
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
   it("DCRHelper 不能接取仍在管理员审核中的工单", async () => {
     setSession("helper1", "DCR_HELPER");
     mockCaseFindUnique.mockResolvedValue({
@@ -425,6 +446,29 @@ describe("PATCH /api/cases/[id] - JOIN action", () => {
 
     expect(res.status).toBe(200);
     expect(data.case.status).toBe("IN_PROGRESS");
+  });
+
+  it("提交者不能通过 JOIN 加入自己的委托", async () => {
+    setSession("user1", "DCR_HELPER");
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
+    mockCaseFindUnique.mockResolvedValue({
+      ...baseCaseRecord,
+      status: "OPENED",
+      submitterId: "user1",
+      submitter: { id: "user1" },
+      handler: null,
+      handlers: [],
+    });
+
+    const { PATCH } = await import("../[id]/route");
+    const res = await PATCH(
+      makePatchRequest("case1", { action: "JOIN" }),
+      { params: Promise.resolve({ id: "case1" }) } as never,
+    );
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toContain("自己提交");
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   it("DCRHelper 可以通过 JOIN 加入 IN_PROGRESS 工单（不改变状态）", async () => {

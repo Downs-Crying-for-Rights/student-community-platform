@@ -50,13 +50,8 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
-vi.mock("@/lib/sms/verification", () => ({
-  verifyCode: vi.fn(),
-}));
-
 import { authOptions, escapeHtmlAttribute } from "../auth";
 import bcrypt from "bcryptjs";
-import { verifyCode } from "@/lib/sms/verification";
 import QQProvider, { parseCallbackResponse } from "../auth/qq-provider";
 
 describe("NextAuth 配置", () => {
@@ -67,6 +62,16 @@ describe("NextAuth 配置", () => {
   });
 
   describe("魔法链接配置", () => {
+    it("Adapter 不允许邮箱魔法链接或 QQ 绕过短信注册", async () => {
+      await expect(authOptions.adapter!.createUser!({
+        email: "adapter@example.com",
+        emailVerified: null,
+        name: null,
+        image: null,
+      } as any)).rejects.toThrow("RegistrationRequired");
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
     it("应转义 HTML 链接中的查询参数分隔符", () => {
       expect(escapeHtmlAttribute('https://example.com/callback?a=1&b="2"')).toBe(
         "https://example.com/callback?a=1&amp;b=&quot;2&quot;",
@@ -287,58 +292,9 @@ describe("NextAuth 配置", () => {
     });
   });
 
-  describe("手机号验证码登录 authorize", () => {
-    const getSmsAuthorize = () => {
-      const provider = authOptions.providers.find(
-        (p: any) => p.id === "credentials-sms"
-      ) as any;
-      return provider.authorize as (credentials: any) => Promise<any>;
-    };
-
-    it("正确验证码应返回用户对象", async () => {
-      const authorize = getSmsAuthorize();
-      vi.mocked(verifyCode).mockResolvedValueOnce(true);
-      mockFindFirst.mockResolvedValueOnce({
-        id: "user-1",
-        email: "test@example.com",
-        nickname: "测试用户",
-        role: "USER",
-        phone: "13800138000",
-      });
-
-      const result = await authorize({
-        phone: "13800138000",
-        code: "888888",
-      });
-
-      expect(result).toEqual({
-        id: "user-1",
-        email: "test@example.com",
-        name: "测试用户",
-        role: "USER",
-        phone: "13800138000",
-      });
-      expect(verifyCode).toHaveBeenCalledWith("13800138000", "888888", "login");
-    });
-
-    it("错误验证码应抛出 '验证码错误或已过期'", async () => {
-      const authorize = getSmsAuthorize();
-      vi.mocked(verifyCode).mockResolvedValueOnce(false);
-
-      await expect(
-        authorize({ phone: "13800138000", code: "000000" })
-      ).rejects.toThrow("验证码错误或已过期");
-    });
-
-    it("手机号不存在时应要求先完成注册", async () => {
-      const authorize = getSmsAuthorize();
-      vi.mocked(verifyCode).mockResolvedValueOnce(true);
-      mockFindFirst.mockResolvedValueOnce(null); // No existing user
-
-      await expect(
-        authorize({ phone: "13900139000", code: "888888" }),
-      ).rejects.toThrow("手机号未注册，请通过注册页完成注册");
-      expect(mockCreate).not.toHaveBeenCalled();
+  describe("登录方式", () => {
+    it("不再注册手机号验证码登录 Provider", () => {
+      expect(authOptions.providers.some((provider) => provider.id === "credentials-sms")).toBe(false);
     });
   });
 });

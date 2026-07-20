@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
 import { sendAdminActionMail } from "@/lib/mail";
+import { reconcileRejectedDcrApplications } from "@/lib/dcr-application-reconciliation";
 
 // ==================== Schemas ====================
 
@@ -142,6 +143,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     const caseRecord = await prisma.$transaction(async (tx) => {
       let hasOtherPendingApplication = false;
       if (!user.dcrAccess) {
+        await reconcileRejectedDcrApplications(tx, userId);
         hasOtherPendingApplication = Boolean(await tx.accessApplication.findFirst({
           where: { applicantId: userId, type: "DCR", status: "PENDING" },
           select: { id: true },

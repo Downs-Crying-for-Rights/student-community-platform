@@ -56,6 +56,7 @@ export const REQUIRED_FIELDS: Record<string, string> = {
   feeStatus: "收费情况",
   reportChannel: "举报途径(区号+12345 或部门+电话)",
   pledge: "真实性承诺",
+  riskPreference: "风险偏好",
 };
 
 /** 区号+12345 正则 */
@@ -266,6 +267,7 @@ export function extractFields(input: DelegationInput): ExtractionResult {
   // --- 可选字段 ---
   if (input.expectedHelperProvince) fields.expectedHelperProvince = input.expectedHelperProvince;
   if (input.riskPreference) fields.riskPreference = input.riskPreference;
+  else missing.push(REQUIRED_FIELDS.riskPreference);
 
   // --- 态度句检测 ---
   if (hasAttitudePhrases(allText)) {

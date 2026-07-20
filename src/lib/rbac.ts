@@ -215,6 +215,17 @@ export function withAuth(
       return NextResponse.json({ error: "账号已被封禁" }, { status: 403 });
     }
 
+    const pathname = new URL(req.url).pathname;
+    const profileCompletionAllowed = pathname.startsWith("/api/users/")
+      || pathname === "/api/upload"
+      || /^\/api\/announcements\/[^/]+\/dismiss$/.test(pathname);
+    if (session.user.profileCompletionRequired && !profileCompletionAllowed) {
+      return NextResponse.json(
+        { error: "请先补齐昵称、头像和QQ号", profileCompletionRequired: true },
+        { status: 403 },
+      );
+    }
+
     const userRole = (session.user.role ?? "USER") as Role;
 
     if (requiredRole && !hasMinimumRole(userRole, requiredRole)) {

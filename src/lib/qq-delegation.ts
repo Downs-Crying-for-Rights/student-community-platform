@@ -10,7 +10,7 @@ const optionalText = (max: number) =>
     .nullish()
     .transform((value) => value || undefined);
 
-export const QQ_DELEGATION_SCHEMA_VERSION = 1 as const;
+export const QQ_DELEGATION_SCHEMA_VERSION = 2 as const;
 
 export const qqDelegationDraftSchema = z
   .object({
@@ -37,7 +37,7 @@ export const qqDelegationDraftSchema = z
     province: trimmedString(50),
     city: trimmedString(50),
     expectedHelperProvince: optionalText(50),
-    riskPreference: z.enum(["仅站内沟通", "可电话", "仅模板咨询"]),
+    riskPreference: z.enum(["不限", "仅站内沟通", "可电话", "仅模板咨询"]),
   })
   .strict()
   .superRefine((draft, context) => {

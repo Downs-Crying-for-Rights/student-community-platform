@@ -23,23 +23,27 @@ import {
   AlertCircle,
   KeyRound,
   Lock,
-  Smartphone,
   UserPlus,
 } from "lucide-react";
 import {
   loginPasswordSchema,
-  loginSmsSchema,
   phoneSchema,
   registerSchema,
   inviteRegisterSchema,
+  resetPasswordSchema,
 } from "@/lib/validators";
 import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
+import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required";
+import { verificationCodeSchema } from "@/lib/validators";
+import { LOGIN_POLICIES, type LoginPolicyId } from "@/lib/login-policies";
 
-type ViewState = "form" | "verify" | "expired" | "error" | "register";
-export type LoginTab = "email" | "password" | "sms";
+type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
+export type LoginTab = "email" | "password";
+
+const USAGE_CONSENT_KEYS = new Set(["dm_consent", "chat_monitoring_consent", "community_guidelines"]);
 
 /** All tabs available on the login page */
-export const LOGIN_TABS: LoginTab[] = ["email", "password", "sms"];
+export const LOGIN_TABS: LoginTab[] = ["email", "password"];
 
 /** Represents the form state across all login tabs */
 export interface LoginFormState {
@@ -47,9 +51,6 @@ export interface LoginFormState {
   pwEmail: string;
   pwPassword: string;
   pwErrors: Record<string, string>;
-  smsPhone: string;
-  smsCode: string;
-  smsErrors: Record<string, string>;
   errorMessage: string;
 }
 
@@ -60,9 +61,6 @@ export function getEmptyFormState(): LoginFormState {
     pwEmail: "",
     pwPassword: "",
     pwErrors: {},
-    smsPhone: "",
-    smsCode: "",
-    smsErrors: {},
     errorMessage: "",
   };
 }
@@ -88,7 +86,7 @@ export default function LoginPage() {
         <div className="flex min-h-screen items-center justify-center px-4">
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
-              <CardTitle className="text-2xl">登录学生交流社区</CardTitle>
+              <CardTitle className="text-2xl">登录学互会</CardTitle>
               <CardDescription>加载中...</CardDescription>
             </CardHeader>
           </Card>
@@ -103,14 +101,17 @@ export default function LoginPage() {
 function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const verificationRequired = useSmsVerificationRequired();
 
   // View state
   const [view, setView] = useState<ViewState>("form");
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Active tab
   const [activeTab, setActiveTab] = useState<LoginTab>("email");
+  const [loginAgreementAccepted, setLoginAgreementAccepted] = useState(false);
 
   // Email tab state
   const [email, setEmail] = useState("");
@@ -120,29 +121,28 @@ function LoginContent() {
   const [pwPassword, setPwPassword] = useState("");
   const [pwErrors, setPwErrors] = useState<Record<string, string>>({});
 
-  // SMS tab state
-  const [smsPhone, setSmsPhone] = useState("");
-  const [smsCode, setSmsCode] = useState("");
-  const [smsErrors, setSmsErrors] = useState<Record<string, string>>({});
-  const [countdown, setCountdown] = useState(0);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Password reset state
+  const [resetPhone, setResetPhone] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetErrors, setResetErrors] = useState<Record<string, string>>({});
+  const [resetCountdown, setResetCountdown] = useState(0);
+  const resetCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Invite code state
   const [showInvite, setShowInvite] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [invitePassword, setInvitePassword] = useState("");
-  const [invitePhone, setInvitePhone] = useState("");
-  const [inviteNickname, setInviteNickname] = useState("");
-  const [inviteSmsCode, setInviteSmsCode] = useState("");
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({});
-  const [inviteCountdown, setInviteCountdown] = useState(0);
-  const inviteCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Registration state
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regNickname, setRegNickname] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [regCode, setRegCode] = useState("");
+  const [regCountdown, setRegCountdown] = useState(0);
+  const regCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
   const [agreedKeys, setAgreedKeys] = useState<Record<string, boolean>>({});
   const [showAgreement, setShowAgreement] = useState("");
@@ -155,10 +155,13 @@ function LoginContent() {
       fetch("/api/site-content")
         .then(r => r.json())
         .then(d => {
-          setAllKeys(d.items ?? []);
+          const registrationAgreements = (d.items ?? []).filter(
+            (item: { key: string }) => !USAGE_CONSENT_KEYS.has(item.key),
+          );
+          setAllKeys(registrationAgreements);
           // Initialize all as unchecked
           const init: Record<string, boolean> = {};
-          (d.items ?? []).forEach((k: { key: string }) => { init[k.key] = false; });
+          registrationAgreements.forEach((item: { key: string }) => { init[item.key] = false; });
           setAgreedKeys(init);
         })
         .catch(() => {});
@@ -182,8 +185,8 @@ function LoginContent() {
   // Cleanup countdown on unmount
   useEffect(() => {
     return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      if (inviteCountdownRef.current) clearInterval(inviteCountdownRef.current);
+      if (regCountdownRef.current) clearInterval(regCountdownRef.current);
+      if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
     };
   }, []);
 
@@ -195,6 +198,9 @@ function LoginContent() {
         return "服务器配置错误，请联系管理员。";
       case "CredentialsSignin":
         return "邮箱或密码错误";
+      case "EmailCreateAccount":
+      case "OAuthCreateAccount":
+        return "该账号尚未注册，请先使用手机号验证码完成注册。";
       default:
         return "登录过程中发生错误，请重试。";
     }
@@ -204,8 +210,7 @@ function LoginContent() {
   const handleTabChange = useCallback((value: string) => {
     const newTab = value as LoginTab;
     const prevState: LoginFormState = {
-      email, pwEmail, pwPassword, pwErrors,
-      smsPhone, smsCode, smsErrors, errorMessage,
+      email, pwEmail, pwPassword, pwErrors, errorMessage,
     };
     const result = computeTabChangeState(prevState, newTab);
     setActiveTab(result.activeTab);
@@ -213,16 +218,14 @@ function LoginContent() {
     setPwEmail(result.formState.pwEmail);
     setPwPassword(result.formState.pwPassword);
     setPwErrors(result.formState.pwErrors);
-    setSmsPhone(result.formState.smsPhone);
-    setSmsCode(result.formState.smsCode);
-    setSmsErrors(result.formState.smsErrors);
     setErrorMessage(result.formState.errorMessage);
     if (view === "error") setView("form");
-  }, [view, email, pwEmail, pwPassword, pwErrors, smsPhone, smsCode, smsErrors, errorMessage]);
+  }, [view, email, pwEmail, pwPassword, pwErrors, errorMessage]);
 
   // ===== Email magic link =====
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!loginAgreementAccepted) return;
     if (!email.trim()) return;
 
     setLoading(true);
@@ -252,6 +255,7 @@ function LoginContent() {
   // ===== Password login =====
   async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!loginAgreementAccepted) return;
     setPwErrors({});
     setErrorMessage("");
 
@@ -293,13 +297,11 @@ function LoginContent() {
     }
   }
 
-  // ===== SMS login =====
-  async function handleSendCode() {
-    setSmsErrors({});
-
-    const result = phoneSchema.safeParse(smsPhone.trim());
+  async function handleRegisterSendCode() {
+    setRegErrors((current) => ({ ...current, phone: "", code: "" }));
+    const result = phoneSchema.safeParse(regPhone.trim());
     if (!result.success) {
-      setSmsErrors({ phone: result.error.issues[0].message });
+      setRegErrors((current) => ({ ...current, phone: result.error.issues[0].message }));
       return;
     }
 
@@ -309,78 +311,120 @@ function LoginContent() {
       const res = await fetch("/api/sms/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: smsPhone.trim(), purpose: "login" }),
+        body: JSON.stringify({ phone: regPhone.trim(), purpose: "register" }),
       });
 
       if (res.status === 429) {
-        setSmsErrors({ phone: "请求过于频繁，请稍后再试" });
+        setRegErrors((current) => ({ ...current, phone: "请求过于频繁，请稍后再试" }));
         return;
       }
 
       if (!res.ok) {
         const data = await res.json();
-        setSmsErrors({ phone: data.error || "验证码发送失败" });
+        setRegErrors((current) => ({ ...current, phone: data.error || "验证码发送失败" }));
         return;
       }
 
       // Start 60s countdown
-      setCountdown(60);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      countdownRef.current = setInterval(() => {
-        setCountdown((prev) => {
+      setRegCountdown(60);
+      if (regCountdownRef.current) clearInterval(regCountdownRef.current);
+      regCountdownRef.current = setInterval(() => {
+        setRegCountdown((prev) => {
           if (prev <= 1) {
-            if (countdownRef.current) clearInterval(countdownRef.current);
-            countdownRef.current = null;
+            if (regCountdownRef.current) clearInterval(regCountdownRef.current);
+            regCountdownRef.current = null;
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
     } catch {
-      setSmsErrors({ phone: "网络错误，请检查网络连接后重试" });
+      setRegErrors((current) => ({ ...current, phone: "网络错误，请检查网络连接后重试" }));
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleSmsSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSmsErrors({});
-    setErrorMessage("");
-
-    const result = loginSmsSchema.safeParse({
-      phone: smsPhone.trim(),
-      code: smsCode.trim(),
-    });
-
-    if (!result.success) {
-      const fieldErrors: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        const field = issue.path[0] as string;
-        if (!fieldErrors[field]) fieldErrors[field] = issue.message;
-      }
-      setSmsErrors(fieldErrors);
+  async function handleResetSendCode() {
+    setResetErrors({});
+    const parsed = phoneSchema.safeParse(resetPhone.trim());
+    if (!parsed.success) {
+      setResetErrors({ phone: parsed.error.issues[0].message });
       return;
     }
-
     setLoading(true);
-
     try {
-      const res = await signIn("credentials-sms", {
-        phone: smsPhone.trim(),
-        code: smsCode.trim(),
-        redirect: false,
-        callbackUrl: "/",
+      const response = await fetch("/api/auth/password/reset/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: resetPhone.trim() }),
       });
-
-      if (res?.error) {
-        setErrorMessage("验证码错误或已过期");
-      } else if (res?.url) {
-        router.push(res.url);
-        router.refresh();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setResetErrors({ phone: data.error || "验证码发送失败" });
+        return;
       }
+      setResetCountdown(60);
+      if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
+      resetCountdownRef.current = setInterval(() => {
+        setResetCountdown((previous) => {
+          if (previous <= 1) {
+            if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
+            resetCountdownRef.current = null;
+            return 0;
+          }
+          return previous - 1;
+        });
+      }, 1000);
     } catch {
-      setErrorMessage("网络错误，请检查网络连接后重试。");
+      setResetErrors({ phone: "网络错误，请稍后重试" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setResetErrors({});
+    const parsed = resetPasswordSchema.safeParse({
+      phone: resetPhone.trim(),
+      ...(verificationRequired ? { code: resetCode.trim() } : {}),
+      password: resetPassword,
+      confirmPassword: resetConfirmPassword,
+    });
+    if (!parsed.success || (verificationRequired && !verificationCodeSchema.safeParse(resetCode.trim()).success)) {
+      const errors: Record<string, string> = {};
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) {
+          const field = String(issue.path[0]);
+          if (!errors[field]) errors[field] = issue.message;
+        }
+      }
+      if (verificationRequired && !errors.code) errors.code = "验证码为 6 位数字";
+      setResetErrors(errors);
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/password/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.data),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setResetErrors({ form: data.error || "密码重置失败" });
+        return;
+      }
+      setResetPhone("");
+      setResetCode("");
+      setResetPassword("");
+      setResetConfirmPassword("");
+      setActiveTab("password");
+      setSuccessMessage("密码已重置，请使用新密码登录");
+      setView("form");
+    } catch {
+      setResetErrors({ form: "网络错误，请稍后重试" });
     } finally {
       setLoading(false);
     }
@@ -388,141 +432,32 @@ function LoginContent() {
 
   // ===== QQ login =====
   function handleQQLogin() {
+    if (!loginAgreementAccepted) return;
     signIn("qq");
   }
 
-  // ===== Invite code =====
-  async function handleInviteSendCode() {
-    setInviteErrors({});
-
-    const result = phoneSchema.safeParse(invitePhone.trim());
-    if (!result.success) {
-      setInviteErrors((prev) => ({ ...prev, phone: result.error.issues[0].message }));
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/sms/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: invitePhone.trim(), purpose: "login" }),
-      });
-
-      if (res.status === 429) {
-        setInviteErrors((prev) => ({ ...prev, phone: "请求过于频繁，请稍后再试" }));
-        return;
-      }
-
-      if (!res.ok) {
-        const data = await res.json();
-        setInviteErrors((prev) => ({ ...prev, phone: data.error || "验证码发送失败" }));
-        return;
-      }
-
-      setInviteCountdown(60);
-      if (inviteCountdownRef.current) clearInterval(inviteCountdownRef.current);
-      inviteCountdownRef.current = setInterval(() => {
-        setInviteCountdown((prev) => {
-          if (prev <= 1) {
-            if (inviteCountdownRef.current) clearInterval(inviteCountdownRef.current);
-            inviteCountdownRef.current = null;
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } catch {
-      setInviteErrors((prev) => ({ ...prev, phone: "网络错误，请检查网络连接后重试" }));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleInviteSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setInviteErrors({});
-    setErrorMessage("");
-
-    const result = inviteRegisterSchema.safeParse({
-      inviteCode: inviteCode.trim(),
-      email: inviteEmail.trim(),
-      password: invitePassword,
-      phone: invitePhone.trim(),
-      nickname: inviteNickname.trim(),
-      code: inviteSmsCode.trim(),
-    });
-
-    if (!result.success) {
-      const fieldErrors: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        const field = issue.path[0] as string;
-        if (!fieldErrors[field]) fieldErrors[field] = issue.message;
-      }
-      setInviteErrors(fieldErrors);
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/auth/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inviteCode: inviteCode.trim(),
-          email: inviteEmail.trim(),
-          password: invitePassword,
-          phone: invitePhone.trim(),
-          nickname: inviteNickname.trim(),
-          code: inviteSmsCode.trim(),
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMessage(data.error || "邀请码注册失败，请重试。");
-        return;
-      }
-
-      // 自动登录：注册成功后用密码登录以获取 JWT
-      const signInRes = await signIn("credentials-password", {
-        email: inviteEmail.trim(),
-        password: invitePassword,
-        redirect: false,
-        callbackUrl: "/",
-      });
-
-      if (signInRes?.error) {
-        setErrorMessage("注册成功但自动登录失败，请手动登录");
-        setView("form");
-        return;
-      }
-
-      if (signInRes?.url) {
-        router.push(signInRes.url);
-        router.refresh();
-      }
-    } catch {
-      setErrorMessage("网络错误，请检查网络连接后重试。");
-    } finally {
-      setLoading(false);
-    }
+  function openLoginPolicy(policyId: LoginPolicyId) {
+    const policy = LOGIN_POLICIES[policyId];
+    setAgreementContent(policy.content);
+    setShowAgreement(policyId);
   }
 
   // ===== Registration =====
   async function handleRegisterSubmit(e: React.FormEvent) {
     e.preventDefault();
     setRegErrors({});
+    setInviteErrors({});
     setErrorMessage("");
 
-    const result = registerSchema.safeParse({
+    const registrationData = {
       email: regEmail.trim(),
       password: regPassword,
       nickname: regNickname.trim(),
-    });
+      phone: regPhone.trim(),
+      code: regCode.trim(),
+      ...(showInvite ? { inviteCode: inviteCode.trim() } : {}),
+    };
+    const result = (showInvite ? inviteRegisterSchema : registerSchema).safeParse(registrationData);
 
     if (!result.success) {
       const fieldErrors: Record<string, string> = {};
@@ -531,20 +466,17 @@ function LoginContent() {
         if (!fieldErrors[field]) fieldErrors[field] = issue.message;
       }
       setRegErrors(fieldErrors);
+      if (fieldErrors.inviteCode) setInviteErrors({ inviteCode: fieldErrors.inviteCode });
       return;
     }
 
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch(showInvite ? "/api/auth/invite" : "/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: regEmail.trim(),
-          password: regPassword,
-          nickname: regNickname.trim(),
-        }),
+        body: JSON.stringify(registrationData),
       });
 
       const data = await res.json();
@@ -686,13 +618,68 @@ function LoginContent() {
     );
   }
 
+  // ===== Password reset view =====
+  if (view === "reset-password") {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <KeyRound className="h-7 w-7 text-primary" />
+            </div>
+            <CardTitle>重置密码</CardTitle>
+            <CardDescription>使用账户已绑定的手机号验证身份</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              {resetErrors.form && <p className="rounded-md bg-red-50 p-3 text-sm text-red-600" role="alert">{resetErrors.form}</p>}
+              <div className="space-y-2">
+                <Label htmlFor="reset-phone">已绑定手机号</Label>
+                <div className="flex gap-2">
+                  <Input id="reset-phone" type="tel" value={resetPhone} maxLength={11} autoComplete="tel" onChange={(event) => setResetPhone(event.target.value)} disabled={loading} />
+                  {verificationRequired && (
+                    <Button type="button" variant="outline" onClick={() => void handleResetSendCode()} disabled={loading || resetCountdown > 0 || !resetPhone.trim()}>
+                      {resetCountdown > 0 ? `${resetCountdown}s` : "发送验证码"}
+                    </Button>
+                  )}
+                </div>
+                {resetErrors.phone && <p className="text-xs text-red-500" role="alert">{resetErrors.phone}</p>}
+              </div>
+              {verificationRequired && <div className="space-y-2">
+                <Label htmlFor="reset-code">验证码</Label>
+                <Input id="reset-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={resetCode} onChange={(event) => setResetCode(event.target.value)} disabled={loading} />
+                {resetErrors.code && <p className="text-xs text-red-500" role="alert">{resetErrors.code}</p>}
+              </div>}
+              <div className="space-y-2">
+                <Label htmlFor="reset-password">新密码</Label>
+                <Input id="reset-password" type="password" autoComplete="new-password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} disabled={loading} />
+                {resetErrors.password && <p className="text-xs text-red-500" role="alert">{resetErrors.password}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reset-confirm-password">确认新密码</Label>
+                <Input id="reset-confirm-password" type="password" autoComplete="new-password" value={resetConfirmPassword} onChange={(event) => setResetConfirmPassword(event.target.value)} disabled={loading} />
+                {resetErrors.confirmPassword && <p className="text-xs text-red-500" role="alert">{resetErrors.confirmPassword}</p>}
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>{loading ? "重置中..." : "确认重置密码"}</Button>
+            </form>
+          </CardContent>
+          <CardFooter className="justify-center">
+            <Button type="button" variant="ghost" onClick={() => { setResetErrors({}); setView("form"); }}>
+              <ArrowLeft className="mr-2 h-4 w-4" />返回登录
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
   // ===== Register view =====
   if (view === "register") {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">注册学生交流社区</CardTitle>
+            <CardTitle className="text-2xl">注册学互会</CardTitle>
             <CardDescription>创建账户，开始探索</CardDescription>
           </CardHeader>
 
@@ -707,6 +694,9 @@ function LoginContent() {
               </div>
             )}
 
+            <div className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+              普通注册无需邀请码，填写以下信息并同意协议即可注册。
+            </div>
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="reg-nickname">用户名</Label>
@@ -777,6 +767,82 @@ function LoginContent() {
                 )}
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="reg-phone">手机号</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="reg-phone"
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="请输入手机号"
+                    value={regPhone}
+                    onChange={(event) => {
+                      setRegPhone(event.target.value);
+                      if (regErrors.phone) setRegErrors((current) => ({ ...current, phone: "" }));
+                    }}
+                    autoComplete="tel"
+                    maxLength={11}
+                    disabled={loading}
+                    aria-invalid={Boolean(regErrors.phone)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleRegisterSendCode()}
+                    disabled={loading || regCountdown > 0 || !regPhone.trim()}
+                    className="shrink-0 whitespace-nowrap"
+                  >
+                    {regCountdown > 0 ? `${regCountdown}s` : "发送验证码"}
+                  </Button>
+                </div>
+                {regErrors.phone && <p className="text-xs text-red-500" role="alert">{regErrors.phone}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reg-sms-code">短信验证码</Label>
+                <Input
+                  id="reg-sms-code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="请输入 6 位验证码"
+                  value={regCode}
+                  onChange={(event) => {
+                    setRegCode(event.target.value);
+                    if (regErrors.code) setRegErrors((current) => ({ ...current, code: "" }));
+                  }}
+                  maxLength={6}
+                  disabled={loading}
+                  aria-invalid={Boolean(regErrors.code)}
+                />
+                {regErrors.code && <p className="text-xs text-red-500" role="alert">{regErrors.code}</p>}
+              </div>
+
+              {showInvite && (
+                <div className="space-y-2">
+                  <Label htmlFor="reg-invite-code">邀请码</Label>
+                  <Input
+                    id="reg-invite-code"
+                    type="text"
+                    placeholder="请输入邀请码"
+                    value={inviteCode}
+                    onChange={(event) => {
+                      setInviteCode(event.target.value);
+                      if (inviteErrors.inviteCode) setInviteErrors({});
+                    }}
+                    maxLength={32}
+                    disabled={loading}
+                    aria-invalid={Boolean(inviteErrors.inviteCode)}
+                    aria-describedby={inviteErrors.inviteCode ? "reg-invite-code-error" : undefined}
+                  />
+                  {inviteErrors.inviteCode && (
+                    <p id="reg-invite-code-error" className="text-xs text-red-500" role="alert">
+                      {inviteErrors.inviteCode}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">邀请码只用于注册资格，不会跳过 DCR 安全准入流程。</p>
+                </div>
+              )}
+
               {/* 用户协议 */}
               <div className="space-y-2">
                 {allKeys.map(({ key, title }) => (
@@ -824,224 +890,20 @@ function LoginContent() {
               </Button>
             </form>
 
-            {/* Divider for invite */}
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-card px-2 text-muted-foreground">
-                  或者
-                </span>
-              </div>
-            </div>
-
-            {/* Invite code registration */}
-            {!showInvite ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                onClick={() => {
-                  setShowInvite(true);
-                  setErrorMessage("");
-                }}
-              >
-                <KeyRound className="mr-2 h-4 w-4" />
-                使用邀请码注册
-              </Button>
-            ) : (
-              <form onSubmit={handleInviteSubmit} className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="invite-code-reg">邀请码</Label>
-                  <Input
-                    id="invite-code-reg"
-                    type="text"
-                    placeholder="请输入邀请码"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                    required
-                    disabled={loading}
-                    maxLength={32}
-                    aria-invalid={!!inviteErrors.inviteCode}
-                    aria-describedby={inviteErrors.inviteCode ? "invite-code-error" : undefined}
-                  />
-                  {inviteErrors.inviteCode && (
-                    <p id="invite-code-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.inviteCode}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-nickname">用户名</Label>
-                  <Input
-                    id="invite-nickname"
-                    type="text"
-                    placeholder="设置你的用户名"
-                    value={inviteNickname}
-                    onChange={(e) => {
-                      setInviteNickname(e.target.value);
-                      if (inviteErrors.nickname) setInviteErrors((prev) => ({ ...prev, nickname: "" }));
-                    }}
-                    autoComplete="username"
-                    disabled={loading}
-                    aria-invalid={!!inviteErrors.nickname}
-                    aria-describedby={inviteErrors.nickname ? "invite-nickname-error" : undefined}
-                  />
-                  {inviteErrors.nickname && (
-                    <p id="invite-nickname-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.nickname}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-email">邮箱地址</Label>
-                  <Input
-                    id="invite-email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={inviteEmail}
-                    onChange={(e) => {
-                      setInviteEmail(e.target.value);
-                      if (inviteErrors.email) setInviteErrors((prev) => ({ ...prev, email: "" }));
-                    }}
-                    autoComplete="email"
-                    disabled={loading}
-                    aria-invalid={!!inviteErrors.email}
-                    aria-describedby={inviteErrors.email ? "invite-email-error" : undefined}
-                  />
-                  {inviteErrors.email && (
-                    <p id="invite-email-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.email}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-password">密码</Label>
-                  <Input
-                    id="invite-password"
-                    type="password"
-                    placeholder="至少 8 个字符"
-                    value={invitePassword}
-                    onChange={(e) => {
-                      setInvitePassword(e.target.value);
-                      if (inviteErrors.password) setInviteErrors((prev) => ({ ...prev, password: "" }));
-                    }}
-                    autoComplete="new-password"
-                    disabled={loading}
-                    aria-invalid={!!inviteErrors.password}
-                    aria-describedby={inviteErrors.password ? "invite-password-error" : undefined}
-                  />
-                  {inviteErrors.password && (
-                    <p id="invite-password-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.password}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-phone">手机号</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="invite-phone"
-                      type="tel"
-                      placeholder="请输入手机号"
-                      value={invitePhone}
-                      onChange={(e) => {
-                        setInvitePhone(e.target.value);
-                        if (inviteErrors.phone) setInviteErrors((prev) => ({ ...prev, phone: "" }));
-                      }}
-                      autoComplete="tel"
-                      disabled={loading}
-                      className="flex-1"
-                      maxLength={11}
-                      aria-invalid={!!inviteErrors.phone}
-                      aria-describedby={inviteErrors.phone ? "invite-phone-error" : undefined}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleInviteSendCode}
-                      disabled={loading || inviteCountdown > 0 || !invitePhone.trim()}
-                      className="shrink-0 whitespace-nowrap"
-                      aria-label={inviteCountdown > 0 ? `${inviteCountdown} 秒后可重新发送` : "发送验证码"}
-                    >
-                      {inviteCountdown > 0 ? `${inviteCountdown}s` : "发送验证码"}
-                    </Button>
-                  </div>
-                  {inviteErrors.phone && (
-                    <p id="invite-phone-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.phone}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invite-sms-code">验证码</Label>
-                  <Input
-                    id="invite-sms-code"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="请输入 6 位验证码"
-                    value={inviteSmsCode}
-                    onChange={(e) => {
-                      setInviteSmsCode(e.target.value);
-                      if (inviteErrors.code) setInviteErrors((prev) => ({ ...prev, code: "" }));
-                    }}
-                    autoComplete="one-time-code"
-                    disabled={loading}
-                    maxLength={6}
-                    aria-invalid={!!inviteErrors.code}
-                    aria-describedby={inviteErrors.code ? "invite-sms-code-error" : undefined}
-                  />
-                  {inviteErrors.code && (
-                    <p id="invite-sms-code-error" className="text-xs text-red-500" role="alert">
-                      {inviteErrors.code}
-                    </p>
-                  )}
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  使用邀请码完成注册后，仍需通过 DCR 安全准入流程
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="flex-1"
-                    onClick={() => {
-                      setShowInvite(false);
-                      setInviteCode("");
-                      setInviteEmail("");
-                      setInvitePassword("");
-                      setInvitePhone("");
-                      setInviteSmsCode("");
-                      setInviteErrors({});
-                      setErrorMessage("");
-                    }}
-                  >
-                    取消
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <span className="flex items-center">
-                        <LoadingSpinner />
-                        注册中...
-                      </span>
-                    ) : (
-                      "注册"
-                    )}
-                  </Button>
-                </div>
-              </form>
-            )}
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                setShowInvite((current) => !current);
+                setInviteCode("");
+                setInviteErrors({});
+                setErrorMessage("");
+              }}
+            >
+              <KeyRound className="mr-2 h-4 w-4" />
+              {showInvite ? "不使用邀请码" : "我有邀请码"}
+            </Button>
 
             <div className="text-center">
               <Button
@@ -1063,7 +925,7 @@ function LoginContent() {
         <Dialog open={!!showAgreement} onOpenChange={(v) => { if (!v) setShowAgreement(""); }}>
           <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{allKeys.find(k => k.key === showAgreement)?.title ?? "协议"}</DialogTitle>
+              <DialogTitle>{allKeys.find(k => k.key === showAgreement)?.title ?? LOGIN_POLICIES[showAgreement as LoginPolicyId]?.title ?? "协议"}</DialogTitle>
             </DialogHeader>
             <SafeMarkdown content={agreementContent || "暂无内容"} />
           </DialogContent>
@@ -1077,7 +939,7 @@ function LoginContent() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">登录学生交流社区</CardTitle>
+          <CardTitle className="text-2xl">登录学互会</CardTitle>
           <CardDescription>选择您喜欢的方式登录</CardDescription>
         </CardHeader>
 
@@ -1092,6 +954,11 @@ function LoginContent() {
               {errorMessage}
             </div>
           )}
+          {successMessage && (
+            <div role="status" className="flex items-center gap-2 rounded-md bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+              <CheckCircle className="h-4 w-4 shrink-0" />{successMessage}
+            </div>
+          )}
 
           {/* Login Tabs */}
           <Tabs
@@ -1099,7 +966,7 @@ function LoginContent() {
             onValueChange={handleTabChange}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-3" aria-label="登录方式">
+            <TabsList className="grid w-full grid-cols-2" aria-label="登录方式">
               <TabsTrigger value="email">
                 <Mail className="mr-1.5 h-4 w-4 hidden sm:inline-block" />
                 邮箱登录
@@ -1107,10 +974,6 @@ function LoginContent() {
               <TabsTrigger value="password">
                 <Lock className="mr-1.5 h-4 w-4 hidden sm:inline-block" />
                 密码登录
-              </TabsTrigger>
-              <TabsTrigger value="sms">
-                <Smartphone className="mr-1.5 h-4 w-4 hidden sm:inline-block" />
-                手机号登录
               </TabsTrigger>
             </TabsList>
 
@@ -1137,7 +1000,7 @@ function LoginContent() {
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={loading || !email.trim()}
+                  disabled={loading || !email.trim() || !loginAgreementAccepted}
                 >
                   {loading ? (
                     <span className="flex items-center">
@@ -1204,7 +1067,7 @@ function LoginContent() {
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={loading}
+                  disabled={loading || !loginAgreementAccepted}
                 >
                   {loading ? (
                     <span className="flex items-center">
@@ -1218,92 +1081,34 @@ function LoginContent() {
                     </span>
                   )}
                 </Button>
+                <button
+                  type="button"
+                  className="w-full text-center text-sm text-primary hover:underline"
+                  onClick={() => { setResetErrors({}); setSuccessMessage(""); setView("reset-password"); }}
+                >
+                  忘记密码？
+                </button>
               </form>
             </TabsContent>
 
-            {/* Tab 3: SMS login */}
-            <TabsContent value="sms">
-              <form onSubmit={handleSmsSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sms-phone">手机号</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="sms-phone"
-                      type="tel"
-                      placeholder="请输入手机号"
-                      value={smsPhone}
-                      onChange={(e) => {
-                        setSmsPhone(e.target.value);
-                        if (smsErrors.phone) setSmsErrors((prev) => ({ ...prev, phone: "" }));
-                      }}
-                      autoComplete="tel"
-                      disabled={loading}
-                      className="flex-1"
-                      maxLength={11}
-                      aria-invalid={!!smsErrors.phone}
-                      aria-describedby={smsErrors.phone ? "sms-phone-error" : undefined}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleSendCode}
-                      disabled={loading || countdown > 0 || !smsPhone.trim()}
-                      className="shrink-0 whitespace-nowrap"
-                      aria-label={countdown > 0 ? `${countdown} 秒后可重新发送` : "发送验证码"}
-                    >
-                      {countdown > 0 ? `${countdown}s` : "发送验证码"}
-                    </Button>
-                  </div>
-                  {smsErrors.phone && (
-                    <p id="sms-phone-error" className="text-xs text-red-500" role="alert">
-                      {smsErrors.phone}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sms-code">验证码</Label>
-                  <Input
-                    id="sms-code"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="请输入 6 位验证码"
-                    value={smsCode}
-                    onChange={(e) => {
-                      setSmsCode(e.target.value);
-                      if (smsErrors.code) setSmsErrors((prev) => ({ ...prev, code: "" }));
-                    }}
-                    autoComplete="one-time-code"
-                    disabled={loading}
-                    maxLength={6}
-                    aria-invalid={!!smsErrors.code}
-                    aria-describedby={smsErrors.code ? "sms-code-error" : undefined}
-                  />
-                  {smsErrors.code && (
-                    <p id="sms-code-error" className="text-xs text-red-500" role="alert">
-                      {smsErrors.code}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <span className="flex items-center">
-                      <LoadingSpinner />
-                      登录中...
-                    </span>
-                  ) : (
-                    <span className="flex items-center">
-                      <Smartphone className="mr-2 h-4 w-4" />
-                      登录
-                    </span>
-                  )}
-                </Button>
-              </form>
-            </TabsContent>
           </Tabs>
+
+          <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3">
+            <input
+              id="login-agreement"
+              type="checkbox"
+              checked={loginAgreementAccepted}
+              onChange={(event) => setLoginAgreementAccepted(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+              aria-label="同意用户协议和隐私政策"
+            />
+            <div className="text-xs leading-relaxed text-muted-foreground">
+              我已阅读并同意
+              <button type="button" onClick={() => openLoginPolicy("user-agreement")} className="mx-1 text-primary underline hover:text-primary/80">《用户协议》</button>
+              和
+              <button type="button" onClick={() => openLoginPolicy("privacy-policy")} className="ml-1 text-primary underline hover:text-primary/80">《隐私政策》</button>
+            </div>
+          </div>
 
           {/* Divider */}
           <div className="relative">
@@ -1323,6 +1128,7 @@ function LoginContent() {
             variant="outline"
             className="w-full"
             onClick={handleQQLogin}
+            disabled={!loginAgreementAccepted}
             aria-label="使用 QQ 账号登录"
           >
             <svg
@@ -1363,6 +1169,14 @@ function LoginContent() {
           </Button>
         </CardContent>
       </Card>
+      <Dialog open={!!showAgreement} onOpenChange={(open) => { if (!open) setShowAgreement(""); }}>
+        <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{LOGIN_POLICIES[showAgreement as LoginPolicyId]?.title ?? "协议"}</DialogTitle>
+          </DialogHeader>
+          <SafeMarkdown content={agreementContent || "暂无内容"} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

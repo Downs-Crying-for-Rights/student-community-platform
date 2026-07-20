@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Shuffle, Users } from "lucide-react";
+import { AlertTriangle, ExternalLink, Loader2, RefreshCw, Shuffle, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -35,6 +35,16 @@ interface CycleItem {
   }>;
 }
 
+interface DisputedLink {
+  id: string;
+  direction: string;
+  breakReason: string | null;
+  updatedAt: string;
+  cycle: { id: string; mode: string; status: string; createdAt: string };
+  fromUser: { id: string; nickname: string | null };
+  toUser: { id: string; nickname: string | null };
+}
+
 function userLabel(user: Candidate): string {
   return `${user.nickname?.trim() || "未命名用户"} · ${user.role}${user.waitingSince ? " · 已排队" : ""}`;
 }
@@ -43,6 +53,7 @@ export default function AdminDcrCyclesPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [cycles, setCycles] = useState<CycleItem[]>([]);
+  const [disputedLinks, setDisputedLinks] = useState<DisputedLink[]>([]);
   const [selected, setSelected] = useState<[string, string, string]>(["", "", ""]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState("");
@@ -62,6 +73,7 @@ export default function AdminDcrCyclesPage() {
       setCandidates(data.candidates ?? []);
       setRecommendations(data.recommendations ?? []);
       setCycles(data.cycles ?? []);
+      setDisputedLinks(data.disputedLinks ?? []);
     } catch {
       setError("网络错误，请稍后重试");
     } finally {
@@ -117,6 +129,35 @@ export default function AdminDcrCyclesPage() {
 
       {error && <div role="alert" className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
       {notice && <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">{notice}</div>}
+
+      <Card className={disputedLinks.length > 0 ? "border-amber-300" : ""}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />待处理循环争议（{disputedLinks.length}）
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {loading ? <p className="text-sm text-muted-foreground">加载中...</p> : disputedLinks.length === 0 ? (
+            <p className="text-sm text-muted-foreground">当前没有三方互助争议</p>
+          ) : disputedLinks.map((link) => (
+            <div key={link.id} className="rounded-lg border bg-amber-50/60 p-4 dark:bg-amber-950/10">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">{link.cycle.mode === "THREE_PARTY" ? "三方" : "双方"}互助 · {link.direction}</p>
+                  <p className="mt-1 text-sm">{link.fromUser.nickname || "未命名用户"} → {link.toUser.nickname || "未命名用户"}</p>
+                  <p className="mt-2 text-sm text-destructive">争议原因：{link.breakReason || "未填写"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">更新时间：{new Date(link.updatedAt).toLocaleString("zh-CN")}</p>
+                </div>
+                <Button asChild size="sm" variant="outline">
+                  <a href={`/dcr/cycles/${link.cycle.id}`} target="_blank" rel="noreferrer">
+                    查看详情<ExternalLink className="ml-1 h-3.5 w-3.5" />
+                  </a>
+                </Button>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1.35fr]">
         <Card>

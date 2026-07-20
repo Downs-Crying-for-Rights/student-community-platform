@@ -8,7 +8,7 @@ import {
 } from "./qq-delegation";
 
 const draft: QQDelegationDraftInput = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   contentType: "TUTORING",
   schoolName: " Test School ",
   schoolCategory: "Public",
@@ -24,7 +24,7 @@ const draft: QQDelegationDraftInput = {
 };
 
 describe("QQ delegation drafts", () => {
-  it("validates and normalizes the canonical V1 shape", () => {
+  it("validates and normalizes the canonical V2 shape", () => {
     const parsed = validateQQDelegationDraft(draft);
 
     expect(parsed.schoolName).toBe("Test School");
@@ -36,7 +36,7 @@ describe("QQ delegation drafts", () => {
 
     expect(canonical).toBe(canonicalizeQQDelegationDraft({ ...draft }));
     expect(JSON.parse(canonical)).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       feeDetails: null,
       otherDemand: null,
     });
@@ -51,6 +51,13 @@ describe("QQ delegation drafts", () => {
 
     expect(() => validateQQDelegationDraft(persisted)).not.toThrow();
     expect(hashQQDelegationDraft(persisted)).toBe(hashQQDelegationDraft(draft));
+  });
+
+  it("requires a preference and accepts an explicit unrestricted preference", () => {
+    const withoutPreference = { ...draft, riskPreference: undefined };
+
+    expect(() => validateQQDelegationDraft(withoutPreference)).toThrow();
+    expect(validateQQDelegationDraft({ ...draft, riskPreference: "不限" }).riskPreference).toBe("不限");
   });
 
   it("rejects unknown fields and incomplete charged-fee data", () => {

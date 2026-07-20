@@ -16,6 +16,7 @@ import {
 import { reviewQQDraftWithAi } from "@/lib/qq-draft-ai-review";
 import { decryptQQAuditValue, encryptQQMessageInput, encryptQQMessageReplies } from "@/lib/qq-message-audit";
 import type { QQBotMessage, QQBotResponse } from "@/lib/qq-bot-contract";
+import { QQ_DELEGATION_SCHEMA_VERSION } from "@/lib/qq-delegation";
 
 const SITE_ORIGIN = "https://forum.dcr2026.com";
 const HELP = "可用命令：帮助、绑定、状态、新建委托、取消、草稿。发送“新建委托”获取完整模板，填写后一次发送。";
@@ -221,7 +222,7 @@ async function processBound(
   const canonical = buildCanonicalQQDraft(payload);
   const expiresAt = new Date(Date.now() + QQ_DRAFT_TTL_MS);
   const draft = await tx.qQDelegationDraft.create({
-    data: { ownerId: user.id, schemaVersion: 1, payload: canonical.payload as Prisma.InputJsonValue, payloadHash: canonical.hash, expiresAt },
+    data: { ownerId: user.id, schemaVersion: QQ_DELEGATION_SCHEMA_VERSION, payload: canonical.payload as Prisma.InputJsonValue, payloadHash: canonical.hash, expiresAt },
   });
   const saved = await tx.qQConversation.update({
     where: { ownerId: user.id },

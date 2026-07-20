@@ -276,7 +276,7 @@ export default function DelegatePage() {
             province: data.province || undefined,
             city: data.city || undefined,
             expectedHelperProvince: data.expectedHelperProvince || undefined,
-            riskPreference: data.riskPreference || undefined,
+            riskPreference: data.riskPreference,
           },
         }),
       });
@@ -756,7 +756,8 @@ export default function DelegatePage() {
                     {...register("grade")}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <option value="">不限</option>
+                    <option value="">未选择（选填）</option>
+                    <option value="不限">不限</option>
                     <option value="高一">高一</option>
                     <option value="高二">高二</option>
                     <option value="高三">高三</option>
@@ -784,29 +785,42 @@ export default function DelegatePage() {
                   <Input id="city" placeholder="如 广州市" {...register("city")} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="expectedHelperProvince" className="mb-1.5 block">期望互助人省份</Label>
-                  <Input id="expectedHelperProvince" placeholder="避免同省可填写" {...register("expectedHelperProvince")} />
-                </div>
-                <div>
-                  <Label htmlFor="riskPreference" className="mb-1.5 block">风险偏好</Label>
-                  <select
-                    id="riskPreference"
-                    {...register("riskPreference")}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <option value="">不限</option>
-                    <option value="仅站内沟通">仅站内沟通</option>
-                    <option value="可电话">可电话</option>
-                    <option value="仅模板咨询">仅模板咨询</option>
-                  </select>
-                </div>
+              <div>
+                <Label htmlFor="expectedHelperProvince" className="mb-1.5 block">期望互助人省份</Label>
+                <Input id="expectedHelperProvince" placeholder="避免同省可填写" {...register("expectedHelperProvince")} />
               </div>
             </CardContent>
           </Card>
 
-          {/* Section 8: Confirmations */}
+          {/* Section 8: Risk Preference */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">风险偏好（必填）</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Label htmlFor="riskPreference" className="mb-1.5 block">
+                可接受的互助沟通方式 <span className="text-destructive" aria-hidden="true">*</span>
+              </Label>
+              <select
+                id="riskPreference"
+                {...register("riskPreference")}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-required="true"
+                aria-invalid={Boolean(errors.riskPreference)}
+              >
+                <option value="">请选择风险偏好</option>
+                <option value="不限">不限</option>
+                <option value="仅站内沟通">仅站内沟通</option>
+                <option value="可电话">可电话</option>
+                <option value="仅模板咨询">仅模板咨询</option>
+              </select>
+              {errors.riskPreference && (
+                <p className="mt-1 text-sm text-destructive">{errors.riskPreference.message}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Section 9: Confirmations */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">确认信息</CardTitle>

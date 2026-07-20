@@ -25,12 +25,16 @@ function DMThreadContent() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [isSystemReadOnly, setIsSystemReadOnly] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/dm/thread/${threadId}`);
     const data = await res.json().catch(() => ({}));
-    if (res.ok) setMessages(data.messages ?? []);
+    if (res.ok) {
+      setMessages(data.messages ?? []);
+      setIsSystemReadOnly(Boolean(data.isSystemReadOnly));
+    }
     else setError(data.error || "私信加载失败");
     setLoading(false);
   }, [threadId]);
@@ -81,10 +85,10 @@ function DMThreadContent() {
         ))}
         <div ref={endRef} />
       </div>
-      <form onSubmit={send} className="fixed bottom-20 left-0 right-0 z-30 mx-auto flex w-full max-w-screen-md gap-2 border-t bg-background p-4 lg:bottom-0 lg:left-60">
+      {isSystemReadOnly ? <div className="fixed bottom-20 left-0 right-0 z-30 mx-auto w-full max-w-screen-md border-t bg-background p-4 text-center text-sm text-muted-foreground lg:bottom-0 lg:left-60">平台公告私信仅供阅读，不支持回复</div> : <form onSubmit={send} className="fixed bottom-20 left-0 right-0 z-30 mx-auto flex w-full max-w-screen-md gap-2 border-t bg-background p-4 lg:bottom-0 lg:left-60">
         <Input value={content} onChange={(e) => setContent(e.target.value)} maxLength={5000} placeholder="输入私信内容" />
         <Button type="submit" disabled={sending || !content.trim()}>{sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</Button>
-      </form>
+      </form>}
     </main>
   );
 }

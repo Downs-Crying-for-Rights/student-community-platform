@@ -2,6 +2,7 @@ import { Prisma, TaskStatus, UrgencyLevel, type QQGrantPurpose } from "@prisma/c
 import { NextResponse } from "next/server";
 
 import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
+import { reconcileRejectedDcrApplications } from "@/lib/dcr-application-reconciliation";
 import { type DelegationInput, extractFields } from "@/lib/dcr-field-extractor";
 import { formatDelegation, type DelegationFormData } from "@/lib/dcr-delegation-types";
 import { getPublicDcrTaskCopy } from "@/lib/dcr-task-public";
@@ -309,6 +310,7 @@ export async function submitQQDraft(
       select: { id: true, role: true, phone: true, quizPassed: true, dcrAccess: true },
     });
     if (!user) throw new QQH5Error("USER_NOT_FOUND", "用户不存在", 404);
+    if (!user.dcrAccess) await reconcileRejectedDcrApplications(tx, userId);
     const pending = user.dcrAccess ? null : await tx.accessApplication.findFirst({
       where: { applicantId: userId, type: "DCR", status: "PENDING" },
       select: { id: true },

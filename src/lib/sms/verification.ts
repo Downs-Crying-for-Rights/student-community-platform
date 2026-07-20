@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import redis from "@/lib/redis";
 import { getSmsProvider } from "@/lib/sms";
+import { getSmsVerificationEnabled } from "@/lib/system-config";
 
 /**
  * 生成 6 位安全随机数字验证码
@@ -21,6 +22,10 @@ export async function sendVerificationCode(
   phone: string,
   purpose: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (purpose !== "register" && !(await getSmsVerificationEnabled())) {
+    return { success: true };
+  }
+
   // 检查频率限制
   const limitKey = `sms:limit:${phone}`;
   const limited = await redis.get(limitKey);
@@ -40,8 +45,13 @@ export async function sendVerificationCode(
   await redis.set(limitKey, "1", "EX", 60);
 
   // 通过 provider 发送验证码
-  const provider = getSmsProvider();
-  const sent = await provider.sendCode(phone, code);
+  let sent = false;
+  try {
+    const provider = getSmsProvider();
+    sent = await provider.sendCode(phone, code, purpose);
+  } catch (error) {
+    console.error("SMS provider configuration error", error instanceof Error ? error.message : "Unknown error");
+  }
 
   if (!sent) {
     // 发送失败时清理已存储的验证码和频率限制
@@ -60,9 +70,15 @@ export async function sendVerificationCode(
  */
 export async function verifyCode(
   phone: string,
-  code: string,
+  code: string | undefined,
   purpose: string
 ): Promise<boolean> {
+  if (purpose !== "register" && !(await getSmsVerificationEnabled())) {
+    return true;
+  }
+
+  if (!code) return false;
+
   // 测试模式固定验证码 888888
   if (process.env.SMS_TEST_MODE === "true" && code === "888888") {
     return true;

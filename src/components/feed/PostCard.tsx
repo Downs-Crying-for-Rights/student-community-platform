@@ -33,6 +33,7 @@ export interface PostCardProps {
   author: PostCardAuthor;
   board: PostCardBoard;
   tags: PostCardTag[];
+  isPinned?: boolean;
 }
 
 export function PostCard({
@@ -46,6 +47,7 @@ export function PostCard({
   author,
   board,
   tags,
+  isPinned = false,
 }: PostCardProps) {
   const router = useRouter();
   const coverImage = images.length > 0 ? images[0] : null;
@@ -93,6 +95,7 @@ export function PostCard({
         <div className="p-4">
           {/* Title */}
           <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+            {isPinned && <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">置顶</span>}
             {title}
           </h3>
 

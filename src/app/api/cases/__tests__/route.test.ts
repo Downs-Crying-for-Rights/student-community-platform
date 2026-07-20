@@ -9,6 +9,7 @@ const mockCaseFindMany = vi.fn();
 const mockCaseCount = vi.fn();
 const mockAppFindFirst = vi.fn();
 const mockAppCreate = vi.fn();
+const mockAppUpdateMany = vi.fn();
 
 vi.mock("@/lib/prisma", () => {
   const transactionClient = {
@@ -20,6 +21,7 @@ vi.mock("@/lib/prisma", () => {
     accessApplication: {
       findFirst: (...args: unknown[]) => mockAppFindFirst(...args),
       create: (...args: unknown[]) => mockAppCreate(...args),
+      updateMany: (...args: unknown[]) => mockAppUpdateMany(...args),
     },
   };
   return {
@@ -45,6 +47,10 @@ vi.mock("@/lib/audit", () => ({
 
 vi.mock("@/lib/sensitive-engine", () => ({
   scanContent: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/mail", () => ({
+  sendAdminActionMail: vi.fn().mockResolvedValue({ sent: false, recipientCount: 0 }),
 }));
 
 vi.mock("@/lib/dcr-field-extractor", () => ({
@@ -80,6 +86,7 @@ const validRequest = {
     feeStatus: "none",
     demands: ["停止补课"],
     confirmations: [true, true, true],
+    riskPreference: "仅站内沟通",
   },
 };
 
@@ -111,7 +118,7 @@ function setSession(id: string, role: string) {
 // ==================== Tests ====================
 
 describe("POST /api/cases", () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => { vi.clearAllMocks(); mockAppUpdateMany.mockResolvedValue({ count: 0 }); });
 
   it("应返回 401 当用户未登录", async () => {
     mockGetServerSession.mockResolvedValue(null);
@@ -266,6 +273,25 @@ describe("POST /api/cases", () => {
     expect((await res.json()).code).toBe("APPLICATION_ALREADY_PENDING");
     expect(mockCaseCreate).not.toHaveBeenCalled();
     expect(mockAppCreate).not.toHaveBeenCalled();
+  });
+
+  it("创建前会修复关联已驳回委托的历史待审申请", async () => {
+    setSession("user5", "USER");
+    mockUserFindUnique.mockResolvedValue({ id: "user5", dcrAccess: false, phone: "13800138000", quizPassed: true });
+    mockAppUpdateMany.mockResolvedValue({ count: 1 });
+    mockAppFindFirst.mockResolvedValue(null);
+    mockAppCreate.mockResolvedValue({ id: "new-app" });
+    mockCaseCreate.mockResolvedValue({
+      id: "case5", category: "TUTORING", status: "OPENED", submitterId: "user5",
+      submitter: { id: "user5", nickname: "用户5" }, timeline: [],
+    });
+    const { POST } = await import("../route");
+    const response = await POST(makePostRequest(validRequest), { params: {} });
+    expect(response.status).toBe(201);
+    expect(mockAppUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ applicantId: "user5", status: "PENDING", case_: { requestStatus: "REJECTED" } }),
+      data: expect.objectContaining({ status: "REJECTED" }),
+    }));
   });
 
   it("不应创建 AccessApplication 当用户已有 dcrAccess", async () => {

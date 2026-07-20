@@ -149,7 +149,7 @@ describe("QQ bot transactional service", () => {
     const draftData = mocks.tx.qQDelegationDraft.create.mock.calls[0][0].data;
     expect(draftData).toMatchObject({
       ownerId: "user-1",
-      schemaVersion: 1,
+      schemaVersion: 2,
       payload: expect.objectContaining({
         grade: "高二",
         timeRange: "2026 年 7 月至今，每周六 8:00-12:00",

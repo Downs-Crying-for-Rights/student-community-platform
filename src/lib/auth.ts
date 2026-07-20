@@ -3,12 +3,11 @@ import type { JWT } from "next-auth/jwt";
 import EmailProvider from "next-auth/providers/email";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import type { Adapter } from "next-auth/adapters";
+import type { Adapter, AdapterUser } from "next-auth/adapters";
 import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
-import { loginPasswordSchema, loginSmsSchema } from "@/lib/validators";
-import { verifyCode } from "@/lib/sms/verification";
+import { loginPasswordSchema } from "@/lib/validators";
 
 export function escapeHtmlAttribute(value: string): string {
   return value
@@ -34,8 +33,16 @@ async function getQQProvider() {
 
 // ==================== Auth Options ====================
 
+const baseAdapter = PrismaAdapter(prisma) as Adapter;
+const adapter: Adapter = {
+  ...baseAdapter,
+  createUser: (async (_user: AdapterUser | Omit<AdapterUser, "id">) => {
+    throw new Error("RegistrationRequired");
+  }) as NonNullable<Adapter["createUser"]>,
+};
+
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma) as Adapter,
+  adapter,
   providers: [
     EmailProvider({
       server: {
@@ -55,11 +62,11 @@ export const authOptions: NextAuthOptions = {
         await transport.sendMail({
           to: email,
           from: provider.from,
-          subject: "登录学生交流社区",
-          text: `点击以下链接登录学生交流社区：\n\n${url}\n\n此链接将在 15 分钟后过期。`,
+          subject: "登录学互会",
+          text: `点击以下链接登录学互会：\n\n${url}\n\n此链接将在 15 分钟后过期。`,
           html: `
             <div style="max-width: 480px; margin: 0 auto; font-family: sans-serif;">
-              <h2 style="color: #1a1a1a;">登录学生交流社区</h2>
+              <h2 style="color: #1a1a1a;">登录学互会</h2>
               <p>点击下方按钮登录您的账户：</p>
               <a href="${escapedUrl}" style="display: inline-block; padding: 12px 24px; background: #1a1a1a; color: #fff; text-decoration: none; border-radius: 8px; margin: 16px 0;">
                 登录
@@ -91,30 +98,6 @@ export const authOptions: NextAuthOptions = {
         return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
       },
     }),
-    CredentialsProvider({
-      id: "credentials-sms",
-      name: "SMS",
-      credentials: {
-        phone: { label: "手机号", type: "text" },
-        code: { label: "验证码", type: "text" },
-      },
-      async authorize(credentials) {
-        const parsed = loginSmsSchema.safeParse(credentials);
-        if (!parsed.success) throw new Error("验证码错误或已过期");
-        const { phone, code } = parsed.data;
-        const isValid = await verifyCode(phone, code, "login");
-        if (!isValid) throw new Error("验证码错误或已过期");
-        let user = await prisma.user.findFirst({
-          where: { phone },
-          select: { id: true, email: true, nickname: true, role: true, phone: true, isBanned: true },
-        });
-        if (!user || user.isBanned) {
-          // Require explicit registration to ensure a nickname is provided
-          throw new Error("手机号未注册，请通过注册页完成注册");
-        }
-        return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
-      },
-    }),
     // QQ OAuth will be injected at runtime by the route handler
   ],
   session: {
@@ -140,7 +123,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
-            select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true },
+            select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true },
         });
         token.role = dbUser?.role ?? "USER";
         token.phone = dbUser?.phone ?? null;
@@ -150,11 +133,12 @@ export const authOptions: NextAuthOptions = {
         token.dcrAccess = dbUser?.dcrAccess ?? false;
         token.isBanned = dbUser?.isBanned ?? false;
         token.securityVersion = dbUser?.securityVersion ?? 0;
+        token.profileCompletionRequired = dbUser?.profileCompletionRequired ?? false;
       } else if (token.sub) {
         // Refresh security-sensitive claims on every server session read so revocations apply immediately.
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
-          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true },
+          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true },
         });
         if (dbUser) {
           token.role = dbUser.role;
@@ -165,6 +149,7 @@ export const authOptions: NextAuthOptions = {
           token.dcrAccess = dbUser.dcrAccess;
           token.isBanned = dbUser.isBanned;
           token.securityVersion = dbUser.securityVersion;
+          token.profileCompletionRequired = dbUser.profileCompletionRequired;
         }
       }
       return token;
@@ -180,6 +165,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).nickname = token.nickname;
         (session.user as any).isBanned = token.isBanned;
         (session.user as any).securityVersion = token.securityVersion;
+        (session.user as any).profileCompletionRequired = token.profileCompletionRequired;
       }
       return session;
     },

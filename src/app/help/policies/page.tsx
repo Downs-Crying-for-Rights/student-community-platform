@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { FileText, Users, Shield, AlertTriangle } from "lucide-react";
+import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
+import { LOGIN_POLICIES } from "@/lib/login-policies";
 
 /* ========== Document Data & Pure Helpers ========== */
 
@@ -18,31 +21,7 @@ const POLICY_DOCUMENTS: PolicyDocument[] = [
     id: "user-agreement",
     title: "用户协议",
     icon: "file-text",
-    content: `# 用户协议
-
-## 一、账户注册与使用
-
-1. 用户可通过邮箱魔法链接或邀请码注册平台账户。
-2. 每个邮箱地址仅可注册一个账户，邀请码为一次性使用。
-3. 用户应妥善保管自己的账户信息，因账户保管不善导致的损失由用户自行承担。
-
-## 二、使用规则
-
-1. 用户应遵守中华人民共和国相关法律法规及本平台社区规范。
-2. 用户发布的内容应真实、合法，不得侵犯他人合法权益。
-3. 用户不得利用平台从事任何违法违规活动。
-4. 用户不得发布包含个人可识别信息（如真实姓名、学校名称、教师姓名、电话号码等）的内容。
-
-## 三、账户终止
-
-1. 用户可随时申请注销账户，注销后相关数据将按隐私政策处理。
-2. 如用户严重违反本协议或社区规范，平台有权终止其账户使用权限。
-3. 账户终止后，用户发布的公开内容将被保留但标记为"已注销用户"。
-
-## 四、协议变更
-
-1. 平台有权根据需要修改本协议内容，修改后将通知所有用户。
-2. 用户在协议变更后继续使用平台，视为同意修改后的协议。`,
+    content: LOGIN_POLICIES["user-agreement"].content,
   },
   {
     id: "community-guidelines",
@@ -78,34 +57,7 @@ const POLICY_DOCUMENTS: PolicyDocument[] = [
     id: "privacy-policy",
     title: "隐私政策",
     icon: "shield",
-    content: `# 隐私政策
-
-## 一、数据收集
-
-1. 注册信息：普通注册仅需邮箱地址、用户名和密码，不要求真实姓名或手机号。
-2. DCR 准入信息：仅当用户主动申请 DCR 权益互助时，为账户安全、审核和风险控制收集并验证手机号；手机号不会在社区或互助成员之间公开。
-3. 使用数据：访问时间、页面浏览记录（仅用于改善服务）。
-4. IP 地址：仅存储单向哈希值，不存储明文 IP。
-
-## 二、数据存储
-
-1. 所有用户数据存储在加密的数据库中。
-2. 匿名会话数据在 90 天未活跃后自动清理。
-3. 已关闭的工单数据在 180 天后进行脱敏归档。
-4. 倾听会话记录在关闭后 30 天自动清理。
-
-## 三、数据使用
-
-1. 用户数据仅用于提供平台服务和改善用户体验。
-2. 平台不会将用户数据出售或提供给第三方。
-3. 审计日志用于平台安全审查，仅管理员可访问。
-
-## 四、用户权利
-
-1. 用户有权查看自己的个人数据。
-2. 用户有权要求修改或删除自己的个人数据。
-3. 用户有权要求导出自己的个人数据。
-4. 用户有权撤回对数据处理的同意。`,
+    content: LOGIN_POLICIES["privacy-policy"].content,
   },
   {
     id: "disclaimer",
@@ -181,21 +133,40 @@ const ICON_MAP = {
 /* ========== Page Component ========== */
 
 export default function PoliciesPage() {
-  const [activeTab, setActiveTab] = useState(POLICY_DOCUMENTS[0].id);
+  const searchParams = useSearchParams();
+  const requestedDocument = searchParams.get("document");
+  const [documents, setDocuments] = useState(POLICY_DOCUMENTS);
+  const standaloneDocument = documents.find((document) => document.id === requestedDocument);
+  const visibleDocuments = standaloneDocument ? [standaloneDocument] : documents;
+  const [activeTab, setActiveTab] = useState(standaloneDocument?.id ?? POLICY_DOCUMENTS[0].id);
+
+  useEffect(() => {
+    fetch("/api/site-content/community_guidelines", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!data.content) return;
+        setDocuments((current) => current.map((document) => (
+          document.id === "community-guidelines"
+            ? { ...document, title: data.title || document.title, content: data.content }
+            : document
+        )));
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-foreground">合规文档</h1>
+          <h1 className="text-2xl font-bold text-foreground">{standaloneDocument?.title ?? "合规文档"}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            请仔细阅读以下文档，了解平台的使用规则和您的权利
+            {standaloneDocument ? "以下为该文档的完整内容" : "请仔细阅读以下文档，了解平台的使用规则和您的权利"}
           </p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6 grid w-full grid-cols-4">
-            {POLICY_DOCUMENTS.map((doc) => {
+          {!standaloneDocument && <TabsList className="mb-6 grid w-full grid-cols-4">
+            {visibleDocuments.map((doc) => {
               const Icon = ICON_MAP[doc.icon];
               return (
                 <TabsTrigger
@@ -209,47 +180,12 @@ export default function PoliciesPage() {
                 </TabsTrigger>
               );
             })}
-          </TabsList>
+          </TabsList>}
 
-          {POLICY_DOCUMENTS.map((doc) => (
+          {visibleDocuments.map((doc) => (
             <TabsContent key={doc.id} value={doc.id}>
               <div className="rounded-2xl border bg-card p-6 shadow-sm">
-                <article
-                  className="prose prose-sm dark:prose-invert max-w-none"
-                  role="article"
-                  aria-label={doc.title}
-                >
-                  {doc.content.split("\n").map((line, i) => {
-                    const trimmed = line.trim();
-                    if (!trimmed) return null;
-                    if (trimmed.startsWith("# ")) {
-                      return (
-                        <h2 key={i} className="mb-4 text-xl font-bold text-foreground">
-                          {trimmed.slice(2)}
-                        </h2>
-                      );
-                    }
-                    if (trimmed.startsWith("## ")) {
-                      return (
-                        <h3 key={i} className="mb-3 mt-6 text-lg font-semibold text-foreground">
-                          {trimmed.slice(3)}
-                        </h3>
-                      );
-                    }
-                    if (/^\d+\.\s/.test(trimmed)) {
-                      return (
-                        <p key={i} className="mb-2 pl-4 text-muted-foreground leading-relaxed">
-                          {trimmed}
-                        </p>
-                      );
-                    }
-                    return (
-                      <p key={i} className="mb-2 text-muted-foreground leading-relaxed">
-                        {trimmed}
-                      </p>
-                    );
-                  })}
-                </article>
+                <SafeMarkdown content={doc.content} className="prose prose-sm dark:prose-invert max-w-none" />
               </div>
             </TabsContent>
           ))}

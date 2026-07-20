@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Save, Eye, Edit3, Plus, Trash2 } from "lucide-react";
 import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
+import { HomeHeroConfigPanel } from "./HomeHeroConfigPanel";
 
 interface SiteKey {
   key: string;
@@ -134,6 +135,8 @@ export default function SiteContentPage() {
         </Button>
       </div>
 
+      <HomeHeroConfigPanel />
+
       {/* Key selector */}
       <div className="mb-4 flex flex-wrap gap-2">
         {keys.map(k => (
@@ -156,7 +159,7 @@ export default function SiteContentPage() {
         <Card className="mb-4">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">编辑：{title || selectedKey}</CardTitle>
-            {!(["dm_consent", "chat_monitoring_consent"].includes(selectedKey)) && (
+            {!(["dm_consent", "chat_monitoring_consent", "community_guidelines"].includes(selectedKey)) && (
               <Button variant="ghost" size="sm" className="text-red-500" onClick={() => setShowDelete(true)}>
                 <Trash2 className="mr-1 h-4 w-4" />
                 删除

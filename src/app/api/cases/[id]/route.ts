@@ -508,6 +508,9 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
     // OPENED → IN_PROGRESS: DCRHelper accepts case
     if (oldStatus === "OPENED" && newStatus === "IN_PROGRESS") {
+      if (isSubmitter) {
+        return NextResponse.json({ error: "不能接取自己提交的委托" }, { status: 403 });
+      }
       if (!isDCRHelper) {
         return NextResponse.json({ error: "仅 DCRHelper 或 Admin 可接单" }, { status: 403 });
       }
@@ -711,6 +714,10 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
       { error: "该委托仍在管理员审核中，审核通过后才能加入" },
       { status: 409 },
     );
+  }
+
+  if (caseRecord.submitterId === userId) {
+    return NextResponse.json({ error: "不能加入自己提交的委托" }, { status: 403 });
   }
 
   // Type assertion for handlers field from CaseHandler relation

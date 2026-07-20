@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { updateProfileSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
+import { isProfileComplete } from "@/lib/profile-completion";
 
 // ==================== GET — 获取用户资料 ====================
 
@@ -22,6 +23,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
         nickname: true,
         avatar: true,
         bio: true,
+        qqNumber: true,
         role: true,
         createdAt: true,
         onboardingDone: true,
@@ -30,6 +32,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
         dcrHelperAccess: true,
         quizPassed: true,
         passwordHash: true,
+        profileCompletionRequired: true,
         _count: {
           select: {
             posts: { where: { status: "PUBLISHED" } },
@@ -100,7 +103,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     );
   }
 
-  const { nickname, avatar, bio } = parsed.data;
+  const { nickname, avatar, bio, qqNumber } = parsed.data;
 
   // 昵称更新时执行敏感词检测
   if (nickname !== undefined) {
@@ -111,12 +114,19 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         { status: 400 },
       );
     }
+    const nicknameOwner = await prisma.user.findFirst({
+      where: { nickname, id: { not: targetId } },
+      select: { id: true },
+    });
+    if (nicknameOwner) {
+      return NextResponse.json({ error: "该昵称已被使用" }, { status: 409 });
+    }
   }
 
   // 确认用户存在
   const existing = await prisma.user.findUnique({
     where: { id: targetId },
-    select: { id: true },
+    select: { id: true, nickname: true, avatar: true, bio: true, qqNumber: true, profileCompletionRequired: true },
   });
 
   if (!existing) {
@@ -128,17 +138,35 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
   if (nickname !== undefined) updateData.nickname = nickname;
   if (avatar !== undefined) updateData.avatar = avatar;
   if (bio !== undefined) updateData.bio = bio;
+  if (qqNumber !== undefined) updateData.qqNumber = qqNumber;
+
+  const nextProfile = {
+    nickname: nickname ?? existing.nickname,
+    avatar: avatar ?? existing.avatar,
+    qqNumber: qqNumber ?? existing.qqNumber,
+  };
+  if (existing.profileCompletionRequired && !isProfileComplete(nextProfile)) {
+    return NextResponse.json(
+      { error: "请完整填写昵称、头像和QQ号" },
+      { status: 400 },
+    );
+  }
 
   const updatedUser = await prisma.user.update({
     where: { id: targetId },
-    data: updateData,
+    data: {
+      ...updateData,
+      ...(existing.profileCompletionRequired ? { profileCompletionRequired: false } : {}),
+    },
     select: {
       id: true,
       nickname: true,
       avatar: true,
       bio: true,
+      qqNumber: true,
       role: true,
       createdAt: true,
+      profileCompletionRequired: true,
     },
   });
 

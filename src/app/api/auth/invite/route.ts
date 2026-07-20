@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { inviteRegisterSchema } from "@/lib/validators";
+import {
+  checkEmailUnique,
+  checkPhoneUnique,
+  createUserWithSession,
+  validateNickname,
+} from "@/lib/auth/register-helpers";
 import { verifyCode } from "@/lib/sms/verification";
-import { createUserWithSession, validateNickname } from "@/lib/auth/register-helpers";
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,7 +22,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { inviteCode: code, email, password, phone, nickname, code: smsCode } = parsed.data;
+    const { inviteCode: inviteCodeValue, email, password, nickname, phone, code } = parsed.data;
 
     // 校验 nickname 非空
     const nicknameError = validateNickname(nickname);
@@ -27,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     // Find the invite code
     const inviteCode = await prisma.inviteCode.findUnique({
-      where: { code },
+      where: { code: inviteCodeValue },
     });
 
     if (!inviteCode) {
@@ -61,21 +66,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 验证短信验证码
-    const isValid = await verifyCode(phone, smsCode, "login");
-    if (!isValid) {
-      return NextResponse.json(
-        { error: "验证码错误或已过期" },
-        { status: 400 }
-      );
+    const identityError = await checkEmailUnique(email) ?? await checkPhoneUnique(phone);
+    if (identityError) {
+      return NextResponse.json({ error: identityError.error }, { status: identityError.status });
     }
 
-    // 创建用户并生成 session（含邮箱/手机号唯一性检查），在同一事务中标记邀请码已使用
+    if (!(await verifyCode(phone, code, "register"))) {
+      return NextResponse.json({ error: "验证码错误或已过期" }, { status: 400 });
+    }
+
+    // 创建用户并在同一事务中标记邀请码已使用
     const result = await createUserWithSession({
       email,
       password,
-      phone,
       nickname,
+      phone,
       extraData: {
         isAnonymous: false,
       },

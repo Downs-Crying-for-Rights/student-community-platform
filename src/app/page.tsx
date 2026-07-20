@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import Link from "next/link";
 import { BookOpen, Lightbulb, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DEFAULT_HOME_HERO, type HomeHeroConfig } from "@/lib/home-content-config";
 
 type SortMode = "popular" | "latest";
 
@@ -19,6 +20,7 @@ interface APIPost {
   isAnonymous: boolean;
   anonymousId: string | null;
   likeCount: number;
+  isPinned: boolean;
   author: { id: string; nickname: string | null; avatar: string | null };
   board: { id: string; name: string; zone: string };
   tags: Array<{ tag: { id: string; name: string } }>;
@@ -42,6 +44,7 @@ function mapAPIPostToCardProps(post: APIPost): PostCardProps {
     isAnonymous: post.isAnonymous,
     anonymousId: post.anonymousId,
     likeCount: post.likeCount,
+    isPinned: post.isPinned,
     author: {
       id: post.author.id,
       nickname: post.author.nickname,
@@ -63,6 +66,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hero, setHero] = useState<HomeHeroConfig>(DEFAULT_HOME_HERO);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const fetchPosts = useCallback(
@@ -106,6 +110,15 @@ export default function HomePage() {
     fetchPosts(1, sort, false);
   }, [sort, fetchPosts]);
 
+  useEffect(() => {
+    fetch("/api/home-content", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.hero) setHero(data.hero);
+      })
+      .catch(() => {});
+  }, []);
+
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -142,31 +155,31 @@ export default function HomePage() {
         <div className="mb-5 rounded-2xl bg-gradient-to-r from-indigo-50 via-blue-50 to-cyan-50 p-5 dark:from-indigo-950/30 dark:via-blue-950/20 dark:to-cyan-950/20 border border-indigo-100 dark:border-indigo-800/30">
           <div className="flex items-center gap-2 mb-2">
             <Zap className="h-5 w-5 text-indigo-500" />
-            <h2 className="text-base font-bold text-indigo-700 dark:text-indigo-300">电子扫盲 · 学习交流</h2>
+            <h2 className="text-base font-bold text-indigo-700 dark:text-indigo-300">{hero.title}</h2>
           </div>
           <p className="text-sm text-indigo-600/80 dark:text-indigo-400/80 mb-3">
-            学生交流社区 — 从认知开始，拒绝信息差。浏览电子扫盲知识、学术讨论与娱乐分享。
+            {hero.description}
           </p>
           <div className="flex flex-wrap gap-2">
             <Link
-              href="/kb"
+              href={hero.links[0].href}
               className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-800/40 dark:text-indigo-300 dark:hover:bg-indigo-800/60 transition-colors"
             >
               <BookOpen className="h-3 w-3" />
-              知识库
+              {hero.links[0].label}
             </Link>
             <Link
-              href="/discover"
+              href={hero.links[1].href}
               className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-800/40 dark:text-blue-300 dark:hover:bg-blue-800/60 transition-colors"
             >
               <Lightbulb className="h-3 w-3" />
-              发现话题
+              {hero.links[1].label}
             </Link>
             <Link
-              href="/help/policies"
+              href={hero.links[2].href}
               className="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-3 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-800/40 dark:text-cyan-300 dark:hover:bg-cyan-800/60 transition-colors"
             >
-              社区规则
+              {hero.links[2].label}
             </Link>
           </div>
         </div>

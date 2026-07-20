@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fc from "fast-check";
 
+vi.mock("@/lib/system-config", () => ({
+  getSmsVerificationEnabled: vi.fn().mockResolvedValue(true),
+}));
+
 // vi.mock factories are hoisted — use inline objects
 vi.mock("@/lib/redis", () => ({
   default: {
@@ -51,7 +55,7 @@ const arbPhone = fc
 const arbSixDigitCode = fc.stringMatching(/^\d{6}$/);
 
 /** Generate a purpose string */
-const arbPurpose = fc.constantFrom("login", "bindphone");
+const arbPurpose = fc.constantFrom("register", "bindphone");
 
 // ==================== Property 4: 验证码格式 ====================
 // Feature: multi-auth-login, Property 4: 验证码格式

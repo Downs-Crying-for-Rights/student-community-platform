@@ -12,8 +12,8 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export const metadata: Metadata = {
-  title: "学生交流社区",
-  description: "面向学生群体的多层级社区平台",
+  title: "学互会",
+  description: "面向学生群体的交流与互助社区",
 };
 
 export default function RootLayout({
