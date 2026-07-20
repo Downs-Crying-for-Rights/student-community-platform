@@ -5,6 +5,7 @@ import { z } from "zod";
 import { enforceRateLimit } from "@/lib/rate-limiter";
 import { logAudit } from "@/lib/audit";
 import { requireDMConsent } from "@/lib/dm-consent";
+import { SYSTEM_ANNOUNCEMENT_USER_ID } from "@/lib/announcement";
 
 async function consentRequired(userId: string) {
   const consent = await requireDMConsent(userId);
@@ -56,6 +57,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     });
     if (!recipient) {
       return NextResponse.json({ error: "接收用户不存在" }, { status: 404 });
+    }
+    if (recipient.id === SYSTEM_ANNOUNCEMENT_USER_ID) {
+      return NextResponse.json({ error: "不能主动向平台公告账号发起私信" }, { status: 403 });
     }
 
     // Find existing thread (order-independent)

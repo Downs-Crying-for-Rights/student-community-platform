@@ -108,6 +108,7 @@ export const adminMenuGroups: readonly AdminMenuGroup[] = [
     { href: "/admin/kb", label: "知识库", icon: "book", minRole: "ADMIN" },
     { href: "/admin/quiz", label: "新手指引题库", icon: "book", minRole: "ADMIN" },
     { href: "/admin/site-content", label: "站点内容", icon: "file-text", minRole: "SUPER_ADMIN" },
+    { href: "/admin/announcements", label: "公告管理", icon: "file-text", minRole: "SUPER_ADMIN" },
   ] },
   { id: "system", label: "系统安全", icon: "settings", children: [
     { href: "/admin/audit", label: "操作日志", icon: "file-text", minRole: "ADMIN" },

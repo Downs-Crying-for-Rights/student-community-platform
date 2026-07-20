@@ -217,7 +217,8 @@ export function withAuth(
 
     const pathname = new URL(req.url).pathname;
     const profileCompletionAllowed = pathname.startsWith("/api/users/")
-      || pathname === "/api/upload";
+      || pathname === "/api/upload"
+      || /^\/api\/announcements\/[^/]+\/dismiss$/.test(pathname);
     if (session.user.profileCompletionRequired && !profileCompletionAllowed) {
       return NextResponse.json(
         { error: "请先补齐昵称、头像和QQ号", profileCompletionRequired: true },

@@ -37,7 +37,7 @@ export const GET = withAuth(async (
     // Verify user is participant
     const thread = await prisma.dMThread.findUnique({
       where: { id: threadId },
-      select: { participant1Id: true, participant2Id: true },
+      select: { participant1Id: true, participant2Id: true, isSystemReadOnly: true },
     });
 
     if (!thread) {
@@ -68,6 +68,7 @@ export const GET = withAuth(async (
       messages: result,
       nextCursor: hasMore ? result[0].createdAt.toISOString() : null,
       hasMore,
+      isSystemReadOnly: thread.isSystemReadOnly,
     });
   } catch (error) {
     console.error("GET /api/dm/thread/[threadId] error:", error);
@@ -110,7 +111,7 @@ export const POST = withAuth(async (
     // Verify user is participant
     const thread = await prisma.dMThread.findUnique({
       where: { id: threadId },
-      select: { participant1Id: true, participant2Id: true },
+      select: { participant1Id: true, participant2Id: true, isSystemReadOnly: true },
     });
 
     if (!thread) {
@@ -119,6 +120,9 @@ export const POST = withAuth(async (
 
     if (thread.participant1Id !== userId && thread.participant2Id !== userId) {
       return NextResponse.json({ error: "无权在此会话中发消息" }, { status: 403 });
+    }
+    if (thread.isSystemReadOnly) {
+      return NextResponse.json({ error: "平台公告私信不支持回复" }, { status: 403 });
     }
 
     // Sensitive content scan

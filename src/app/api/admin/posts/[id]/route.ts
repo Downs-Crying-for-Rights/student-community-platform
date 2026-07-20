@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { PostStatus } from "@prisma/client";
-import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
-import { logAudit, AuditTargetType } from "@/lib/audit";
+import { hasMinimumRole, withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { AuditAction, logAudit, AuditTargetType } from "@/lib/audit";
 import { scanContent } from "@/lib/sensitive-engine";
 import { z } from "zod";
 import { sendAdminActionMail } from "@/lib/mail";
@@ -11,6 +11,7 @@ const updateSchema = z.object({
   status: z.enum(["DRAFT", "PENDING", "PUBLISHED", "REJECTED", "DELETED"]).optional(),
   title: z.string().min(1).max(30).optional(),
   content: z.string().min(1).max(10000).optional(),
+  isPinned: z.boolean().optional(),
   reason: z.string().trim().min(1, "必须填写操作原因").max(500),
 }).strict().refine((data) => Object.values(data).some((value) => value !== undefined), {
   message: "请至少修改一项内容",
@@ -39,16 +40,22 @@ export const PATCH = withAuth(async (
 
     const existing = await prisma.post.findUnique({
       where: { id },
-      select: { id: true, status: true, title: true, content: true },
+      select: { id: true, status: true, title: true, content: true, isPinned: true },
     });
 
     if (!existing) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
 
-    const { status, title, content, reason } = parsed.data;
+    const { status, title, content, isPinned, reason } = parsed.data;
     if ((title !== undefined || content !== undefined) && !["ADMIN", "SUPER_ADMIN"].includes(req.user.role)) {
       return NextResponse.json({ error: "只有管理员可以纠正帖子正文" }, { status: 403 });
+    }
+    if (isPinned !== undefined && !hasMinimumRole(req.user.role, "ADMIN")) {
+      return NextResponse.json({ error: "只有管理员可以置顶帖子" }, { status: 403 });
+    }
+    if (isPinned === true && (status ?? existing.status) !== "PUBLISHED") {
+      return NextResponse.json({ error: "只有已发布帖子可以置顶" }, { status: 400 });
     }
     if (title !== undefined || content !== undefined) {
       const matches = await scanContent(`${title ?? existing.title} ${content ?? existing.content}`);
@@ -60,6 +67,8 @@ export const PATCH = withAuth(async (
       ...(status !== undefined ? { status: status as PostStatus } : {}),
       ...(title !== undefined ? { title } : {}),
       ...(content !== undefined ? { content } : {}),
+      ...(isPinned !== undefined ? { isPinned, pinnedAt: isPinned ? new Date() : null } : {}),
+      ...(status !== undefined && status !== "PUBLISHED" ? { isPinned: false, pinnedAt: null } : {}),
     };
 
     const post = await prisma.$transaction(async (tx) => {
@@ -78,7 +87,11 @@ export const PATCH = withAuth(async (
       });
       await logAudit(
         req.user.id,
-        title !== undefined || content !== undefined ? "ADMIN_POST_CORRECT" : "ADMIN_UPDATE_POST_STATUS",
+        isPinned !== undefined
+          ? AuditAction.POST_PIN_UPDATE
+          : title !== undefined || content !== undefined
+            ? AuditAction.ADMIN_POST_CORRECT
+            : "ADMIN_UPDATE_POST_STATUS",
         AuditTargetType.POST,
         id,
         {
@@ -88,6 +101,8 @@ export const PATCH = withAuth(async (
         newTitle: title ?? existing.title,
         updatedFields: Object.keys(updateData),
         reason,
+        oldPinned: existing.isPinned,
+        newPinned: isPinned ?? (status !== undefined && status !== "PUBLISHED" ? false : existing.isPinned),
         },
         undefined,
         tx,

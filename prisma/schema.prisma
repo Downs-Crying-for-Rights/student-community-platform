@@ -161,6 +161,8 @@ model User {
   dmThreadsAsP1  DMThread[]  @relation("DMThreadP1")
   dmThreadsAsP2  DMThread[]  @relation("DMThreadP2")
   dmMessagesSent DMMessage[] @relation("DMSender")
+  announcementReceipts AnnouncementReceipt[]
+  announcementDeliveries AnnouncementDelivery[]
 
   // 群聊
   chatRooms        ChatRoom[]            @relation("ChatRoomCreator")
@@ -470,6 +472,8 @@ model Post {
   dcrCategory  DCRCategory?
   likeCount    Int            @default(0)
   commentCount Int            @default(0)
+  isPinned     Boolean        @default(false)
+  pinnedAt     DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -488,6 +492,9 @@ model Post {
   reports     Report[]          @relation("ReportedPost")
   editHistory PostEditHistory[]
   revisions   PostRevision[]
+
+  @@index([status, isPinned, pinnedAt, createdAt])
+  @@index([boardId, status, isPinned, pinnedAt, createdAt])
 }
 
 model PostRevision {
@@ -1161,6 +1168,7 @@ model DMThread {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  isSystemReadOnly Boolean @default(false)
 
   // 参与者 (双向关系)
   participant1Id String
@@ -1190,6 +1198,59 @@ model DMMessage {
 
   @@index([threadId, createdAt])
   @@index([senderId])
+}
+
+// ==================== 平台公告 ====================
+
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   @db.Text
+  revision    Int      @default(1)
+  forcePopup  Boolean  @default(true)
+  isPublished Boolean  @default(true)
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+
+  receipts   AnnouncementReceipt[]
+  deliveries AnnouncementDelivery[]
+
+  @@index([isPublished, forcePopup, publishedAt])
+}
+
+model AnnouncementReceipt {
+  id             String   @id @default(cuid())
+  announcementId String
+  revision       Int
+  userId         String
+  dismissedAt    DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, revision, userId])
+  @@index([userId, dismissedAt])
+}
+
+model AnnouncementDelivery {
+  id             String   @id @default(cuid())
+  announcementId String
+  userId         String
+  status         String   @default("PENDING")
+  attemptCount   Int      @default(0)
+  lastError      String?
+  threadId       String?
+  messageId      String?  @unique
+  deliveredAt    DateTime?
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([announcementId, status])
+  @@index([userId, deliveredAt])
 }
 
 // ==================== 系统日志 ====================

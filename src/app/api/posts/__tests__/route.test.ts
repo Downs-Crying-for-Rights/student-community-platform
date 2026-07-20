@@ -175,7 +175,12 @@ describe("GET /api/posts", () => {
     expect(res.status).toBe(200);
     expect(mockPostFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderBy: [{ likeCount: "desc" }, { createdAt: "desc" }],
+        orderBy: [
+          { isPinned: "desc" },
+          { pinnedAt: "desc" },
+          { likeCount: "desc" },
+          { createdAt: "desc" },
+        ],
       }),
     );
   });

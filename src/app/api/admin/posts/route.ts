@@ -51,7 +51,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const [posts, total] = await Promise.all([
       prisma.post.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ isPinned: "desc" }, { pinnedAt: "desc" }, { createdAt: "desc" }],
         skip,
         take: pageSize,
         include: {

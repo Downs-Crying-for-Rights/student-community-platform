@@ -20,6 +20,7 @@ interface APIPost {
   isAnonymous: boolean;
   anonymousId: string | null;
   likeCount: number;
+  isPinned: boolean;
   author: { id: string; nickname: string | null; avatar: string | null };
   board: { id: string; name: string; zone: string };
   tags: Array<{ tag: { id: string; name: string } }>;
@@ -43,6 +44,7 @@ function mapAPIPostToCardProps(post: APIPost): PostCardProps {
     isAnonymous: post.isAnonymous,
     anonymousId: post.anonymousId,
     likeCount: post.likeCount,
+    isPinned: post.isPinned,
     author: {
       id: post.author.id,
       nickname: post.author.nickname,

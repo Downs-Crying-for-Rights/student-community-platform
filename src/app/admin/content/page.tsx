@@ -13,6 +13,7 @@ interface PostItem {
   title: string;
   content: string;
   status: string;
+  isPinned: boolean;
   createdAt: string;
   author: { id: string; nickname: string | null; email: string | null };
   board: { id: string; name: string };
@@ -150,6 +151,19 @@ export default function AdminContentPage() {
     if (res.ok) fetchComments();
   };
 
+  const handlePostPinToggle = async (post: PostItem) => {
+    const reason = window.prompt(`请输入${post.isPinned ? "取消置顶" : "置顶"}原因：`);
+    if (!reason?.trim()) return;
+    const res = await fetch(`/api/admin/posts/${post.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isPinned: !post.isPinned, reason: reason.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) setPostsActionError(data.error || "置顶状态更新失败");
+    else await fetchPosts();
+  };
+
   // ==================== Render ====================
 
   return (
@@ -246,6 +260,7 @@ export default function AdminContentPage() {
                                 className="font-medium hover:underline line-clamp-1"
                               >
                                 {post.title}
+                                {post.isPinned && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">置顶</span>}
                               </a>
                             </td>
                             <td className="p-3 text-xs">
@@ -271,6 +286,7 @@ export default function AdminContentPage() {
                                   <option key={s} value={s}>{STATUS_LABELS[s]}</option>
                                 ))}
                               </select>
+                              <Button type="button" size="sm" variant="ghost" className="ml-2 h-7 px-2 text-xs" disabled={post.status !== "PUBLISHED" && !post.isPinned} onClick={() => void handlePostPinToggle(post)}>{post.isPinned ? "取消置顶" : "置顶"}</Button>
                             </td>
                           </tr>
                         ))}
