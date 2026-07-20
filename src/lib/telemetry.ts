@@ -11,6 +11,8 @@ export interface RouteTelemetryOptions {
   persist?: boolean;
 }
 
+type TelemetryMetadata = Record<string, string | number | boolean | null>;
+
 export interface ServerTelemetryInput {
   type: "request" | "error" | "event";
   name: string;
@@ -19,7 +21,7 @@ export interface ServerTelemetryInput {
   value?: number;
   status?: number;
   userId?: string;
-  metadata?: Record<string, string | number | boolean | null>;
+  metadata?: TelemetryMetadata;
   /** Persist this event even when normal successful-request sampling is enabled. */
   force?: boolean;
 }
@@ -37,13 +39,53 @@ export function sanitizeTelemetryDetail(value: unknown, maxLength = 8_000): stri
 }
 
 export function sanitizeTelemetryMetadata(
-  metadata?: Record<string, string | number | boolean | null>,
-): Record<string, string | number | boolean | null> | undefined {
+  metadata?: TelemetryMetadata,
+): TelemetryMetadata | undefined {
   if (!metadata) return undefined;
   return Object.fromEntries(Object.entries(metadata).slice(0, 20).map(([key, value]) => [
     key.slice(0, 60),
     typeof value === "string" ? sanitizeTelemetryDetail(value) : value,
   ]));
+}
+
+const SENSITIVE_DETAIL_KEY = /(?:authorization|cookie|password|passwd|secret|token|api[_-]?key|credential)/i;
+
+function serializeDiagnosticValue(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "string") return sanitizeTelemetryDetail(value, 4_000);
+  try {
+    const seen = new WeakSet<object>();
+    const serialized = JSON.stringify(value, (key, item) => {
+      if (SENSITIVE_DETAIL_KEY.test(key)) return "[REDACTED]";
+      if (typeof item === "object" && item !== null) {
+        if (seen.has(item)) return "[Circular]";
+        seen.add(item);
+      }
+      return item;
+    });
+    return sanitizeTelemetryDetail(serialized, 4_000);
+  } catch {
+    return sanitizeTelemetryDetail(String(value), 4_000);
+  }
+}
+
+async function responseErrorMetadata(response?: Response): Promise<TelemetryMetadata> {
+  if (!response || response.status < 400 || !response.headers.get("content-type")?.includes("application/json")) return {};
+  try {
+    const body: unknown = await response.clone().json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return {};
+    const record = body as Record<string, unknown>;
+    const detail = serializeDiagnosticValue(record.error ?? record.message);
+    const validation = serializeDiagnosticValue(record.details ?? record.issues);
+    const code = serializeDiagnosticValue(record.code);
+    return {
+      ...(detail ? { errorDetail: detail } : {}),
+      ...(validation ? { errorValidation: validation } : {}),
+      ...(code ? { errorCode: code } : {}),
+    };
+  } catch {
+    return {};
+  }
 }
 
 export function normalizeTelemetryRoute(
@@ -119,23 +161,33 @@ export function recordCompletedRequest(
   request: Request,
   response: Response | undefined,
   startedAt: number,
-  options: RouteTelemetryOptions & { requestId: string; userId?: string; thrown?: boolean },
+  options: RouteTelemetryOptions & { requestId: string; userId?: string; thrown?: boolean; error?: unknown },
 ): void {
   if (options.persist === false) return;
   const route = normalizeTelemetryRoute(options.route ?? new URL(request.url).pathname, options.params);
-  trackServerTelemetryLater({
-    type: "request",
-    name: `${request.method} ${route}`,
-    route,
-    duration: Math.max(0, performance.now() - startedAt),
-    status: response?.status ?? 500,
-    userId: options.userId,
-    force: true,
-    metadata: {
-      requestId: options.requestId,
-      method: request.method.slice(0, 16),
-      outcome: options.thrown ? "thrown" : "returned",
-    },
+  const duration = Math.max(0, performance.now() - startedAt);
+  void responseErrorMetadata(response).then((responseMetadata) => {
+    const thrownDetail = options.error instanceof Error
+      ? sanitizeTelemetryDetail(options.error, 8_000)
+      : serializeDiagnosticValue(options.error);
+    return trackServerTelemetry({
+      type: "request",
+      name: `${request.method} ${route}`,
+      route,
+      duration,
+      status: response?.status ?? 500,
+      userId: options.userId,
+      force: true,
+      metadata: {
+        requestId: options.requestId,
+        method: request.method.slice(0, 16),
+        outcome: options.thrown ? "thrown" : "returned",
+        ...responseMetadata,
+        ...(thrownDetail ? { errorDetail: thrownDetail } : {}),
+      },
+    });
+  }).catch((error) => {
+    process.stderr.write(`telemetry.server.write_failed ${sanitizeTelemetryDetail(error, 500)}\n`);
   });
 }
 
@@ -157,7 +209,7 @@ export function withTelemetry<TRequest extends Request, TContext = unknown, TRes
       recordCompletedRequest(request, response, startedAt, { ...options, requestId });
       return response;
     } catch (error) {
-      recordCompletedRequest(request, undefined, startedAt, { ...options, requestId, thrown: true });
+      recordCompletedRequest(request, undefined, startedAt, { ...options, requestId, thrown: true, error });
       throw error;
     }
   };

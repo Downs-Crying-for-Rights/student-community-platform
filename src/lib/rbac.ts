@@ -232,7 +232,7 @@ export function withAuth(
       return response;
     } catch (error) {
       recordCompletedRequest(req, undefined, startedAt, {
-        requestId, userId, route: options?.route, params: context.params, thrown: true,
+        requestId, userId, route: options?.route, params: context.params, thrown: true, error,
       });
       throw error;
     }
@@ -272,7 +272,7 @@ export function withOptionalAuth(handler: OptionalAuthHandler): RouteHandler {
       return response;
     } catch (error) {
       recordCompletedRequest(req, undefined, startedAt, {
-        requestId, userId, params: context.params, thrown: true,
+        requestId, userId, params: context.params, thrown: true, error,
       });
       throw error;
     }
