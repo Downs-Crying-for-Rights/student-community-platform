@@ -70,6 +70,9 @@ const publicProfile = {
   nickname: "其他用户",
   avatar: "https://example.com/avatar2.png",
   bio: "其他用户简介",
+  role: "ADMIN",
+  realVerifiedAt: new Date("2024-02-02"),
+  studentVerifiedAt: new Date("2024-02-03"),
   createdAt: new Date("2024-02-01"),
   _count: { posts: 3, likes: 7 },
 };
@@ -126,6 +129,11 @@ describe("GET /api/users/[id]", () => {
     expect(data.user._count.posts).toBe(3);
     // 不应包含私有字段
     expect(data.user.role).toBeUndefined();
+    expect(data.user.realVerifiedAt).toBeUndefined();
+    expect(data.user.studentVerifiedAt).toBeUndefined();
+    expect(data.user.isAdministrator).toBe(true);
+    expect(data.user.realVerified).toBe(true);
+    expect(data.user.studentVerified).toBe(true);
   });
 
   it("应返回 404 当用户不存在", async () => {

@@ -1,4 +1,5 @@
 import prisma from "./prisma";
+import { deleteSensitiveObject } from "./oss";
 
 /**
  * Cleanup report returned by runAllCleanup
@@ -11,6 +12,7 @@ export interface CleanupReport {
   expiredListeningSessions: number;
   expiredAiReviews: number;
   expiredQQRegistrations: number;
+  deletedIdentityEvidence: number;
   executedAt: string;
 }
 
@@ -144,6 +146,33 @@ export async function cleanupExpiredQQRegistrations(): Promise<number> {
   return result.count;
 }
 
+export async function cleanupExpiredIdentityEvidence(): Promise<number> {
+  const expired = await prisma.identityVerificationApplication.findMany({
+    where: {
+      evidenceDeleteAfter: { lt: new Date() },
+      OR: [{ evidenceKey: { not: null } }, { identityCiphertext: { not: null } }],
+    },
+    select: { id: true, evidenceKey: true },
+    take: 100,
+  });
+  let deleted = 0;
+  for (const application of expired) {
+    if (application.evidenceKey) {
+      if (!application.evidenceKey.startsWith(`identity-verification/${application.id}/`)) continue;
+      await deleteSensitiveObject(application.evidenceKey);
+    }
+    const updated = await prisma.identityVerificationApplication.updateMany({
+      where: { id: application.id, evidenceDeleteAfter: { lt: new Date() } },
+      data: {
+        evidenceKey: null, evidenceMime: null, evidenceSize: null,
+        identityCiphertext: null, identityIv: null, identityAuthTag: null, identityKeyVersion: null,
+      },
+    });
+    deleted += updated.count;
+  }
+  return deleted;
+}
+
 /**
  * Run all cleanup tasks and return a consolidated report.
  *
@@ -158,6 +187,7 @@ export async function runAllCleanup(): Promise<CleanupReport> {
     expiredListeningSessions,
     expiredAiReviews,
     expiredQQRegistrations,
+    deletedIdentityEvidence,
   ] = await Promise.all([
     cleanupExpiredConfideRequests(),
     cleanupOldAnonymousSessions(),
@@ -166,6 +196,7 @@ export async function runAllCleanup(): Promise<CleanupReport> {
     cleanupExpiredListeningSessions(),
     cleanupExpiredAiReviews(),
     cleanupExpiredQQRegistrations(),
+    cleanupExpiredIdentityEvidence(),
   ]);
 
   return {
@@ -176,6 +207,7 @@ export async function runAllCleanup(): Promise<CleanupReport> {
     expiredListeningSessions,
     expiredAiReviews,
     expiredQQRegistrations,
+    deletedIdentityEvidence,
     executedAt: new Date().toISOString(),
   };
 }

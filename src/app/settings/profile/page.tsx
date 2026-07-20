@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { User, Save, Loader2, Lock, Camera } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -281,6 +282,13 @@ export default function SettingsProfilePage() {
             <p className="mt-1 text-sm text-muted-foreground">昵称、头像和 QQ 号为必填项，个人简介可选。完成后即可继续使用社区。</p>
           </div>
         )}
+
+        <Card className="mb-6">
+          <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="font-medium">身份认证</p><p className="text-sm text-muted-foreground">申请真实用户、学生用户公开身份标签。</p></div>
+            <Button asChild variant="outline"><Link href="/settings/identity">进入身份认证</Link></Button>
+          </CardContent>
+        </Card>
 
         {/* Profile Edit Card */}
         <Card className="mb-6">

@@ -20,6 +20,19 @@ enum Role {
   SUPER_ADMIN
 }
 
+enum IdentityVerificationMethod {
+  STUDENT_DOCUMENT
+  ID_HOLDING_PHOTO
+  SCHOOL_UNIFORM
+  REAL_NAME_ID
+}
+
+enum IdentityVerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum UserPunishmentType {
   ACCOUNT_BAN
   POST_SHADOW_HIDE
@@ -74,35 +87,38 @@ enum QQOutboxStatus {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  name            String?
-  email           String?   @unique
-  username        String?   @unique
-  emailVerified   DateTime?
-  image           String?
-  nickname        String?
-  avatar          String?
-  bio             String?
-  qqNumber        String?
-  role            Role      @default(USER)
-  isBanned        Boolean   @default(false)
-  isShadowBanned  Boolean   @default(false)
-  isAnonymous     Boolean   @default(false)
-  violationCount  Int       @default(0)
-  onboardingDone  Boolean   @default(false)
-  psychAccess     Boolean   @default(false)
-  dcrAccess       Boolean   @default(false)
-  dcrHelperAccess Boolean   @default(false)
-  dcrPledgeSigned Boolean   @default(false)
-  quizPassed      Boolean   @default(false)
-  phone           String?   @unique // 手机号
-  passwordHash    String? // bcrypt 哈希密码
-  securityVersion Int       @default(0)
-  profileCompletionRequired Boolean @default(false)
-  dmConsentVersion Int      @default(0)
-  dmConsentAcceptedAt DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                        String    @id @default(cuid())
+  name                      String?
+  email                     String?   @unique
+  username                  String?   @unique
+  emailVerified             DateTime?
+  image                     String?
+  nickname                  String?
+  avatar                    String?
+  bio                       String?
+  qqNumber                  String?
+  role                      Role      @default(USER)
+  isBanned                  Boolean   @default(false)
+  isShadowBanned            Boolean   @default(false)
+  isAnonymous               Boolean   @default(false)
+  violationCount            Int       @default(0)
+  onboardingDone            Boolean   @default(false)
+  psychAccess               Boolean   @default(false)
+  dcrAccess                 Boolean   @default(false)
+  dcrHelperAccess           Boolean   @default(false)
+  dcrPledgeSigned           Boolean   @default(false)
+  quizPassed                Boolean   @default(false)
+  phone                     String?   @unique // 手机号
+  passwordHash              String? // bcrypt 哈希密码
+  securityVersion           Int       @default(0)
+  profileCompletionRequired Boolean   @default(false)
+  realVerifiedAt            DateTime?
+  studentVerifiedAt         DateTime?
+  verifiedIdentityHash      String?   @unique
+  dmConsentVersion          Int       @default(0)
+  dmConsentAcceptedAt       DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   // NextAuth 关联
   accounts Account[]
@@ -160,10 +176,10 @@ model User {
   cycleMatchRequest MutualAidMatchRequest?
 
   // 站内私信
-  dmThreadsAsP1  DMThread[]  @relation("DMThreadP1")
-  dmThreadsAsP2  DMThread[]  @relation("DMThreadP2")
-  dmMessagesSent DMMessage[] @relation("DMSender")
-  announcementReceipts AnnouncementReceipt[]
+  dmThreadsAsP1          DMThread[]             @relation("DMThreadP1")
+  dmThreadsAsP2          DMThread[]             @relation("DMThreadP2")
+  dmMessagesSent         DMMessage[]            @relation("DMSender")
+  announcementReceipts   AnnouncementReceipt[]
   announcementDeliveries AnnouncementDelivery[]
 
   // 群聊
@@ -175,11 +191,42 @@ model User {
   chatBansRevoked  ChatRoomBan[]         @relation("ChatRoomBanRevokedBy")
 
   // QQ data-security core
-  qqIdentity          QQIdentity?
-  qqDelegationDrafts  QQDelegationDraft[]
-  qqGrants            QQGrant[]
-  qqConversation      QQConversation?
-  pendingQQRegistration PendingQQRegistration?
+  qqIdentity                       QQIdentity?
+  qqDelegationDrafts               QQDelegationDraft[]
+  qqGrants                         QQGrant[]
+  qqConversation                   QQConversation?
+  pendingQQRegistration            PendingQQRegistration?
+  identityVerificationApplications IdentityVerificationApplication[] @relation("IdentityVerificationApplicant")
+  identityVerificationReviews      IdentityVerificationApplication[] @relation("IdentityVerificationReviewer")
+}
+
+model IdentityVerificationApplication {
+  id                  String                     @id @default(cuid())
+  applicantId         String
+  pendingApplicantId  String?                    @unique
+  method              IdentityVerificationMethod
+  status              IdentityVerificationStatus @default(PENDING)
+  evidenceKey         String?
+  evidenceMime        String?
+  evidenceSize        Int?
+  evidenceDeleteAfter DateTime?
+  identityCiphertext  String?
+  identityIv          String?
+  identityAuthTag     String?
+  identityKeyVersion  Int?
+  identityLookupHash  String?
+  reviewNote          String?
+  reviewerId          String?
+  createdAt           DateTime                   @default(now())
+  reviewedAt          DateTime?
+
+  applicant User  @relation("IdentityVerificationApplicant", fields: [applicantId], references: [id], onDelete: Cascade)
+  reviewer  User? @relation("IdentityVerificationReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([applicantId, createdAt])
+  @@index([status, createdAt])
+  @@index([identityLookupHash])
+  @@index([evidenceDeleteAfter])
 }
 
 model SystemConfig {
@@ -194,30 +241,30 @@ model SystemConfig {
 }
 
 model QQIdentity {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  lookupHash   String   @unique
-  ciphertext   String
-  iv           String
-  authTag      String
-  keyVersion   Int
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  lookupHash String   @unique
+  ciphertext String
+  iv         String
+  authTag    String
+  keyVersion Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   outboxMessages QQMessageOutbox[]
 
   @@index([createdAt])
 }
 
 model QQDelegationDraft {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   ownerId       String
-  schemaVersion Int      @default(1)
+  schemaVersion Int       @default(1)
   payload       Json
   payloadHash   String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   expiresAt     DateTime?
   finalizedAt   DateTime?
 
@@ -229,25 +276,25 @@ model QQDelegationDraft {
 }
 
 model QQGrant {
-  id         String         @id @default(cuid())
-  tokenHash  String         @unique
-  purpose    QQGrantPurpose
-  userId     String?
-  draftId    String?
-  targetId   String?
+  id                    String         @id @default(cuid())
+  tokenHash             String         @unique
+  purpose               QQGrantPurpose
+  userId                String?
+  draftId               String?
+  targetId              String?
   pendingRegistrationId String?
-  identityLookupHash String?
-  identityCiphertext String?
-  identityIv         String?
-  identityAuthTag    String?
-  identityKeyVersion Int?
-  createdAt  DateTime       @default(now())
-  expiresAt  DateTime
-  consumedAt DateTime?
-  revokedAt  DateTime?
+  identityLookupHash    String?
+  identityCiphertext    String?
+  identityIv            String?
+  identityAuthTag       String?
+  identityKeyVersion    Int?
+  createdAt             DateTime       @default(now())
+  expiresAt             DateTime
+  consumedAt            DateTime?
+  revokedAt             DateTime?
 
-  user  User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  draft QQDelegationDraft? @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  user                User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  draft               QQDelegationDraft?     @relation(fields: [draftId], references: [id], onDelete: Cascade)
   pendingRegistration PendingQQRegistration? @relation(fields: [pendingRegistrationId], references: [id], onDelete: Cascade)
 
   @@index([userId, purpose, createdAt])
@@ -257,14 +304,14 @@ model QQGrant {
 }
 
 model PendingQQRegistration {
-  id           String    @id @default(cuid())
-  username     String    @unique
-  passwordHash String?
+  id                 String    @id @default(cuid())
+  username           String    @unique
+  passwordHash       String?
   agreementRevisions Json
-  createdAt    DateTime  @default(now())
-  expiresAt    DateTime
-  consumedAt   DateTime?
-  userId       String?   @unique
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime
+  consumedAt         DateTime?
+  userId             String?   @unique
 
   user   User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   grants QQGrant[]
@@ -289,11 +336,11 @@ model QQConversation {
 }
 
 model QQBotEventInbox {
-  id          String   @id @default(cuid())
-  eventId     String   @unique
-  selfId      String
-  lookupHash  String
-  response    Json?
+  id              String    @id @default(cuid())
+  eventId         String    @unique
+  selfId          String
+  lookupHash      String
+  response        Json?
   inputCiphertext String?
   inputIv         String?
   inputAuthTag    String?
@@ -302,31 +349,31 @@ model QQBotEventInbox {
   replyIv         String?
   replyAuthTag    String?
   replyKeyVersion Int?
-  createdAt   DateTime @default(now())
-  processedAt DateTime?
+  createdAt       DateTime  @default(now())
+  processedAt     DateTime?
 
   @@index([createdAt])
 }
 
 model AiRuntimeConfig {
-  id                  String   @id @default("default")
-  enabled             Boolean  @default(false)
-  baseUrl             String
-  defaultModel        String
-  complexModel        String
-  timeoutMs           Int      @default(25000)
-  maxInputChars       Int      @default(12000)
-  maxOutputTokens     Int      @default(1800)
-  reviewBasePrompt    String   @db.Text
+  id                 String   @id @default("default")
+  enabled            Boolean  @default(false)
+  baseUrl            String
+  defaultModel       String
+  complexModel       String
+  timeoutMs          Int      @default(25000)
+  maxInputChars      Int      @default(12000)
+  maxOutputTokens    Int      @default(1800)
+  reviewBasePrompt   String   @db.Text
   targetInstructions Json
-  qqDraftPrompt       String   @db.Text
-  apiKeyCiphertext    String?
-  apiKeyIv            String?
-  apiKeyAuthTag       String?
-  apiKeyKeyVersion    Int?
-  revision            Int      @default(1)
-  updatedAt           DateTime @updatedAt
-  updatedById         String?
+  qqDraftPrompt      String   @db.Text
+  apiKeyCiphertext   String?
+  apiKeyIv           String?
+  apiKeyAuthTag      String?
+  apiKeyKeyVersion   Int?
+  revision           Int      @default(1)
+  updatedAt          DateTime @updatedAt
+  updatedById        String?
 }
 
 model QQMessageOutbox {
@@ -1187,10 +1234,10 @@ model ModerationAction {
 // ==================== 通用站内私信 (DM) ====================
 
 model DMThread {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  isSystemReadOnly Boolean @default(false)
+  id               String   @id @default(cuid())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  isSystemReadOnly Boolean  @default(false)
 
   // 参与者 (双向关系)
   participant1Id String
@@ -1257,14 +1304,14 @@ model AnnouncementReceipt {
 }
 
 model AnnouncementDelivery {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   announcementId String
   userId         String
-  status         String   @default("PENDING")
-  attemptCount   Int      @default(0)
+  status         String    @default("PENDING")
+  attemptCount   Int       @default(0)
   lastError      String?
   threadId       String?
-  messageId      String?  @unique
+  messageId      String?   @unique
   deliveredAt    DateTime?
 
   announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
@@ -1497,9 +1544,9 @@ model MutualAidLink {
   fromUser User @relation("LinkFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
   toUser   User @relation("LinkTo", fields: [toUserId], references: [id], onDelete: Cascade)
 
-  status      LinkStatus @default(PENDING_REQUEST)
+  status              LinkStatus  @default(PENDING_REQUEST)
   statusBeforeDispute LinkStatus?
-  description String? // from 方对此段互助的描述
+  description         String? // from 方对此段互助的描述
 
   acceptedAt  DateTime?
   completedAt DateTime?

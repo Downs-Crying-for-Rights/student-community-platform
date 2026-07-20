@@ -1,4 +1,4 @@
-import { GetObjectCommand, S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import sharp from "sharp";
 import crypto from "crypto";
 
@@ -87,6 +87,26 @@ export async function uploadToOSS(
   );
 
   return createPrivateMediaUrl(key);
+}
+
+export async function uploadSensitiveObject(
+  buffer: Buffer,
+  key: string,
+  contentType: string,
+): Promise<void> {
+  await s3.send(new PutObjectCommand({
+    Bucket: OSS_BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+    CacheControl: "private, no-store",
+    ACL: "private",
+    ServerSideEncryption: "AES256",
+  }));
+}
+
+export async function deleteSensitiveObject(key: string): Promise<void> {
+  await s3.send(new DeleteObjectCommand({ Bucket: OSS_BUCKET, Key: key }));
 }
 
 /**
