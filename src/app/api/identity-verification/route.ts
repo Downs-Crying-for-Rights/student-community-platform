@@ -8,10 +8,12 @@ import { enforceRateLimit } from "@/lib/rate-limiter";
 import { AuditAction, AuditTargetType, logAudit } from "@/lib/audit";
 import {
   encryptIdentityDetails,
+  encryptSchoolDetails,
   hashVerifiedIdentity,
   identityMethodSchema,
   PHOTO_METHODS,
   realNameIdentitySchema,
+  schoolUniformSchema,
   sensitiveEvidenceKey,
 } from "@/lib/identity-verification";
 import { deleteSensitiveObject, uploadSensitiveObject } from "@/lib/oss";
@@ -70,7 +72,6 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     if (!Number.isSafeInteger(contentLength) || contentLength <= 0 || contentLength > MAX_FILE_SIZE + 512 * 1024) {
       return NextResponse.json({ error: "请求体大小无效或超过限制" }, { status: 413 });
     }
-    if (user?.studentVerifiedAt) return NextResponse.json({ error: "当前账户已完成学生身份认证" }, { status: 409 });
     const form = await req.formData();
     const method = identityMethodSchema.safeParse(form.get("method"));
     const file = form.get("file");
@@ -79,6 +80,38 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
     if (form.get("privacyConfirmed") !== "true") {
       return NextResponse.json({ error: "请确认身份材料处理规则" }, { status: 400 });
+    }
+    if (form.get("dcrOnlyNoteConfirmed") !== "true") {
+      return NextResponse.json({ error: "请确认认证材料与“仅供DCR认证”纸条同框" }, { status: 400 });
+    }
+
+    let encrypted: ReturnType<typeof encryptIdentityDetails> | null = null;
+    let lookupHash: string | null = null;
+    if (method.data === "ID_HOLDING_PHOTO") {
+      if (user?.realVerifiedAt || user?.verifiedIdentityHash) {
+        return NextResponse.json({ error: "当前账户已完成真实身份认证，不能替换实名信息" }, { status: 409 });
+      }
+      const identity = realNameIdentitySchema.safeParse({
+        realName: form.get("realName"), idNumber: form.get("idNumber"), privacyConfirmed: true,
+      });
+      if (!identity.success) return NextResponse.json({ error: "姓名或身份证号校验失败", details: identity.error.flatten().fieldErrors }, { status: 400 });
+      lookupHash = hashVerifiedIdentity(identity.data.idNumber);
+      const duplicate = await prisma.user.findFirst({
+        where: { verifiedIdentityHash: lookupHash, id: { not: req.user.id } }, select: { id: true },
+      });
+      if (duplicate) return NextResponse.json({ error: "该身份信息无法用于当前账户认证" }, { status: 409 });
+      encrypted = encryptIdentityDetails(applicationId, identity.data.realName, identity.data.idNumber);
+    } else if (method.data === "SCHOOL_UNIFORM") {
+      if (user?.studentVerifiedAt) return NextResponse.json({ error: "当前账户已完成学生身份认证" }, { status: 409 });
+      const school = schoolUniformSchema.safeParse({
+        schoolName: form.get("schoolName"),
+        nonShenzhenUniformConfirmed: form.get("nonShenzhenUniformConfirmed") === "true",
+        privacyConfirmed: true,
+      });
+      if (!school.success) return NextResponse.json({ error: "学校信息校验失败", details: school.error.flatten().fieldErrors }, { status: 400 });
+      encrypted = encryptSchoolDetails(applicationId, school.data.schoolName);
+    } else if (user?.studentVerifiedAt) {
+      return NextResponse.json({ error: "当前账户已完成学生身份认证" }, { status: 409 });
     }
     if (!(file instanceof File) || file.size <= 0 || file.size > MAX_FILE_SIZE || !ALLOWED_IMAGE_TYPES.has(file.type)) {
       return NextResponse.json({ error: "请上传 10MB 以内的 JPG、PNG 或 WebP 图片" }, { status: 400 });
@@ -108,34 +141,16 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       evidenceKey,
       evidenceMime: "image/webp",
       evidenceSize: evidence.byteLength,
+      ...(encrypted ? {
+        identityCiphertext: encrypted.ciphertext,
+        identityIv: encrypted.iv,
+        identityAuthTag: encrypted.authTag,
+        identityKeyVersion: encrypted.keyVersion,
+      } : {}),
+      ...(lookupHash ? { identityLookupHash: lookupHash } : {}),
     };
   } else {
-    if (user?.realVerifiedAt || user?.verifiedIdentityHash) {
-      return NextResponse.json({ error: "当前账户已完成真实身份认证，不能替换实名信息" }, { status: 409 });
-    }
-    const body = await req.json().catch(() => null);
-    const parsed = realNameIdentitySchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ error: "参数校验失败", details: parsed.error.flatten().fieldErrors }, { status: 400 });
-    }
-    const lookupHash = hashVerifiedIdentity(parsed.data.idNumber);
-    const duplicate = await prisma.user.findFirst({
-      where: { verifiedIdentityHash: lookupHash, id: { not: req.user.id } },
-      select: { id: true },
-    });
-    if (duplicate) return NextResponse.json({ error: "该身份信息无法用于当前账户认证" }, { status: 409 });
-    const encrypted = encryptIdentityDetails(applicationId, parsed.data.realName, parsed.data.idNumber);
-    data = {
-      id: applicationId,
-      applicantId: req.user.id,
-      pendingApplicantId: req.user.id,
-      method: "REAL_NAME_ID",
-      identityCiphertext: encrypted.ciphertext,
-      identityIv: encrypted.iv,
-      identityAuthTag: encrypted.authTag,
-      identityKeyVersion: encrypted.keyVersion,
-      identityLookupHash: lookupHash,
-    };
+    return NextResponse.json({ error: "请选择新的照片认证方式提交申请" }, { status: 400 });
   }
 
   try {

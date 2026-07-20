@@ -35,7 +35,7 @@ export default function IdentityVerificationReviewPage() {
   const [actionId, setActionId] = useState("");
   const [note, setNote] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
-  const [preview, setPreview] = useState<{ item: Item; url?: string; realName?: string; idNumber?: string } | null>(null);
+  const [preview, setPreview] = useState<{ item: Item; url?: string; realName?: string; idNumber?: string; schoolName?: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setMessage("");
@@ -49,16 +49,20 @@ export default function IdentityVerificationReviewPage() {
 
   async function inspect(item: Item) {
     if (preview?.url) URL.revokeObjectURL(preview.url);
+    let url: string | undefined;
+    let details: { realName?: string; idNumber?: string; schoolName?: string } = {};
     if (item.hasEvidence) {
       const response = await fetch(`/api/admin/identity-verifications/${item.id}/evidence`, { cache: "no-store" });
       if (!response.ok) { setMessage("认证材料读取失败"); return; }
-      setPreview({ item, url: URL.createObjectURL(await response.blob()) });
-      return;
+      url = URL.createObjectURL(await response.blob());
     }
-    const response = await fetch(`/api/admin/identity-verifications/${item.id}/details`, { cache: "no-store" });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) { setMessage(data.error || "实名信息读取失败"); return; }
-    setPreview({ item, realName: data.realName, idNumber: data.idNumber });
+    if (item.hasIdentityDetails) {
+      const response = await fetch(`/api/admin/identity-verifications/${item.id}/details`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) { if (url) URL.revokeObjectURL(url); setMessage(data.error || "认证信息读取失败"); return; }
+      details = { realName: data.realName, idNumber: data.idNumber, schoolName: data.schoolName };
+    }
+    setPreview({ item, url, ...details });
   }
 
   async function review(item: Item, decision: "APPROVED" | "REJECTED") {
@@ -84,7 +88,7 @@ export default function IdentityVerificationReviewPage() {
         {items.map((item) => <tr key={item.id} className="border-b align-top"><td className="p-3"><a className="font-medium text-primary hover:underline" href={`/u/${item.applicant.id}`}>{item.applicant.nickname || item.applicant.id}</a><p className="mt-1 text-xs text-muted-foreground">现有标签：{item.applicant.realVerifiedAt ? "真实用户 " : ""}{item.applicant.studentVerifiedAt ? "学生用户" : "无"}</p></td><td className="p-3">{METHOD_LABELS[item.method]}</td><td className="p-3 text-muted-foreground">{new Date(item.createdAt).toLocaleString("zh-CN")}</td><td className="space-y-2 p-3"><Button size="sm" variant="outline" onClick={() => void inspect(item)}><Eye className="h-4 w-4" />查看认证材料</Button>{item.status === "PENDING" && <><Input placeholder="拒绝原因或审核备注" value={note[item.id] || ""} onChange={(event) => setNote((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="flex gap-2"><Button size="sm" disabled={actionId === item.id} onClick={() => void review(item, "APPROVED")}>通过</Button><Button size="sm" variant="destructive" disabled={actionId === item.id} onClick={() => void review(item, "REJECTED")}>拒绝</Button></div></>}{item.reviewNote && <p className="text-xs text-muted-foreground">备注：{item.reviewNote}</p>}</td></tr>)}
         {!loading && items.length === 0 && <tr><td colSpan={4} className="p-10 text-center text-muted-foreground">暂无申请</td></tr>}
       </tbody></table>{loading && <div className="flex items-center justify-center gap-2 p-10 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中...</div>}</div></CardContent></Card>
-      <Dialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) { if (preview?.url) URL.revokeObjectURL(preview.url); setPreview(null); } }}><DialogContent className="max-w-3xl"><DialogHeader><DialogTitle>认证材料</DialogTitle></DialogHeader>{preview?.url && <div className="relative h-[65vh] overflow-hidden rounded-lg bg-muted"><Image src={preview.url} alt="身份认证材料" fill unoptimized className="object-contain" /></div>}{preview?.realName && <div className="space-y-3 rounded-lg border p-5"><p><span className="text-muted-foreground">姓名：</span>{preview.realName}</p><p><span className="text-muted-foreground">身份证号：</span><span className="font-mono">{preview.idNumber}</span></p><p className="text-xs text-destructive">仅用于本次人工审核，禁止复制、截图或外传。</p></div>}</DialogContent></Dialog>
+      <Dialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) { if (preview?.url) URL.revokeObjectURL(preview.url); setPreview(null); } }}><DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>认证材料 · {preview ? METHOD_LABELS[preview.item.method] : ""}</DialogTitle></DialogHeader>{preview?.url && <div className="relative h-[55vh] overflow-hidden rounded-lg bg-muted"><Image src={preview.url} alt="身份认证材料" fill unoptimized className="object-contain" /></div>}{(preview?.realName || preview?.schoolName) && <div className="space-y-3 rounded-lg border p-5">{preview.realName && <><p><span className="text-muted-foreground">姓名：</span>{preview.realName}</p><p><span className="text-muted-foreground">身份证号：</span><span className="font-mono">{preview.idNumber}</span></p></>}{preview.schoolName && <p><span className="text-muted-foreground">学校名称：</span>{preview.schoolName}</p>}<p className="text-xs text-destructive">仅用于本次人工审核，禁止复制、截图或外传。</p></div>}<div className="rounded-lg bg-muted/50 p-4 text-sm"><p className="font-medium">审核核对项</p><p className="mt-2 text-muted-foreground">{preview?.item.method === "STUDENT_DOCUMENT" ? "核对证件信息是否完整、材料是否属于允许类型，以及“仅供DCR认证”纸条是否同框。" : preview?.item.method === "ID_HOLDING_PHOTO" ? "核对本人半身照、身份证人像面、纸条、填写姓名和身份证号是否一致且清晰。" : preview?.item.method === "SCHOOL_UNIFORM" ? "核对校服学校标识与填写学校名称是否一致、纸条是否清晰，并确认不是深圳统一校服。" : "核对历史实名信息。"}</p></div></DialogContent></Dialog>
     </main>
   );
 }

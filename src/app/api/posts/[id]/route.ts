@@ -6,6 +6,7 @@ import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
 import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
 import { sendAdminActionMail } from "@/lib/mail";
+import { publicUserSelect, toPublicUser } from "@/lib/public-user";
 
 async function canManageOwnContributionPost(userId: string, post: { authorId: string; board: { zone: string } }) {
   if (post.board.zone !== "DCR" || post.authorId !== userId) return false;
@@ -30,7 +31,7 @@ export const GET = withOptionalAuth(async (
     const post = await prisma.post.findUnique({
       where: { id },
       include: {
-        author: { select: { id: true, nickname: true, avatar: true, isShadowBanned: true } },
+        author: { select: { ...publicUserSelect, isShadowBanned: true } },
         board: { select: { id: true, name: true, zone: true } },
         tags: { include: { tag: true } },
         case_: { select: { id: true, category: true, status: true, requestStatus: true } },
@@ -51,7 +52,7 @@ export const GET = withOptionalAuth(async (
       }
       const { isShadowBanned: _, ...authorData } = post.author;
       return NextResponse.json({
-        post: { ...post, author: authorData, isLiked: false, isBookmarked: false },
+        post: { ...post, author: toPublicUser(authorData), isLiked: false, isBookmarked: false },
       });
     }
 
@@ -93,7 +94,7 @@ export const GET = withOptionalAuth(async (
 
     return NextResponse.json({
       post: {
-        ...anonymizePsychologyPost({ ...post, author: authorData }),
+        ...anonymizePsychologyPost({ ...post, author: toPublicUser(authorData) }),
         isLiked: !!like,
         isBookmarked: !!bookmark,
         isAuthor,
@@ -228,7 +229,7 @@ export const PATCH = withAuth(async (
         where: { id },
         data: { ...postData, status: "PENDING" },
         include: {
-          author: { select: { id: true, nickname: true, avatar: true } },
+          author: { select: publicUserSelect },
           board: { select: { id: true, name: true, zone: true } },
           tags: { include: { tag: true } },
         },
@@ -247,7 +248,7 @@ export const PATCH = withAuth(async (
       actionUrl: "/admin/moderation",
     });
 
-    return NextResponse.json({ post: { ...anonymizePsychologyPost(post), isAuthor: true }, liveVersionUnchanged: false, reviewStatus: "PENDING" });
+    return NextResponse.json({ post: { ...anonymizePsychologyPost({ ...post, author: toPublicUser(post.author) }), isAuthor: true }, liveVersionUnchanged: false, reviewStatus: "PENDING" });
   } catch (error) {
     console.error("PATCH /api/posts/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

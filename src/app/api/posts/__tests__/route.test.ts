@@ -119,7 +119,7 @@ describe("GET /api/posts", () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data.posts).toEqual(posts);
+    expect(data.posts).toEqual(posts.map((post) => ({ ...post, author: { ...post.author, isVerified: false } })));
     expect(data.total).toBe(1);
     expect(data.page).toBe(1);
     expect(data.pageSize).toBe(20);
@@ -323,7 +323,7 @@ describe("POST /api/posts", () => {
     const data = await res.json();
 
     expect(res.status).toBe(201);
-    expect(data.post).toEqual(createdPost);
+    expect(data.post).toEqual({ ...createdPost, author: { ...createdPost.author, isVerified: false } });
     expect(mockPostCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -451,7 +451,7 @@ describe("POST /api/posts", () => {
     expect(res.status).toBe(201);
     const data = await res.json();
     expect(data.post.authorId).toBe("匿名用户_ABCD");
-    expect(data.post.author).toEqual({ id: "匿名用户_ABCD", nickname: "匿名用户_ABCD", avatar: null });
+    expect(data.post.author).toEqual({ id: "匿名用户_ABCD", nickname: "匿名用户_ABCD", avatar: null, isVerified: false });
     expect(mockPostCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

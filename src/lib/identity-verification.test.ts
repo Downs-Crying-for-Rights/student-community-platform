@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   decryptIdentityDetails,
+  decryptSchoolDetails,
   encryptIdentityDetails,
+  encryptSchoolDetails,
   grantsStudentVerification,
   hashVerifiedIdentity,
   isValidChineseId,
   maskChineseId,
   realNameIdentitySchema,
+  requiredIdentityReviewMaterials,
+  schoolUniformSchema,
 } from "./identity-verification";
 
 describe("identity verification", () => {
@@ -49,9 +53,9 @@ describe("identity verification", () => {
     expect(maskChineseId("11010519491231002X")).toBe("110105********002X");
   });
 
-  it("only photo methods grant the student tag", () => {
+  it("only student evidence methods grant the student tag", () => {
     expect(grantsStudentVerification("STUDENT_DOCUMENT")).toBe(true);
-    expect(grantsStudentVerification("ID_HOLDING_PHOTO")).toBe(true);
+    expect(grantsStudentVerification("ID_HOLDING_PHOTO")).toBe(false);
     expect(grantsStudentVerification("SCHOOL_UNIFORM")).toBe(true);
     expect(grantsStudentVerification("REAL_NAME_ID")).toBe(false);
   });
@@ -59,5 +63,27 @@ describe("identity verification", () => {
   it("requires explicit privacy confirmation and a valid real identity", () => {
     expect(realNameIdentitySchema.safeParse({ realName: "张三", idNumber: "11010519491231002X", privacyConfirmed: true }).success).toBe(true);
     expect(realNameIdentitySchema.safeParse({ realName: "张三", idNumber: "11010519491231002X", privacyConfirmed: false }).success).toBe(false);
+  });
+
+  it("encrypts the school name and requires a non-Shenzhen-uniform attestation", () => {
+    const encrypted = encryptSchoolDetails("application-school", "深圳市实验学校");
+    expect(encrypted.ciphertext).not.toContain("深圳市实验学校");
+    expect(decryptSchoolDetails("application-school", encrypted)).toEqual({
+      schoolName: "深圳市实验学校",
+      nonShenzhenUniformConfirmed: true,
+    });
+    expect(schoolUniformSchema.safeParse({
+      schoolName: "深圳市实验学校", nonShenzhenUniformConfirmed: true, privacyConfirmed: true,
+    }).success).toBe(true);
+    expect(schoolUniformSchema.safeParse({
+      schoolName: "深圳市实验学校", nonShenzhenUniformConfirmed: false, privacyConfirmed: true,
+    }).success).toBe(false);
+  });
+
+  it("requires reviewers to inspect every material component", () => {
+    expect(requiredIdentityReviewMaterials("STUDENT_DOCUMENT")).toEqual({ evidence: true, details: false });
+    expect(requiredIdentityReviewMaterials("ID_HOLDING_PHOTO")).toEqual({ evidence: true, details: true });
+    expect(requiredIdentityReviewMaterials("SCHOOL_UNIFORM")).toEqual({ evidence: true, details: true });
+    expect(requiredIdentityReviewMaterials("REAL_NAME_ID")).toEqual({ evidence: false, details: true });
   });
 });

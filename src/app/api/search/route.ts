@@ -6,6 +6,7 @@ import { canAccessZone, type ABACUserAttributes } from "@/lib/abac";
 import { anonymizePsychologyPost } from "@/lib/post-access";
 import { PostStatus } from "@prisma/client";
 import { z } from "zod";
+import { publicUserSelect, toPublicUser } from "@/lib/public-user";
 
 // Query params schema
 const searchParamsSchema = paginationSchema.extend({
@@ -135,7 +136,7 @@ async function searchPosts(
       skip,
       take: pageSize,
       include: {
-        author: { select: { id: true, nickname: true, avatar: true } },
+        author: { select: publicUserSelect },
         board: { select: { id: true, name: true, zone: true } },
         tags: { include: { tag: true } },
       },
@@ -144,7 +145,7 @@ async function searchPosts(
   ]);
 
   return NextResponse.json({
-    results: posts.map((post) => anonymizePsychologyPost(post)),
+    results: posts.map((post) => anonymizePsychologyPost({ ...post, author: toPublicUser(post.author) })),
     total,
     page,
     pageSize,
@@ -172,9 +173,7 @@ async function searchUsers(
       skip,
       take: pageSize,
       select: {
-        id: true,
-        nickname: true,
-        avatar: true,
+        ...publicUserSelect,
         createdAt: true,
         _count: { select: { posts: true } },
       },
@@ -182,7 +181,7 @@ async function searchUsers(
     prisma.user.count({ where }),
   ]);
 
-  return NextResponse.json({ results: users, total, page, pageSize });
+  return NextResponse.json({ results: users.map((user) => toPublicUser(user)), total, page, pageSize });
 }
 
 /**

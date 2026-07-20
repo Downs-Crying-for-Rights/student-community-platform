@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { User, Save, Loader2, Lock, Camera, UserX } from "lucide-react";
-import Image from "next/image";
+import { Save, Loader2, Lock, Camera, UserX } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -11,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 import { passwordSchema } from "@/lib/validators";
 
 /* ---------- Validation helpers (exported for testing) ---------- */
@@ -111,6 +111,7 @@ export default function SettingsProfilePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Password form state
@@ -135,6 +136,7 @@ export default function SettingsProfilePage() {
         };
         setForm(profile);
         setOriginal(profile);
+        setIsVerified(Boolean(data.user.realVerified || data.user.studentVerified));
         if (typeof data.user.hasPassword === "boolean") {
           setHasPassword(data.user.hasPassword);
         }
@@ -312,27 +314,12 @@ export default function SettingsProfilePage() {
                 {/* Avatar upload */}
                 <div className="flex items-center gap-4">
                   <div className="relative">
-                    {form.avatar ? (
-                      <Image
-                        src={form.avatar}
-                        alt="头像预览"
-                        width={64}
-                        height={64}
-                        className="h-16 w-16 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div
-                        className="flex h-16 w-16 items-center justify-center rounded-full bg-muted"
-                        aria-label="默认头像"
-                      >
-                        <User className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-                      </div>
-                    )}
+                    <UserAvatar src={form.avatar} name={form.nickname} size={64} isVerified={isVerified} />
                     <button
                       type="button"
                       onClick={() => avatarInputRef.current?.click()}
                       disabled={avatarUploading}
-                      className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
+                      className="absolute -bottom-1 -left-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
                       aria-label="上传头像"
                     >
                       {avatarUploading ? (

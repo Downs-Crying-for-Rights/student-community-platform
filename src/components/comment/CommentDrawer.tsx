@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { MessageCircle, Send, User } from "lucide-react";
+import { MessageCircle, Send } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn, formatDate } from "@/lib/utils";
 import { ReportDialog } from "@/components/shared/ReportDialog";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 
 // ---------- Types ----------
 
@@ -22,6 +23,7 @@ export interface CommentAuthor {
   id: string;
   nickname: string | null;
   avatar: string | null;
+  isVerified?: boolean;
 }
 
 export interface CommentData {
@@ -65,20 +67,7 @@ export function flattenComments(comments: CommentData[]): CommentData[] {
 
 function CommentAvatar({ comment }: { comment: CommentData }) {
   const name = getDisplayName(comment);
-  const avatar = !comment.author.avatar ? (
-      <div
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted"
-        aria-hidden="true"
-      >
-        <User className="h-4 w-4 text-muted-foreground" />
-      </div>
-  ) : (
-    <img
-      src={comment.author.avatar}
-      alt={`${name} 头像`}
-      className="h-8 w-8 shrink-0 rounded-full object-cover"
-    />
-  );
+  const avatar = <UserAvatar src={comment.author.avatar} name={name} size={32} isVerified={comment.author.isVerified} anonymous={comment.isAnonymous} />;
   if (comment.isAnonymous) return avatar;
   return <Link href={`/u/${comment.author.id}`} aria-label={`查看 ${name} 的主页`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{avatar}</Link>;
 }

@@ -2,15 +2,15 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
-import { Hash, User } from "lucide-react";
+import { Hash } from "lucide-react";
 import { PostCard, type PostCardProps } from "@/components/feed/PostCard";
 import { WaterfallGrid } from "@/components/feed/WaterfallGrid";
 import { CardSkeleton, ListSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 
 type SearchType = "posts" | "users" | "tags";
 
@@ -26,7 +26,7 @@ interface APIPost {
   isAnonymous: boolean;
   anonymousId: string | null;
   likeCount: number;
-  author: { id: string; nickname: string | null; avatar: string | null };
+  author: { id: string; nickname: string | null; avatar: string | null; isVerified?: boolean };
   board: { id: string; name: string; zone: string };
   tags: Array<{ tag: { id: string; name: string } }>;
 }
@@ -35,6 +35,7 @@ interface APIUser {
   id: string;
   nickname: string | null;
   avatar: string | null;
+  isVerified?: boolean;
   createdAt: string;
   _count: { posts: number };
 }
@@ -63,7 +64,7 @@ export function mapAPIPostToCardProps(post: APIPost): PostCardProps {
     isAnonymous: post.isAnonymous,
     anonymousId: post.anonymousId,
     likeCount: post.likeCount,
-    author: { id: post.author.id, nickname: post.author.nickname, avatar: post.author.avatar },
+    author: { id: post.author.id, nickname: post.author.nickname, avatar: post.author.avatar, isVerified: post.author.isVerified },
     board: { name: post.board.name, zone: post.board.zone },
     tags: post.tags.map((t) => ({ id: t.tag.id, name: t.tag.name })),
   };
@@ -83,19 +84,7 @@ function UserResultItem({ user }: { user: APIUser }) {
       className="flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`查看用户：${displayName}`}
     >
-      {user.avatar ? (
-        <Image
-          src={user.avatar}
-          alt={`${displayName} 头像`}
-          width={40}
-          height={40}
-          className="h-10 w-10 shrink-0 rounded-full object-cover"
-        />
-      ) : (
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted" aria-hidden="true">
-          <User className="h-5 w-5 text-muted-foreground" />
-        </div>
-      )}
+      <UserAvatar src={user.avatar} name={displayName} size={40} isVerified={user.isVerified} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
         <p className="text-xs text-muted-foreground">{user._count.posts} 篇帖子</p>

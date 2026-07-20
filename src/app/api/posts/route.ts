@@ -11,6 +11,7 @@ import { z } from "zod";
 import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
 import { sendAdminActionMail } from "@/lib/mail";
 import { canCreateDcrPost } from "@/lib/dcr-capabilities";
+import { publicUserSelect, toPublicUser } from "@/lib/public-user";
 
 // Query params schema for GET
 const listQuerySchema = paginationSchema.extend({
@@ -164,7 +165,7 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
         skip,
         take: pageSize,
         include: {
-          author: { select: { id: true, nickname: true, avatar: true } },
+          author: { select: publicUserSelect },
           board: { select: { id: true, name: true, zone: true } },
           tags: { include: { tag: true } },
         },
@@ -173,7 +174,7 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
     ]);
 
     return NextResponse.json({
-      posts: posts.map((post) => anonymizePsychologyPost(post)),
+      posts: posts.map((post) => anonymizePsychologyPost({ ...post, author: toPublicUser(post.author) })),
       total,
       page,
       pageSize,
@@ -379,7 +380,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
           : undefined,
       },
       include: {
-        author: { select: { id: true, nickname: true, avatar: true } },
+        author: { select: publicUserSelect },
         board: { select: { id: true, name: true, zone: true } },
         tags: { include: { tag: true } },
       },
@@ -401,7 +402,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       actionUrl: "/admin/moderation",
     });
 
-    return NextResponse.json({ post: anonymizePsychologyPost(post) }, { status: 201 });
+    return NextResponse.json({ post: anonymizePsychologyPost({ ...post, author: toPublicUser(post.author) }) }, { status: 201 });
   } catch (error) {
     console.error("POST /api/posts error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

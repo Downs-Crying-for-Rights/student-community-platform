@@ -114,7 +114,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
-            select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true },
+            select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true, realVerifiedAt: true, studentVerifiedAt: true },
         });
         token.role = dbUser?.role ?? "USER";
         token.phone = dbUser?.phone ?? null;
@@ -125,11 +125,12 @@ export const authOptions: NextAuthOptions = {
         token.isBanned = dbUser?.isBanned ?? false;
         token.securityVersion = dbUser?.securityVersion ?? 0;
         token.profileCompletionRequired = dbUser?.profileCompletionRequired ?? false;
+        token.isVerified = Boolean(dbUser?.realVerifiedAt || dbUser?.studentVerifiedAt);
       } else if (token.sub) {
         // Refresh security-sensitive claims on every server session read so revocations apply immediately.
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
-          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true },
+          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true, realVerifiedAt: true, studentVerifiedAt: true },
         });
         if (dbUser) {
           token.role = dbUser.role;
@@ -141,6 +142,7 @@ export const authOptions: NextAuthOptions = {
           token.isBanned = dbUser.isBanned;
           token.securityVersion = dbUser.securityVersion;
           token.profileCompletionRequired = dbUser.profileCompletionRequired;
+          token.isVerified = Boolean(dbUser.realVerifiedAt || dbUser.studentVerifiedAt);
         }
       }
       return token;
@@ -157,6 +159,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).isBanned = token.isBanned;
         (session.user as any).securityVersion = token.securityVersion;
         (session.user as any).profileCompletionRequired = token.profileCompletionRequired;
+        (session.user as any).isVerified = token.isVerified;
       }
       return session;
     },

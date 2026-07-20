@@ -15,6 +15,7 @@ declare module "next-auth" {
       isBanned?: boolean;
       securityVersion?: number;
       profileCompletionRequired?: boolean;
+      isVerified?: boolean;
     } & DefaultSession["user"];
   }
 }
@@ -31,5 +32,6 @@ declare module "next-auth/jwt" {
     isBanned?: boolean;
     securityVersion?: number;
     profileCompletionRequired?: boolean;
+    isVerified?: boolean;
   }
 }

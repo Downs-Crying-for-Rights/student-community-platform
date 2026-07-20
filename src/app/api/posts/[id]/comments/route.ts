@@ -6,8 +6,31 @@ import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
 import { anonymizePsychologyComment, checkPostAccess } from "@/lib/post-access";
 import { generateAnonymousId } from "@/lib/utils";
+import { publicUserSelect, toPublicUser } from "@/lib/public-user";
 
-const authorSelect = { id: true, nickname: true, avatar: true } as const;
+const authorSelect = publicUserSelect;
+
+type CommentWithVerificationSource = {
+  id: string;
+  authorId?: string;
+  anonymousId?: string | null;
+  author: { id: string; nickname: string | null; avatar: string | null; realVerifiedAt: Date | null; studentVerifiedAt: Date | null };
+  replies?: CommentWithVerificationSource[];
+};
+
+type PublicComment = Omit<CommentWithVerificationSource, "author" | "replies"> & {
+  author: { id: string; nickname: string | null; avatar: string | null; isVerified: boolean };
+  replies?: PublicComment[];
+};
+
+function mapCommentAuthor(comment: CommentWithVerificationSource): PublicComment {
+  const { author, replies, ...rest } = comment;
+  return {
+    ...rest,
+    author: toPublicUser(author),
+    ...(replies ? { replies: replies.map(mapCommentAuthor) } : {}),
+  };
+}
 
 /**
  * Calculate the depth of a comment by traversing the parent chain.
@@ -82,9 +105,10 @@ export const GET = withAuth(async (
     });
 
     return NextResponse.json({
-      comments: post.board.zone === "PSYCHOLOGY"
-        ? comments.map(anonymizePsychologyComment)
-        : comments,
+      comments: comments.map((comment) => {
+        const mapped = mapCommentAuthor(comment);
+        return post.board.zone === "PSYCHOLOGY" ? anonymizePsychologyComment(mapped) : mapped;
+      }),
       total,
     });
   } catch (error) {
@@ -224,8 +248,8 @@ export const POST = withAuth(async (
 
     return NextResponse.json({
       comment: post.board.zone === "PSYCHOLOGY"
-        ? anonymizePsychologyComment(created)
-        : created,
+        ? anonymizePsychologyComment(mapCommentAuthor(created))
+        : mapCommentAuthor(created),
     }, { status: 201 });
   } catch (error) {
     console.error("POST /api/posts/[id]/comments error:", error);

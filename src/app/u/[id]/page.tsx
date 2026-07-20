@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import Image from "next/image";
-import { User, CalendarDays, MessageCircle, Loader2 } from "lucide-react";
+import { CalendarDays, MessageCircle, Loader2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PostCard, type PostCardProps } from "@/components/feed/PostCard";
 import { WaterfallGrid } from "@/components/feed/WaterfallGrid";
@@ -15,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ReportDialog } from "@/components/shared/ReportDialog";
 import { useDMConsent } from "@/components/dm/DMConsentDialog";
 import { IdentityBadges } from "@/components/shared/IdentityBadges";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 
 /* ---------- Types ---------- */
 
@@ -42,7 +42,7 @@ export interface ProfilePost {
   anonymousId: string | null;
   likeCount: number;
   createdAt: string;
-  author: { id: string; nickname: string | null; avatar: string | null };
+  author: { id: string; nickname: string | null; avatar: string | null; isVerified?: boolean };
   board: { id: string; name: string; zone: string };
   tags: { tag: { id: string; name: string } }[];
 }
@@ -71,6 +71,7 @@ export function mapPostToCardProps(post: ProfilePost): PostCardProps {
       id: post.author.id,
       nickname: post.author.nickname,
       avatar: post.author.avatar,
+      isVerified: post.author.isVerified,
     },
     board: {
       name: post.board.name,
@@ -275,22 +276,7 @@ export default function ProfilePage() {
           </div>
         ) : user ? (
           <div className="mb-6 flex flex-col items-center gap-3 py-8">
-            {user.avatar ? (
-              <Image
-                src={user.avatar}
-                alt={`${user.nickname ?? "用户"} 头像`}
-                width={80}
-                height={80}
-                className="h-20 w-20 rounded-full object-cover"
-              />
-            ) : (
-              <div
-                className="flex h-20 w-20 items-center justify-center rounded-full bg-muted"
-                aria-label="默认头像"
-              >
-                <User className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
-              </div>
-            )}
+            <UserAvatar src={user.avatar} name={user.nickname} size={80} isVerified={user.realVerified || user.studentVerified} />
             <h1 className="text-xl font-bold text-foreground">
               {user.nickname ?? "未命名用户"}
             </h1>

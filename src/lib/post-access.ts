@@ -49,7 +49,7 @@ export async function checkPostAccess(
 
 function anonymousAuthor(anonymousId: string | null | undefined, entityId: string) {
   const id = anonymousId ?? `anonymous-${entityId}`;
-  return { id, nickname: anonymousId ?? "匿名用户", avatar: null };
+  return { id, nickname: anonymousId ?? "匿名用户", avatar: null, isVerified: false };
 }
 
 export function anonymizePsychologyPost<T extends {

@@ -41,6 +41,13 @@ export const realNameIdentitySchema = z.object({
   privacyConfirmed: z.literal(true),
 }).strict();
 
+export const schoolUniformSchema = z.object({
+  schoolName: z.string().trim().min(2, "请填写完整学校名称").max(100, "学校名称不能超过 100 个字符")
+    .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), "学校名称包含无效字符"),
+  nonShenzhenUniformConfirmed: z.literal(true),
+  privacyConfirmed: z.literal(true),
+}).strict();
+
 export function hashVerifiedIdentity(idNumber: string): string {
   return createHmac("sha256", getIdentityVerificationConfig().hmacKey).update(normalizeChineseId(idNumber)).digest("base64url");
 }
@@ -55,9 +62,28 @@ export function encryptIdentityDetails(applicationId: string, realName: string, 
   );
 }
 
+export function encryptSchoolDetails(applicationId: string, schoolName: string): EncryptedEnvelope {
+  const config = getIdentityVerificationConfig();
+  return encryptEnvelope(
+    JSON.stringify({ kind: "SCHOOL_UNIFORM", schoolName: schoolName.trim(), nonShenzhenUniformConfirmed: true }),
+    config.encryptionKey,
+    config.keyVersion,
+    `identity-application:${applicationId}`,
+  );
+}
+
 export function decryptIdentityDetails(applicationId: string, envelope: EncryptedEnvelope): { realName: string; idNumber: string } {
   const config = getIdentityVerificationConfig(envelope.keyVersion);
   return JSON.parse(decryptEnvelope(envelope, config.encryptionKey, `identity-application:${applicationId}`));
+}
+
+export function decryptSchoolDetails(applicationId: string, envelope: EncryptedEnvelope): { schoolName: string; nonShenzhenUniformConfirmed: true } {
+  const config = getIdentityVerificationConfig(envelope.keyVersion);
+  const parsed = JSON.parse(decryptEnvelope(envelope, config.encryptionKey, `identity-application:${applicationId}`));
+  if (parsed?.kind !== "SCHOOL_UNIFORM" || typeof parsed.schoolName !== "string" || parsed.nonShenzhenUniformConfirmed !== true) {
+    throw new Error("Invalid school identity details");
+  }
+  return { schoolName: parsed.schoolName, nonShenzhenUniformConfirmed: true };
 }
 
 export function maskChineseId(idNumber: string): string {
@@ -70,5 +96,12 @@ export function sensitiveEvidenceKey(applicationId: string): string {
 }
 
 export function grantsStudentVerification(method: string): boolean {
-  return PHOTO_METHODS.includes(method as (typeof PHOTO_METHODS)[number]);
+  return method === "STUDENT_DOCUMENT" || method === "SCHOOL_UNIFORM";
+}
+
+export function requiredIdentityReviewMaterials(method: string): { evidence: boolean; details: boolean } {
+  return {
+    evidence: method !== "REAL_NAME_ID",
+    details: method === "ID_HOLDING_PHOTO" || method === "SCHOOL_UNIFORM" || method === "REAL_NAME_ID",
+  };
 }

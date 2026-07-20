@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { AuditAction, AuditTargetType, logAudit } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
-import { grantsStudentVerification, identityReviewSchema } from "@/lib/identity-verification";
+import { grantsStudentVerification, identityReviewSchema, requiredIdentityReviewMaterials } from "@/lib/identity-verification";
 
 export const PATCH = withAuth(async (req: AuthenticatedRequest, context: { params: Record<string, string> }) => {
   const parsed = identityReviewSchema.safeParse(await req.json().catch(() => null));
@@ -22,14 +22,20 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context: { param
       if (!application) throw new Error("NOT_FOUND");
       if (application.status !== "PENDING") throw new Error("NOT_PENDING");
       if (status === "APPROVED") {
-        const requiredAction = application.method === "REAL_NAME_ID"
-          ? AuditAction.IDENTITY_DETAILS_VIEW
-          : AuditAction.IDENTITY_EVIDENCE_VIEW;
-        const viewed = await tx.auditLog.findFirst({
-          where: { operatorId: req.user.id, action: requiredAction, targetType: AuditTargetType.IDENTITY_APPLICATION, targetId: application.id },
-          select: { id: true },
+        const required = requiredIdentityReviewMaterials(application.method);
+        const viewed = await tx.auditLog.findMany({
+          where: {
+            operatorId: req.user.id,
+            action: { in: [AuditAction.IDENTITY_DETAILS_VIEW, AuditAction.IDENTITY_EVIDENCE_VIEW] },
+            targetType: AuditTargetType.IDENTITY_APPLICATION,
+            targetId: application.id,
+          },
+          select: { action: true },
         });
-        if (!viewed) throw new Error("MATERIAL_NOT_VIEWED");
+        const actions = new Set(viewed.map((item) => item.action));
+        if ((required.evidence && !actions.has(AuditAction.IDENTITY_EVIDENCE_VIEW)) || (required.details && !actions.has(AuditAction.IDENTITY_DETAILS_VIEW))) {
+          throw new Error("MATERIAL_NOT_VIEWED");
+        }
       }
       if (status === "APPROVED" && application.identityLookupHash) {
         const duplicate = await tx.user.findFirst({

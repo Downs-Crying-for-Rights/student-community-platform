@@ -3,13 +3,15 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Heart, User } from "lucide-react";
+import { Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 
 export interface PostCardAuthor {
   id: string;
   nickname: string | null;
   avatar: string | null;
+  isVerified?: boolean;
 }
 
 export interface PostCardBoard {
@@ -109,27 +111,12 @@ export function PostCard({
           {/* Author row */}
           <div className="mt-3 flex items-center gap-2">
             {!isAnonymous ? <Link href={`/u/${author.id}`} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} className="flex min-w-0 items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`查看 ${displayName} 的主页`}>
-            {!author.avatar ? (
-              <div
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted"
-                aria-hidden="true"
-              >
-                <User className="h-3 w-3 text-muted-foreground" />
-              </div>
-            ) : (
-              <Image
-                src={author.avatar}
-                alt={`${displayName} 头像`}
-                width={20}
-                height={20}
-                className="h-5 w-5 shrink-0 rounded-full object-cover"
-              />
-            )}
+            <UserAvatar src={author.avatar} name={displayName} size={20} isVerified={author.isVerified} />
             <span className="truncate text-xs text-muted-foreground">
               {displayName}
             </span>
             </Link> : <>
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted" aria-hidden="true"><User className="h-3 w-3 text-muted-foreground" /></div>
+              <UserAvatar name={displayName} size={20} anonymous />
               <span className="truncate text-xs text-muted-foreground">{displayName}</span>
             </>}
 

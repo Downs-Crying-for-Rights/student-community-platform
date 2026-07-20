@@ -54,6 +54,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
       ...rest,
       realVerified: Boolean(rest.realVerifiedAt),
       studentVerified: Boolean(rest.studentVerifiedAt),
+      isVerified: Boolean(rest.realVerifiedAt || rest.studentVerifiedAt),
       realVerifiedAt: undefined,
       studentVerifiedAt: undefined,
       hasPassword: !!passwordHash,
@@ -91,6 +92,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
     isAdministrator: role === "ADMIN" || role === "SUPER_ADMIN",
     realVerified: Boolean(realVerifiedAt),
     studentVerified: Boolean(studentVerifiedAt),
+    isVerified: Boolean(realVerifiedAt || studentVerifiedAt),
   } });
 });
 

@@ -293,7 +293,7 @@ describe("GET /api/posts/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(data.post.authorId).toBe("匿名用户_AB12");
-    expect(data.post.author).toEqual({ id: "匿名用户_AB12", nickname: "匿名用户_AB12", avatar: null });
+    expect(data.post.author).toEqual({ id: "匿名用户_AB12", nickname: "匿名用户_AB12", avatar: null, isVerified: false });
   });
 
   it("心理区 MATCHED 帖子即使作者也不可读取", async () => {

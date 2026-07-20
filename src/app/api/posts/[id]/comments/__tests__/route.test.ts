@@ -403,6 +403,6 @@ describe("POST /api/posts/[id]/comments", () => {
       data: expect.objectContaining({ isAnonymous: true, anonymousId: expect.stringContaining("匿名用户_") }),
     }));
     expect(data.comment.authorId).toBe("匿名用户_TEST");
-    expect(data.comment.author).toEqual({ id: "匿名用户_TEST", nickname: "匿名用户_TEST", avatar: null });
+    expect(data.comment.author).toEqual({ id: "匿名用户_TEST", nickname: "匿名用户_TEST", avatar: null, isVerified: false });
   });
 });

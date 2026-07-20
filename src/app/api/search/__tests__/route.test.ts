@@ -138,7 +138,7 @@ describe("GET /api/search", () => {
       const data = await res.json();
 
       expect(res.status).toBe(200);
-      expect(data.results).toEqual(posts);
+      expect(data.results).toEqual(posts.map((post) => ({ ...post, author: { ...post.author, isVerified: false } })));
       expect(data.total).toBe(1);
       expect(data.page).toBe(1);
       expect(data.pageSize).toBe(20);
@@ -261,6 +261,7 @@ describe("GET /api/search", () => {
         id: "匿名用户_AB12",
         nickname: "匿名用户_AB12",
         avatar: null,
+        isVerified: false,
       });
     });
 
@@ -367,7 +368,7 @@ describe("GET /api/search", () => {
       const data = await res.json();
 
       expect(res.status).toBe(200);
-      expect(data.results).toEqual(users);
+      expect(data.results).toEqual(users.map((user) => ({ ...user, isVerified: false })));
       expect(data.total).toBe(1);
     });
 
@@ -408,6 +409,8 @@ describe("GET /api/search", () => {
             id: true,
             nickname: true,
             avatar: true,
+            realVerifiedAt: true,
+            studentVerifiedAt: true,
             createdAt: true,
             _count: { select: { posts: true } },
           },

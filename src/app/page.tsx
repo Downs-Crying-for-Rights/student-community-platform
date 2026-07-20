@@ -21,7 +21,7 @@ interface APIPost {
   anonymousId: string | null;
   likeCount: number;
   isPinned: boolean;
-  author: { id: string; nickname: string | null; avatar: string | null };
+  author: { id: string; nickname: string | null; avatar: string | null; isVerified?: boolean };
   board: { id: string; name: string; zone: string };
   tags: Array<{ tag: { id: string; name: string } }>;
 }
@@ -49,6 +49,7 @@ function mapAPIPostToCardProps(post: APIPost): PostCardProps {
       id: post.author.id,
       nickname: post.author.nickname,
       avatar: post.author.avatar,
+      isVerified: post.author.isVerified,
     },
     board: {
       name: post.board.name,
