@@ -1,276 +1,150 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { TaskStatus } from "@prisma/client";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { moderateDisputeSchema } from "@/lib/validators";
 import { logAudit } from "@/lib/audit";
+import { aggregateHelpSessionStatus, restoreHelpSessionStatus } from "@/lib/task-state-machine";
+import { notifyMutualAidUsersBestEffort } from "@/lib/mutual-aid-notifications";
 
 const MODERATOR_ROLES = ["MODERATOR", "ADMIN", "SUPER_ADMIN"] as const;
 
-/**
- * POST /api/admin/disputes/[id]
- * Moderate a disputed mutual-aid task.
- *
- * Supported actions:
- * - takedown:       Close the task, record reason.
- * - replace_helper: Re-open the task for a new helper, delete helpSession.
- * - ban_user:       Ban the targetUserId, record the punishment, and close the task.
- * - dismiss:        Dismiss the dispute, revert status to EVIDENCE_PENDING.
- * - freeze:         Close the task, record reason.
- *
- * Creates a ModerationAction record and a TaskTimelineEvent for every action.
- *
- * Validates: Requirements 6.5, 6.6, 11.2
- */
+/** POST /api/admin/disputes/[id] where id is the disputed HelpSession id. */
 export const POST = withAuth(async (
   req: AuthenticatedRequest,
   context: { params: Record<string, string> },
 ) => {
   try {
-    const { id } = await context.params;
+    const { id: sessionId } = context.params;
     const userId = req.user.id;
-    const userRole = req.user.role;
-
-    // Role check
-    if (!MODERATOR_ROLES.includes(userRole as (typeof MODERATOR_ROLES)[number])) {
+    if (!MODERATOR_ROLES.includes(req.user.role as (typeof MODERATOR_ROLES)[number])) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
-    // Parse and validate body
-    const body = await req.json();
-    const parsed = moderateDisputeSchema.safeParse(body);
-
+    const parsed = moderateDisputeSchema.safeParse(await req.json());
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "参数校验失败", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "参数校验失败", details: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
-
     const { action, reason, targetUserId } = parsed.data;
+    const disputed = await prisma.helpSession.findUnique({
+      where: { id: sessionId },
+      include: { task: { include: { helpSessions: true } }, claim: true },
+    });
+    if (!disputed) return NextResponse.json({ error: "争议会话不存在" }, { status: 404 });
+    if (disputed.status !== "DISPUTED") {
+      return NextResponse.json({ error: "该争议已被其他管理员处理" }, { status: 409 });
+    }
+    if (action === "ban_user" && !targetUserId) {
+      return NextResponse.json({ error: "封禁操作需要选择用户" }, { status: 400 });
+    }
+    if (targetUserId && ![disputed.requesterId, disputed.helperId].includes(targetUserId)) {
+      return NextResponse.json({ error: "只能处置该争议会话的参与者" }, { status: 400 });
+    }
 
-    // Load the task
-    const task = await prisma.mutualAidTask.findUnique({
-      where: { id },
-      include: { helpSessions: true },
+    const task = disputed.task;
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${task.id}`}))`;
+      const current = await tx.helpSession.findUnique({ where: { id: sessionId } });
+      if (!current || current.status !== "DISPUTED") throw new Error("DISPUTE_ALREADY_RESOLVED");
+
+      let sessionStatus: "CLAIMED" | "IN_PROGRESS" | "EVIDENCE_PENDING" | "COMPLETED" | "CLOSED";
+      let taskStatus;
+      if (action === "dismiss") {
+        sessionStatus = restoreHelpSessionStatus(current.statusBeforeDispute);
+        const claimed = await tx.helpSession.updateMany({
+          where: { id: sessionId, status: "DISPUTED" },
+          data: { status: sessionStatus, statusBeforeDispute: null },
+        });
+        if (claimed.count !== 1) throw new Error("DISPUTE_ALREADY_RESOLVED");
+        const sessions = await tx.helpSession.findMany({ where: { taskId: task.id }, select: { status: true } });
+        taskStatus = aggregateHelpSessionStatus(sessions.map((item) => item.status));
+        await tx.mutualAidTask.update({ where: { id: task.id }, data: { status: taskStatus } });
+      } else if (action === "replace_helper") {
+        sessionStatus = "CLOSED";
+        const claimed = await tx.helpSession.updateMany({
+          where: { id: sessionId, status: "DISPUTED" },
+          data: { status: "CLOSED", statusBeforeDispute: null, closedAt: new Date() },
+        });
+        if (claimed.count !== 1) throw new Error("DISPUTE_ALREADY_RESOLVED");
+        await tx.helpClaim.updateMany({
+          where: { sessionId },
+          data: { status: "CANCELLED", requesterConfirmed: false, sessionId: null },
+        });
+        const sessions = await tx.helpSession.findMany({ where: { taskId: task.id }, select: { status: true } });
+        taskStatus = aggregateHelpSessionStatus(sessions.map((item) => item.status));
+        await tx.mutualAidTask.update({ where: { id: task.id }, data: { status: taskStatus } });
+      } else {
+        sessionStatus = "CLOSED";
+        taskStatus = "CLOSED" as const;
+        const claimed = await tx.helpSession.updateMany({
+          where: { id: sessionId, status: "DISPUTED" },
+          data: { status: "CLOSED", statusBeforeDispute: null, closedAt: new Date() },
+        });
+        if (claimed.count !== 1) throw new Error("DISPUTE_ALREADY_RESOLVED");
+        await tx.helpSession.updateMany({
+          where: { taskId: task.id, id: { not: sessionId }, status: { notIn: ["COMPLETED", "CLOSED"] } },
+          data: { status: "CLOSED", statusBeforeDispute: null, closedAt: new Date() },
+        });
+        await tx.mutualAidTask.update({
+          where: { id: task.id },
+          data: { status: "CLOSED", closureReason: reason },
+        });
+      }
+
+      if (action === "ban_user" && targetUserId) {
+        await tx.user.update({ where: { id: targetUserId }, data: { isBanned: true } });
+        await tx.userPunishment.create({
+          data: {
+            userId: targetUserId,
+            operatorId: userId,
+            type: "ACCOUNT_BAN",
+            action: "APPLIED",
+            reason,
+            details: { sourceType: "DCR_DISPUTE", taskId: task.id, sessionId },
+          },
+        });
+      }
+
+      await tx.taskTimelineEvent.create({
+        data: {
+          taskId: task.id,
+          action: `moderate_${action}`,
+          oldStatus: task.status,
+          newStatus: taskStatus,
+          details: `[session:${sessionId}]\n${reason}`,
+          operatorId: userId,
+        },
+      });
+      await tx.moderationAction.create({
+        data: {
+          actionType: action.toUpperCase(),
+          targetType: "HELP_SESSION",
+          targetId: sessionId,
+          reason,
+          operatorId: userId,
+          details: { taskId: task.id, targetUserId: targetUserId ?? null, sessionStatus, taskStatus },
+        },
+      });
+      await logAudit(userId, `DISPUTE_${action.toUpperCase()}`, "TASK", task.id, {
+        sessionId, reason, targetUserId: targetUserId ?? null, sessionStatus, taskStatus,
+      }, undefined, tx);
+      return { sessionStatus, taskStatus };
     });
 
-    if (!task) {
-      return NextResponse.json({ error: "任务不存在" }, { status: 404 });
-    }
-
-    if (task.status !== "DISPUTED") {
-      return NextResponse.json(
-        { error: "仅 DISPUTED 状态的任务可进行仲裁" },
-        { status: 400 },
-      );
-    }
-
-    let newStatus: TaskStatus;
-
-    switch (action) {
-      case "takedown": {
-        // Close the task with reason
-        newStatus = TaskStatus.CLOSED;
-        await prisma.$transaction(async (tx) => {
-          await tx.mutualAidTask.update({
-            where: { id },
-            data: { status: newStatus, closureReason: reason },
-          });
-          await tx.taskTimelineEvent.create({
-            data: {
-              taskId: id,
-              action: "moderate_takedown",
-              oldStatus: "DISPUTED",
-              newStatus,
-              details: reason,
-              operatorId: userId,
-            },
-          });
-          await tx.moderationAction.create({
-            data: {
-              actionType: "TAKEDOWN",
-              targetType: "TASK",
-              targetId: id,
-              reason,
-              operatorId: userId,
-            },
-          });
-        });
-        break;
-      }
-
-      case "replace_helper": {
-        // Re-open the task for a new helper, delete helpSession cascade
-        newStatus = TaskStatus.OPEN;
-        await prisma.$transaction(async (tx) => {
-          // Delete helpSession (cascades to HelpChat, EvidenceRoom)
-          await tx.helpSession.deleteMany({ where: { taskId: id } });
-          await tx.helpClaim.updateMany({
-            where: { targetTaskId: id, status: "ACCEPTED" },
-            data: { status: "CANCELLED", requesterConfirmed: false, sessionId: null },
-          });
-          await tx.mutualAidTask.update({
-            where: { id },
-            data: {
-              status: newStatus,
-              requesterConfirmed: false,
-              helperConfirmed: false,
-            },
-          });
-          await tx.taskTimelineEvent.create({
-            data: {
-              taskId: id,
-              action: "moderate_replace_helper",
-              oldStatus: "DISPUTED",
-              newStatus,
-              details: reason,
-              operatorId: userId,
-            },
-          });
-          await tx.moderationAction.create({
-            data: {
-              actionType: "REPLACE_HELPER",
-              targetType: "TASK",
-              targetId: id,
-              reason,
-              operatorId: userId,
-            },
-          });
-        });
-        break;
-      }
-
-      case "ban_user": {
-        // Ban the target user, record the punishment, and close the task.
-        if (!targetUserId) {
-          return NextResponse.json(
-            { error: "ban_user 操作需要提供 targetUserId" },
-            { status: 400 },
-          );
-        }
-
-        newStatus = TaskStatus.CLOSED;
-        await prisma.$transaction(async (tx) => {
-          // Ban the user
-          await tx.user.update({
-            where: { id: targetUserId },
-            data: { isBanned: true },
-          });
-          await tx.userPunishment.create({
-            data: {
-              userId: targetUserId,
-              operatorId: userId,
-              type: "ACCOUNT_BAN",
-              action: "APPLIED",
-              reason,
-              details: { sourceType: "DCR_DISPUTE", taskId: id },
-            },
-          });
-          // Close the task
-          await tx.mutualAidTask.update({
-            where: { id },
-            data: { status: newStatus, closureReason: reason },
-          });
-          await tx.taskTimelineEvent.create({
-            data: {
-              taskId: id,
-              action: "moderate_ban_user",
-              oldStatus: "DISPUTED",
-              newStatus,
-              details: `封禁用户 ${targetUserId}：${reason}`,
-              operatorId: userId,
-            },
-          });
-          await tx.moderationAction.create({
-            data: {
-              actionType: "BAN_USER",
-              targetType: "TASK",
-              targetId: id,
-              reason,
-              operatorId: userId,
-              details: { targetUserId },
-            },
-          });
-        });
-        break;
-      }
-
-      case "dismiss": {
-        // Dismiss the dispute, revert to EVIDENCE_PENDING
-        newStatus = TaskStatus.EVIDENCE_PENDING;
-        await prisma.$transaction(async (tx) => {
-          await tx.mutualAidTask.update({
-            where: { id },
-            data: { status: newStatus },
-          });
-          await tx.taskTimelineEvent.create({
-            data: {
-              taskId: id,
-              action: "moderate_dismiss",
-              oldStatus: "DISPUTED",
-              newStatus,
-              details: reason,
-              operatorId: userId,
-            },
-          });
-          await tx.moderationAction.create({
-            data: {
-              actionType: "DISMISS_DISPUTE",
-              targetType: "TASK",
-              targetId: id,
-              reason,
-              operatorId: userId,
-            },
-          });
-        });
-        break;
-      }
-
-      case "freeze": {
-        // Freeze/close the task with reason
-        newStatus = TaskStatus.CLOSED;
-        await prisma.$transaction(async (tx) => {
-          await tx.mutualAidTask.update({
-            where: { id },
-            data: { status: newStatus, closureReason: reason },
-          });
-          await tx.taskTimelineEvent.create({
-            data: {
-              taskId: id,
-              action: "moderate_freeze",
-              oldStatus: "DISPUTED",
-              newStatus,
-              details: reason,
-              operatorId: userId,
-            },
-          });
-          await tx.moderationAction.create({
-            data: {
-              actionType: "FREEZE",
-              targetType: "TASK",
-              targetId: id,
-              reason,
-              operatorId: userId,
-            },
-          });
-        });
-        break;
-      }
-
-      default:
-        return NextResponse.json({ error: "未知操作" }, { status: 400 });
-    }
-
-    await logAudit(userId, `DISPUTE_${action.toUpperCase()}`, "TASK", id, {
-      action,
-      reason,
-      targetUserId: targetUserId ?? null,
-      newStatus,
+    const recipients = ["takedown", "ban_user", "freeze"].includes(action)
+      ? task.helpSessions.flatMap((session) => [session.requesterId, session.helperId])
+      : [disputed.requesterId, disputed.helperId];
+    await notifyMutualAidUsersBestEffort(recipients, {
+      title: action === "dismiss" ? "互助争议已驳回，可继续处理" : "互助争议已完成仲裁",
+      content: action === "dismiss"
+        ? `任务「${task.title}」的会话已恢复到争议前状态。`
+        : `任务「${task.title}」的争议会话已由管理员处理。`,
+      link: `/dcr/tasks/${task.id}`,
     });
-
-    return NextResponse.json({ status: newStatus, action });
+    return NextResponse.json({ action, sessionId, ...result });
   } catch (error) {
+    if (error instanceof Error && error.message === "DISPUTE_ALREADY_RESOLVED") {
+      return NextResponse.json({ error: "该争议已被其他管理员处理" }, { status: 409 });
+    }
     console.error("POST /api/admin/disputes/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

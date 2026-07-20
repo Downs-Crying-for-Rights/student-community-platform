@@ -4,6 +4,8 @@ import {
   canTransitionLink,
   canTransitionCycle,
   buildCycleDirections,
+  aggregateCycleLinkStatus,
+  restoreCycleLinkStatus,
 } from "../mutual-aid-cycle";
 
 // ==================== Pure Function Tests ====================
@@ -107,12 +109,29 @@ describe("互助循环 — 纯函数测试", () => {
     });
 
     it("所有终态不能再流转", () => {
-      const terminals: any[] = ["COMPLETED", "BROKEN"];
+      const terminals: any[] = ["COMPLETED", "BROKEN", "CLOSED"];
       for (const t of terminals) {
         expect(canTransitionCycle(t, "INITIATING").allowed).toBe(false);
         expect(canTransitionCycle(t, "ACTIVE").allowed).toBe(false);
         expect(canTransitionCycle(t, "COMPLETED").allowed).toBe(false);
       }
+    });
+  });
+
+  describe("争议恢复状态", () => {
+    it("restores the prior active link state or resets the invitation", () => {
+      expect(restoreCycleLinkStatus("IN_PROGRESS", "resume")).toBe("IN_PROGRESS");
+      expect(restoreCycleLinkStatus("ACCEPTED", "resume")).toBe("ACCEPTED");
+      expect(restoreCycleLinkStatus(null, "resume")).toBe("ACCEPTED");
+      expect(restoreCycleLinkStatus("IN_PROGRESS", "reinvite")).toBe("PENDING_REQUEST");
+    });
+
+    it("aggregates mixed links after one dispute is resolved", () => {
+      expect(aggregateCycleLinkStatus(["IN_PROGRESS", "ACCEPTED", "COMPLETED"])).toBe("ACTIVE");
+      expect(aggregateCycleLinkStatus(["IN_PROGRESS", "DISPUTED", "COMPLETED"])).toBe("BROKEN");
+      expect(aggregateCycleLinkStatus(["PENDING_REQUEST", "ACCEPTED", "COMPLETED"])).toBe("INITIATING");
+      expect(aggregateCycleLinkStatus(["COMPLETED", "COMPLETED", "COMPLETED"])).toBe("COMPLETED");
+      expect(aggregateCycleLinkStatus(["CLOSED", "COMPLETED", "COMPLETED"])).toBe("CLOSED");
     });
   });
 

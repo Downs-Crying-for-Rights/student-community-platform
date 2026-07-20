@@ -78,7 +78,7 @@ export const GET = withAuth(async () => {
         },
       }),
       prisma.mutualAidLink.findMany({
-        where: { status: "DISPUTED" },
+        where: { status: { in: ["DISPUTED", "REJECTED"] } },
         orderBy: { updatedAt: "desc" },
         include: {
           cycle: { select: { id: true, mode: true, status: true, createdAt: true } },

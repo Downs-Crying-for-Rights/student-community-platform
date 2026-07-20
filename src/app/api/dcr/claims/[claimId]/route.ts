@@ -58,6 +58,14 @@ export const POST = withAuth(async (
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${claim.targetTaskId}`}))`;
+      const currentTask = await tx.mutualAidTask.findUnique({
+        where: { id: claim.targetTaskId },
+        select: { status: true },
+      });
+      if (!currentTask || !["OPEN", "CLAIMED", "IN_PROGRESS"].includes(currentTask.status)) {
+        throw new Error("TASK_NO_LONGER_ACCEPTS_CLAIMS");
+      }
       const accepted = await tx.helpClaim.updateMany({
         where: { id: claim.id, status: "PENDING" },
         data: { status: "ACCEPTED", requesterConfirmed: true },
@@ -115,14 +123,15 @@ export const POST = withAuth(async (
         data: { dcrHelperAccess: true },
       });
 
+      await logAudit(req.user.id, "TASK_CLAIM_ACCEPT", "TASK", claim.targetTaskId, {
+        claimId: claim.id,
+        offeredTaskId: claim.offeredTaskId,
+        sessionId: session.id,
+      }, undefined, tx);
+
       return { sessionId: session.id, chatId: session.helpChat!.id, evidenceRoomId: session.evidenceRoom!.id };
     });
 
-    await logAudit(req.user.id, "TASK_CLAIM_ACCEPT", "TASK", claim.targetTaskId, {
-      claimId: claim.id,
-      offeredTaskId: claim.offeredTaskId,
-      sessionId: result.sessionId,
-    });
     await notifyMutualAidUsersBestEffort([claim.applicantId], {
       title: "互助申请已通过",
       content: "你的互助申请已通过，可以进入互助会话。",
@@ -133,6 +142,9 @@ export const POST = withAuth(async (
   } catch (error) {
     if (error instanceof Error && error.message === "CLAIM_ALREADY_HANDLED") {
       return NextResponse.json({ error: "该申请已被处理" }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === "TASK_NO_LONGER_ACCEPTS_CLAIMS") {
+      return NextResponse.json({ error: "任务已进入结案流程，不能再接受申请" }, { status: 409 });
     }
     console.error("POST /api/dcr/claims/[claimId] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

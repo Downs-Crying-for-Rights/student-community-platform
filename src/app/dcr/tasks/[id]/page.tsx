@@ -12,6 +12,7 @@ import {
   CheckCircle,
   HandHelping,
   Play,
+  Flag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,6 +47,11 @@ export interface TaskDetail {
   helpSessions: Array<{
     id: string;
     helperId: string;
+    status: string;
+    statusBeforeDispute: string | null;
+    requesterConfirmed: boolean;
+    helperConfirmed: boolean;
+    closedAt: string | null;
     helpChat: { id: string } | null;
     evidenceRoom: { id: string } | null;
   }>;
@@ -234,6 +240,17 @@ export function getAvailableActions(
   };
 }
 
+export function getSessionActions(status: string, isParticipant: boolean, isHelper: boolean) {
+  return {
+    canStart: status === "CLAIMED" && isHelper,
+    canChat: ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING", "DISPUTED"].includes(status) && isParticipant,
+    canEvidence: ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING", "DISPUTED"].includes(status) && isParticipant,
+    canRequestClose: status === "IN_PROGRESS" && isParticipant,
+    canConfirmClose: status === "EVIDENCE_PENDING" && isParticipant,
+    canDispute: ["CLAIMED", "IN_PROGRESS", "EVIDENCE_PENDING"].includes(status) && isParticipant,
+  };
+}
+
 
 /* ========== Page Component ========== */
 
@@ -386,13 +403,13 @@ export default function TaskDetailPage() {
     }
   };
 
-  const handleClose = async (action: "request" | "confirm") => {
-    setActionLoading(action);
+  const handleClose = async (action: "request" | "confirm", sessionId: string) => {
+    setActionLoading(`${action}-${sessionId}`);
     try {
       const res = await fetch(`/api/dcr/tasks/${id}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, sessionId }),
       });
       if (res.ok) {
         await fetchTask();
@@ -402,6 +419,27 @@ export default function TaskDetailPage() {
       }
     } catch {
       setError("操作失败，请稍后重试");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDispute = async (sessionId: string) => {
+    const explanation = window.prompt("请说明争议原因（至少 10 个字）。争议期间会话暂停，管理员驳回后可恢复原状态。");
+    if (!explanation?.trim()) return;
+    setActionLoading(`dispute-${sessionId}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/dcr/tasks/${id}/dispute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ explanation: explanation.trim(), sessionId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setError(data.error ?? "发起争议失败");
+      else await fetchTask();
+    } catch {
+      setError("网络错误，争议未能提交");
     } finally {
       setActionLoading(null);
     }
@@ -450,9 +488,14 @@ export default function TaskDetailPage() {
 
   if (!task) return null;
 
-  const mySession = task.helpSessions?.find((session) => session.helperId === userId) ?? task.helpSessions?.[0] ?? null;
+  const mySession = task.helpSessions?.find((session) => session.helperId === userId)
+    ?? (userId === task.requesterId ? task.helpSessions?.[0] : null)
+    ?? null;
   const helperId = mySession?.helperId ?? null;
   const actions = getAvailableActions(task.status, userId, task.requesterId, helperId);
+  const mySessionActions = mySession
+    ? getSessionActions(mySession.status, userId === task.requesterId || mySession.helperId === userId, mySession.helperId === userId)
+    : null;
   const hasActiveClaim = task.claimsAsTarget?.some(
     (claim) => claim.applicantId === userId && ["PENDING", "ACCEPTED"].includes(claim.status),
   );
@@ -679,20 +722,36 @@ export default function TaskDetailPage() {
             </CardContent>
           </Card>
         )}
-        {userId === task.requesterId && (task.helpSessions?.length ?? 0) > 1 && (
+        {userId === task.requesterId && (task.helpSessions?.length ?? 0) > 0 && (
           <Card className="mb-6">
             <CardHeader><CardTitle className="text-lg">已建立的互助会话</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {task.helpSessions?.map((session, index) => (
-                <div key={session.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
-                  <span className="text-sm">互助人 {index + 1}（{session.helperId.slice(0, 8)}…）</span>
-                  <div className="flex gap-2">
+                <div key={session.id} className="rounded-xl border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-sm font-medium">互助人 {index + 1}（{session.helperId.slice(0, 8)}…）</span>
+                      <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">{getTaskStatusLabel(session.status)}</span>
+                      <p className="mt-1 text-xs text-muted-foreground">求助者确认：{session.requesterConfirmed ? "是" : "否"} · 帮助者确认：{session.helperConfirmed ? "是" : "否"}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" asChild>
                       <Link href={`/dcr/tasks/${id}/chat?sessionId=${session.id}`}>私聊</Link>
                     </Button>
                     <Button variant="outline" size="sm" asChild>
                       <Link href={`/dcr/tasks/${id}/evidence?sessionId=${session.id}`}>证据区</Link>
                     </Button>
+                      {getSessionActions(session.status, true, false).canRequestClose && (
+                        <Button size="sm" variant="secondary" disabled={actionLoading !== null} onClick={() => handleClose("request", session.id)}>申请结案</Button>
+                      )}
+                      {getSessionActions(session.status, true, false).canConfirmClose && (
+                        <Button size="sm" variant="secondary" disabled={actionLoading !== null} onClick={() => handleClose("confirm", session.id)}>确认完成</Button>
+                      )}
+                      {getSessionActions(session.status, true, false).canDispute && (
+                        <Button size="sm" variant="destructive" disabled={actionLoading !== null} onClick={() => handleDispute(session.id)}><Flag className="mr-1 h-3.5 w-3.5" />发起争议</Button>
+                      )}
+                      {session.status === "DISPUTED" && <span className="self-center text-xs text-rose-700">等待管理员仲裁，驳回后自动恢复</span>}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -757,7 +816,7 @@ export default function TaskDetailPage() {
               </div>
             )}
 
-            {actions.canStart && (
+            {userId !== task.requesterId && mySessionActions?.canStart && (
               <Button
                 className="rounded-2xl"
                 disabled={actionLoading === "start"}
@@ -772,7 +831,7 @@ export default function TaskDetailPage() {
               </Button>
             )}
 
-            {actions.canChat && (
+            {userId !== task.requesterId && mySessionActions?.canChat && (
               <Button variant="outline" className="rounded-2xl" asChild>
                 <Link href={`/dcr/tasks/${id}/chat?sessionId=${mySession?.id ?? ""}`}>
                   <MessageCircle className="h-4 w-4" aria-hidden="true" />
@@ -781,7 +840,7 @@ export default function TaskDetailPage() {
               </Button>
             )}
 
-            {actions.canEvidence && (
+            {userId !== task.requesterId && mySessionActions?.canEvidence && (
               <Button variant="outline" className="rounded-2xl" asChild>
                 <Link href={`/dcr/tasks/${id}/evidence?sessionId=${mySession?.id ?? ""}`}>
                   <FolderOpen className="h-4 w-4" aria-hidden="true" />
@@ -790,14 +849,14 @@ export default function TaskDetailPage() {
               </Button>
             )}
 
-            {actions.canRequestClose && (
+            {userId !== task.requesterId && mySessionActions?.canRequestClose && mySession && (
               <Button
                 variant="secondary"
                 className="rounded-2xl"
-                disabled={actionLoading === "request"}
-                onClick={() => handleClose("request")}
+                disabled={actionLoading === `request-${mySession.id}`}
+                onClick={() => handleClose("request", mySession.id)}
               >
-                {actionLoading === "request" ? (
+                {actionLoading === `request-${mySession.id}` ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 ) : (
                   <CheckCircle className="h-4 w-4" aria-hidden="true" />
@@ -806,20 +865,29 @@ export default function TaskDetailPage() {
               </Button>
             )}
 
-            {actions.canConfirmClose && (
+            {userId !== task.requesterId && mySessionActions?.canConfirmClose && mySession && (
               <Button
                 variant="secondary"
                 className="rounded-2xl"
-                disabled={actionLoading === "confirm"}
-                onClick={() => handleClose("confirm")}
+                disabled={actionLoading === `confirm-${mySession.id}`}
+                onClick={() => handleClose("confirm", mySession.id)}
               >
-                {actionLoading === "confirm" ? (
+                {actionLoading === `confirm-${mySession.id}` ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 ) : (
                   <CheckCircle className="h-4 w-4" aria-hidden="true" />
                 )}
                 确认完成
               </Button>
+            )}
+
+            {userId !== task.requesterId && mySessionActions?.canDispute && mySession && (
+              <Button variant="destructive" className="rounded-2xl" disabled={actionLoading !== null} onClick={() => handleDispute(mySession.id)}>
+                <Flag className="h-4 w-4" />发起争议
+              </Button>
+            )}
+            {userId !== task.requesterId && mySession?.status === "DISPUTED" && (
+              <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-200">会话正在仲裁。管理员驳回争议后，将恢复到争议前状态并可继续结案。</div>
             )}
           </div>
         )}

@@ -5,6 +5,7 @@ import {
   FORWARD_TRANSITIONS,
   TERMINAL_STATES,
   aggregateHelpSessionStatus,
+  restoreHelpSessionStatus,
   type TaskStatus,
 } from '../task-state-machine';
 
@@ -117,6 +118,18 @@ describe('task-state-machine', () => {
       [['COMPLETED', 'CLAIMED'], 'CLAIMED'],
     ] as const)('aggregates %j as %s', (sessions, expected) => {
       expect(aggregateHelpSessionStatus([...sessions])).toBe(expected);
+    });
+  });
+
+  describe('restoreHelpSessionStatus', () => {
+    it.each(['CLAIMED', 'IN_PROGRESS', 'EVIDENCE_PENDING'] as const)(
+      'restores a disputed session to %s',
+      (status) => expect(restoreHelpSessionStatus(status)).toBe(status),
+    );
+
+    it('uses IN_PROGRESS for legacy disputes without a saved prior state', () => {
+      expect(restoreHelpSessionStatus(null)).toBe('IN_PROGRESS');
+      expect(restoreHelpSessionStatus('DISPUTED')).toBe('IN_PROGRESS');
     });
   });
 });

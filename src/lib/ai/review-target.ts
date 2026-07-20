@@ -108,18 +108,41 @@ export async function loadAiReviewTarget(targetType: AiReviewTarget, id: string)
   }
 
   if (targetType === "DISPUTE") {
-    const task = await prisma.mutualAidTask.findUnique({
+    const session = await prisma.helpSession.findUnique({
       where: { id },
       select: {
-        id: true, updatedAt: true, title: true, summary: true, category: true, urgencyLevel: true,
-        timeline: { orderBy: { createdAt: "asc" }, select: { action: true, oldStatus: true, newStatus: true, details: true, createdAt: true } },
+        id: true, status: true, statusBeforeDispute: true, requesterId: true, helperId: true,
+        task: {
+          select: {
+            id: true, updatedAt: true, title: true, summary: true, category: true, urgencyLevel: true,
+            timeline: { orderBy: { createdAt: "asc" }, select: { action: true, oldStatus: true, newStatus: true, details: true, createdAt: true } },
+          },
+        },
+        evidenceRoom: {
+          select: { items: { select: { type: true, description: true, createdAt: true }, orderBy: { createdAt: "asc" } } },
+        },
       },
     });
-    if (!task) return null;
+    if (!session) return null;
+    const marker = `[session:${session.id}]`;
     return {
-      targetType, targetId: id, targetVersion: task.updatedAt.toISOString(), feature: "dcr_dispute_review",
+      targetType, targetId: id, targetVersion: `${session.task.updatedAt.toISOString()}:${session.status}`, feature: "dcr_dispute_review",
       containsPrivateData: true, complex: true,
-      payload: { title: task.title, summary: task.summary, category: task.category, urgency: task.urgencyLevel, timeline: task.timeline },
+      payload: {
+        title: session.task.title,
+        summary: session.task.summary,
+        category: session.task.category,
+        urgency: session.task.urgencyLevel,
+        session: {
+          id: session.id,
+          status: session.status,
+          statusBeforeDispute: session.statusBeforeDispute,
+          requesterId: session.requesterId,
+          helperId: session.helperId,
+        },
+        timeline: session.task.timeline.filter((event) => !event.details?.startsWith("[session:") || event.details.startsWith(marker)),
+        evidence: session.evidenceRoom?.items ?? [],
+      },
     };
   }
 

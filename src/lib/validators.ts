@@ -371,3 +371,8 @@ export const moderateDisputeSchema = z.object({
   reason: z.string().min(1).max(1000),
   targetUserId: z.string().cuid().optional(),
 });
+
+export const moderateCycleDisputeSchema = z.object({
+  action: z.enum(['resume', 'reinvite', 'close']),
+  reason: z.string().trim().min(1).max(1000),
+});

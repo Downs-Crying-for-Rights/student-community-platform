@@ -17,6 +17,8 @@ interface TimelineEvent {
 
 interface DisputeItem {
   id: string;
+  disputeSessionId: string;
+  disputeExplanation: string;
   title: string;
   category: string;
   urgencyLevel: string;
@@ -25,7 +27,7 @@ interface DisputeItem {
   createdAt: string;
   updatedAt: string;
   requester: { id: string; nickname: string | null; email: string | null; avatar: string | null };
-  helpSession: { id: string; helperId: string; requesterId: string; createdAt: string } | null;
+  helpSession: { id: string; helperId: string; requesterId: string; statusBeforeDispute: string | null; createdAt: string } | null;
   timeline: TimelineEvent[];
 }
 
@@ -35,8 +37,8 @@ const ACTION_LABELS: Record<ActionType, { text: string; variant: "default" | "de
   takedown: { text: "下架", variant: "destructive" },
   replace_helper: { text: "更换帮助者", variant: "secondary" },
   ban_user: { text: "封禁用户", variant: "destructive" },
-  dismiss: { text: "驳回争议", variant: "outline" },
-  freeze: { text: "冻结", variant: "destructive" },
+  dismiss: { text: "驳回并恢复", variant: "outline" },
+  freeze: { text: "终止任务", variant: "destructive" },
 };
 
 const URGENCY_LABELS: Record<string, { text: string; className: string }> = {
@@ -106,7 +108,7 @@ export default function AdminDisputesPage() {
     }
 
     const { disputeId, action } = activeAction;
-    const dispute = disputes.find((d) => d.id === disputeId);
+    const dispute = disputes.find((d) => d.disputeSessionId === disputeId);
 
     setActionLoading(disputeId);
     setError("");
@@ -139,13 +141,6 @@ export default function AdminDisputesPage() {
     }
   };
 
-  const getDisputeExplanation = (timeline: TimelineEvent[]): string | null => {
-    const disputeEvent = timeline.find(
-      (e) => e.newStatus === "DISPUTED" || e.action === "dispute"
-    );
-    return disputeEvent?.details || null;
-  };
-
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       <h1 className="text-2xl font-bold mb-6">争议仲裁队列</h1>
@@ -168,13 +163,13 @@ export default function AdminDisputesPage() {
         <div className="space-y-4">
           {disputes.map((dispute) => {
             const urgency = URGENCY_LABELS[dispute.urgencyLevel] || { text: dispute.urgencyLevel, className: "bg-gray-100 text-gray-600" };
-            const explanation = getDisputeExplanation(dispute.timeline);
-            const isExpanded = expandedId === dispute.id;
-            const isActioning = activeAction?.disputeId === dispute.id;
-            const isLoading = actionLoading === dispute.id;
+            const explanation = dispute.disputeExplanation;
+            const isExpanded = expandedId === dispute.disputeSessionId;
+            const isActioning = activeAction?.disputeId === dispute.disputeSessionId;
+            const isLoading = actionLoading === dispute.disputeSessionId;
 
             return (
-              <Card key={dispute.id}>
+              <Card key={dispute.disputeSessionId}>
                 <CardContent className="p-4">
                   {/* Header row */}
                   <div className="flex items-start justify-between gap-4 mb-3">
@@ -199,7 +194,7 @@ export default function AdminDisputesPage() {
                       variant="ghost"
                       size="sm"
                       className="text-xs shrink-0"
-                      onClick={() => setExpandedId(isExpanded ? null : dispute.id)}
+                      onClick={() => setExpandedId(isExpanded ? null : dispute.disputeSessionId)}
                     >
                       {isExpanded ? "收起" : "展开详情"}
                     </Button>
@@ -214,6 +209,7 @@ export default function AdminDisputesPage() {
                     {dispute.helpSession && (
                       <span>
                         帮助者 ID：{dispute.helpSession.helperId.slice(0, 8)}...
+                        <span className="ml-2">争议前：{dispute.helpSession.statusBeforeDispute || "历史数据"}</span>
                       </span>
                     )}
                     <span>
@@ -257,7 +253,7 @@ export default function AdminDisputesPage() {
                   )}
 
                   <div className="mb-3">
-                    <AiReviewPanel targetType="DISPUTE" targetId={dispute.id} onUseReason={setActionReason} />
+                    <AiReviewPanel targetType="DISPUTE" targetId={dispute.disputeSessionId} onUseReason={setActionReason} />
                   </div>
 
                   {/* Action area */}
@@ -274,7 +270,7 @@ export default function AdminDisputesPage() {
                             <label className="flex items-center gap-1 text-sm cursor-pointer">
                               <input
                                 type="radio"
-                                name={`ban-target-${dispute.id}`}
+                                name={`ban-target-${dispute.disputeSessionId}`}
                                 checked={banTarget === "requester"}
                                 onChange={() => setBanTarget("requester")}
                               />
@@ -283,7 +279,7 @@ export default function AdminDisputesPage() {
                             <label className="flex items-center gap-1 text-sm cursor-pointer">
                               <input
                                 type="radio"
-                                name={`ban-target-${dispute.id}`}
+                                name={`ban-target-${dispute.disputeSessionId}`}
                                 checked={banTarget === "helper"}
                                 onChange={() => setBanTarget("helper")}
                               />
@@ -333,7 +329,7 @@ export default function AdminDisputesPage() {
                           size="sm"
                           className="text-xs h-7"
                           disabled={isLoading}
-                          onClick={() => handleStartAction(dispute.id, action)}
+                          onClick={() => handleStartAction(dispute.disputeSessionId, action)}
                         >
                           {ACTION_LABELS[action].text}
                         </Button>

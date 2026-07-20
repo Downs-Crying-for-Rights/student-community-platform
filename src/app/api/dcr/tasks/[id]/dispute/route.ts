@@ -80,6 +80,7 @@ export const POST = withAuth(async (
     const oldStatus = task.status;
 
     await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
       const updated = await tx.helpSession.updateMany({
         where: { id: selected.id, status: selected.status },
         data: { status: "DISPUTED", statusBeforeDispute: selected.status },
@@ -100,9 +101,9 @@ export const POST = withAuth(async (
           operatorId: userId,
         },
       });
+      await logAudit(userId, "TASK_DISPUTE", "TASK", id, { explanation, sessionId: selected.id }, undefined, tx);
     });
 
-    await logAudit(userId, "TASK_DISPUTE", "TASK", id, { explanation, sessionId: selected.id });
     const counterpartId = isRequester ? selected.helperId : task.requesterId;
     await notifyMutualAidUsersBestEffort([counterpartId], {
       title: "互助任务已发起争议",
@@ -123,6 +124,9 @@ export const POST = withAuth(async (
 
     return NextResponse.json({ status: "DISPUTED", sessionId: selected.id });
   } catch (error) {
+    if (error instanceof Error && error.message === "SESSION_STATE_CHANGED") {
+      return NextResponse.json({ error: "会话状态已变化，请刷新后重试" }, { status: 409 });
+    }
     console.error("POST /api/dcr/tasks/[id]/dispute error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

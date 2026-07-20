@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   sessionFindFirst: vi.fn(),
+  sessionFindUnique: vi.fn(),
   evidenceCreate: vi.fn(),
   scanContent: vi.fn(),
   enforceRateLimit: vi.fn(),
@@ -11,10 +12,19 @@ const mocks = vi.hoisted(() => ({
   logAudit: vi.fn(),
 }));
 
-vi.mock("@/lib/prisma", () => ({ default: {
-  helpSession: { findFirst: mocks.sessionFindFirst },
-  evidenceItem: { create: mocks.evidenceCreate },
-} }));
+vi.mock("@/lib/prisma", () => {
+  const tx = {
+    $queryRaw: vi.fn(),
+    helpSession: { findUnique: mocks.sessionFindUnique },
+    evidenceItem: { create: mocks.evidenceCreate },
+    auditLog: { create: vi.fn() },
+  };
+  return { default: {
+    helpSession: { findFirst: mocks.sessionFindFirst },
+    evidenceItem: { create: mocks.evidenceCreate },
+    $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
+  } };
+});
 vi.mock("@/lib/sensitive-engine", () => ({ scanContent: mocks.scanContent }));
 vi.mock("@/lib/rate-limiter", () => ({ enforceRateLimit: mocks.enforceRateLimit }));
 vi.mock("@/lib/oss", () => ({
@@ -52,6 +62,7 @@ describe("POST /api/dcr/tasks/[id]/evidence multipart upload", () => {
       helperId: "helper",
       evidenceRoom: { id: "room-1" },
     });
+    mocks.sessionFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
     mocks.scanContent.mockResolvedValue([]);
     mocks.enforceRateLimit.mockResolvedValue(null);
     mocks.generateObjectKey.mockReturnValue("uploads/2026/07/evidence.pdf");

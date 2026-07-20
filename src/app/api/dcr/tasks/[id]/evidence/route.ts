@@ -34,7 +34,7 @@ async function verifyAccess(
   userRole: string,
   sessionId?: string | null,
 ): Promise<
-  | { ok: true; session: { id: string; requesterId: string; helperId: string; evidenceRoom: { id: string } | null } }
+  | { ok: true; session: { id: string; status: string; requesterId: string; helperId: string; evidenceRoom: { id: string } | null } }
   | { ok: false; response: NextResponse }
 > {
   const session = await prisma.helpSession.findFirst({
@@ -186,6 +186,9 @@ export const POST = withAuth(async (
     } else {
       body = await req.json();
     }
+    if (["DISPUTED", "COMPLETED", "CLOSED"].includes(session.status)) {
+      return NextResponse.json({ error: "当前会话已暂停或结束，不能继续补充证据" }, { status: 409 });
+    }
 
     const parsed = createEvidenceItemSchema.safeParse(body);
 
@@ -242,36 +245,37 @@ export const POST = withAuth(async (
       if (!process.env.OSS_BUCKET || !process.env.OSS_ACCESS_KEY_ID || !process.env.OSS_ACCESS_KEY_SECRET) {
         return NextResponse.json({ error: "文件存储服务未配置" }, { status: 503 });
       }
-      const key = generateObjectKey(EVIDENCE_FILE_EXTENSIONS[file.type]);
-      fileUrl = await uploadToOSS(Buffer.from(await file.arrayBuffer()), key, file.type);
     }
 
-    // Create evidence item
-    const item = await prisma.evidenceItem.create({
-      data: {
-        type,
-        description,
-        fileUrl: fileUrl ?? null,
-        fileName: fileName ?? null,
-        fileSize: fileSize ?? null,
-        roomId: evidenceRoom.id,
-        uploaderId: userId,
-      },
-      select: {
-        id: true,
-        type: true,
-        createdAt: true,
-      },
+    const item = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+      const current = await tx.helpSession.findUnique({ where: { id: session.id }, select: { status: true } });
+      if (!current || ["DISPUTED", "COMPLETED", "CLOSED"].includes(current.status)) {
+        throw new Error("SESSION_READ_ONLY");
+      }
+      if (file) {
+        const key = generateObjectKey(EVIDENCE_FILE_EXTENSIONS[file.type]);
+        fileUrl = await uploadToOSS(Buffer.from(await file.arrayBuffer()), key, file.type);
+      }
+      const created = await tx.evidenceItem.create({
+        data: {
+          type, description, fileUrl: fileUrl ?? null, fileName: fileName ?? null,
+          fileSize: fileSize ?? null, roomId: evidenceRoom.id, uploaderId: userId,
+        },
+        select: { id: true, type: true, createdAt: true },
+      });
+      await logAudit(userId, "CREATE_EVIDENCE", "EVIDENCE_ITEM", created.id, undefined, undefined, tx);
+      return created;
     });
-
-    // Audit log
-    await logAudit(userId, "CREATE_EVIDENCE", "EVIDENCE_ITEM", item.id);
 
     return NextResponse.json(
       { id: item.id, type: item.type, createdAt: item.createdAt },
       { status: 201 },
     );
   } catch (error) {
+    if (error instanceof Error && error.message === "SESSION_READ_ONLY") {
+      return NextResponse.json({ error: "当前会话已暂停或结束，不能继续补充证据" }, { status: 409 });
+    }
     console.error("POST /api/dcr/tasks/[id]/evidence error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

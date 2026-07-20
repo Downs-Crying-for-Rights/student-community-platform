@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   claimFindUnique: vi.fn(),
   claimUpdateMany: vi.fn(),
   claimCreate: vi.fn(),
+  sessionFindFirst: vi.fn(),
   timelineCreate: vi.fn(),
   logAudit: vi.fn(),
   notifyUsers: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@/lib/prisma", () => ({ default: {
   user: { findUnique: mocks.userFindUnique },
   mutualAidTask: { findUnique: mocks.taskFindUnique, findFirst: mocks.taskFindFirst },
   helpClaim: { findUnique: mocks.claimFindUnique },
+  helpSession: { findFirst: mocks.sessionFindFirst },
   $transaction: (callback: (client: unknown) => unknown) => callback({
     helpClaim: {
       findUnique: mocks.claimFindUnique,
@@ -55,6 +57,7 @@ describe("POST /api/dcr/tasks/[id]/claim", () => {
     mocks.taskFindUnique.mockResolvedValue({ id: context.params.id, title: "需要帮助", requesterId: "requester", status: "CLAIMED" });
     mocks.taskFindFirst.mockResolvedValue({ id: "cm0000000000000000000002", title: "我的委托", status: "OPEN" });
     mocks.claimFindUnique.mockResolvedValue(null);
+    mocks.sessionFindFirst.mockResolvedValue(null);
     mocks.claimCreate.mockResolvedValue({ id: "claim-1", status: "PENDING", offeredTaskId: "cm0000000000000000000002" });
     mocks.timelineCreate.mockResolvedValue({});
     mocks.logAudit.mockResolvedValue({});
@@ -120,6 +123,13 @@ describe("POST /api/dcr/tasks/[id]/claim", () => {
 
     expect(response.status).toBe(409);
     expect(mocks.claimUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.claimCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not allow a replaced helper to recreate the closed relationship", async () => {
+    mocks.sessionFindFirst.mockResolvedValue({ id: "closed-session" });
+    const response = await POST(request(), context as never);
+    expect(response.status).toBe(409);
     expect(mocks.claimCreate).not.toHaveBeenCalled();
   });
 });

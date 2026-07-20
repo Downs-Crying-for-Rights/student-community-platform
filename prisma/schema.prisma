@@ -1401,6 +1401,7 @@ enum CycleStatus {
   ACTIVE
   COMPLETED
   BROKEN
+  CLOSED
 }
 
 enum CycleMode {
@@ -1422,6 +1423,7 @@ enum LinkStatus {
   IN_PROGRESS
   COMPLETED
   DISPUTED
+  CLOSED
 }
 
 model MutualAidCycle {
@@ -1474,6 +1476,7 @@ model MutualAidLink {
   toUser   User @relation("LinkTo", fields: [toUserId], references: [id], onDelete: Cascade)
 
   status      LinkStatus @default(PENDING_REQUEST)
+  statusBeforeDispute LinkStatus?
   description String? // from 方对此段互助的描述
 
   acceptedAt  DateTime?

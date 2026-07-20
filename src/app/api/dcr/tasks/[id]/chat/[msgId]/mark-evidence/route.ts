@@ -57,6 +57,11 @@ export const POST = withAuth(async (
 
     // Transaction: mark message as evidence + create EvidenceRoom NOTE entry
     const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${taskId}`}))`;
+      const current = await tx.helpSession.findUnique({ where: { id: session.id }, select: { status: true } });
+      if (!current || ["DISPUTED", "COMPLETED", "CLOSED"].includes(current.status)) {
+        throw new Error("SESSION_READ_ONLY");
+      }
       const updatedMsg = await tx.helpChatMessage.update({
         where: { id: msgId },
         data: { isEvidence: true },
@@ -77,6 +82,9 @@ export const POST = withAuth(async (
 
     return NextResponse.json({ id: updated.id, isEvidence: true });
   } catch (error) {
+    if (error instanceof Error && error.message === "SESSION_READ_ONLY") {
+      return NextResponse.json({ error: "当前会话已暂停或结束，不能标记证据" }, { status: 409 });
+    }
     console.error("POST /api/dcr/tasks/[id]/chat/[msgId]/mark-evidence error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

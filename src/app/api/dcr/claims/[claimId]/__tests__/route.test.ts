@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   messageCreate: vi.fn(),
   claimUpdate: vi.fn(),
   taskUpdateMany: vi.fn(),
+  taskFindUnique: vi.fn(),
   timelineCreate: vi.fn(),
   userUpdateMany: vi.fn(),
   logAudit: vi.fn(),
@@ -17,10 +18,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
+    $queryRaw: vi.fn(),
     helpClaim: { updateMany: mocks.claimUpdateMany, update: mocks.claimUpdate },
     helpSession: { create: mocks.sessionCreate, findMany: mocks.sessionFindMany },
     helpChatMessage: { create: mocks.messageCreate },
-    mutualAidTask: { updateMany: mocks.taskUpdateMany },
+    mutualAidTask: { findUnique: mocks.taskFindUnique, updateMany: mocks.taskUpdateMany },
     taskTimelineEvent: { create: mocks.timelineCreate },
     user: { updateMany: mocks.userUpdateMany },
   };
@@ -72,6 +74,7 @@ describe("POST /api/dcr/claims/[claimId]", () => {
     });
     mocks.sessionFindMany.mockResolvedValue([{ status: "CLAIMED" }]);
     mocks.taskUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.taskFindUnique.mockResolvedValue({ status: "OPEN" });
     mocks.logAudit.mockResolvedValue({});
     mocks.notifyUsers.mockResolvedValue(undefined);
   });

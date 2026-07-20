@@ -26,6 +26,11 @@ export const GET = withAuth(async (
           select: {
             id: true,
             helperId: true,
+            status: true,
+            statusBeforeDispute: true,
+            requesterConfirmed: true,
+            helperConfirmed: true,
+            closedAt: true,
             helpChat: { select: { id: true } },
             evidenceRoom: { select: { id: true } },
           },

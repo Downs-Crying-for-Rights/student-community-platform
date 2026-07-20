@@ -19,7 +19,8 @@ async function verifyAccess(
   sessionId?: string | null,
 ): Promise<
   | { ok: true; session: {
-      id: string;
+       id: string;
+       status: string;
       requesterId: string;
       helperId: string;
       helpChat: { id: string } | null;
@@ -174,6 +175,9 @@ export const POST = withAuth(async (
     if (!chat) {
       return NextResponse.json({ error: "聊天通道不存在" }, { status: 404 });
     }
+    if (["DISPUTED", "COMPLETED", "CLOSED"].includes(session.status)) {
+      return NextResponse.json({ error: "当前会话已暂停或结束，不能继续发送消息" }, { status: 409 });
+    }
 
     // Rate limit: 30 requests per 60 seconds
     const rateLimited = await enforceRateLimit(`dcr-chat:${userId}`, 30, 60_000);
@@ -208,6 +212,11 @@ export const POST = withAuth(async (
 
     // Create message (and optionally evidence item) in a transaction
     const message = await prisma.$transaction(async (tx: any) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+      const current = await tx.helpSession.findUnique({ where: { id: session.id }, select: { status: true } });
+      if (!current || ["DISPUTED", "COMPLETED", "CLOSED"].includes(current.status)) {
+        throw new Error("SESSION_READ_ONLY");
+      }
       const msg = await tx.helpChatMessage.create({
         data: {
           chatId: chat.id,
@@ -244,6 +253,9 @@ export const POST = withAuth(async (
       { status: 201 },
     );
   } catch (error) {
+    if (error instanceof Error && error.message === "SESSION_READ_ONLY") {
+      return NextResponse.json({ error: "当前会话已暂停或结束，不能继续发送消息" }, { status: 409 });
+    }
     console.error("POST /api/dcr/tasks/[id]/chat error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

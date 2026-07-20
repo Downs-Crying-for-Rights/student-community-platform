@@ -99,6 +99,13 @@ export const POST = withAuth(async (
         { status: 409 },
       );
     }
+    const replacedSession = await prisma.helpSession.findFirst({
+      where: { taskId: id, helperId: userId, status: "CLOSED" },
+      select: { id: true },
+    });
+    if (replacedSession) {
+      return NextResponse.json({ error: "该互助关系已由管理员终止，不能重新申请" }, { status: 409 });
+    }
 
     const claim = await prisma.$transaction(async (tx) => {
       let result: { id: string; status: string; offeredTaskId: string | null };

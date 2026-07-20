@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   taskFindUnique: vi.fn(),
   sessionUpdate: vi.fn(),
+  sessionUpdateMany: vi.fn(),
   sessionFindUniqueOrThrow: vi.fn(),
   sessionFindMany: vi.fn(),
   taskUpdate: vi.fn(),
@@ -14,8 +15,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
+    $queryRaw: vi.fn(),
     helpSession: {
       update: mocks.sessionUpdate,
+      updateMany: mocks.sessionUpdateMany,
       findUniqueOrThrow: mocks.sessionFindUniqueOrThrow,
       findMany: mocks.sessionFindMany,
     },
@@ -97,6 +100,7 @@ describe("POST /api/dcr/tasks/[id]/close", () => {
       helperConfirmed: true,
     });
     mocks.sessionFindMany.mockResolvedValue([{ status: "COMPLETED" }, { status: "IN_PROGRESS" }]);
+    mocks.sessionUpdateMany.mockResolvedValue({ count: 1 });
     mocks.taskUpdate.mockResolvedValue({ count: 1 });
   });
 
@@ -124,7 +128,7 @@ describe("POST /api/dcr/tasks/[id]/close", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.sessionUpdate).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.sessionUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: "COMPLETED" }),
     }));
   });
@@ -165,5 +169,14 @@ describe("POST /api/dcr/tasks/[id]/close", () => {
 
     expect(response.status).toBe(404);
     expect(mocks.sessionUpdate).not.toHaveBeenCalled();
+  });
+
+  it("does not accept a confirm action before a close request", async () => {
+    const nextTask = task();
+    nextTask.helpSessions[1].status = "IN_PROGRESS";
+    mocks.taskFindUnique.mockResolvedValue(nextTask);
+    const response = await POST(request("helper2", { action: "confirm", sessionId: session2 }), { params: { id: "task1" } });
+    expect(response.status).toBe(400);
+    expect(mocks.sessionUpdateMany).not.toHaveBeenCalled();
   });
 });

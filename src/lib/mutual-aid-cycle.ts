@@ -6,7 +6,7 @@
  */
 
 import prisma from "@/lib/prisma";
-import { CycleMode, CycleStatus, LinkStatus } from "@prisma/client";
+import { CycleMode, CycleStatus, LinkStatus, type Prisma } from "@prisma/client";
 import { createNotification } from "@/lib/notification";
 
 /* ========== Types ========== */
@@ -72,6 +72,7 @@ const LINK_TRANSITIONS: Record<LinkStatus, LinkStatus[]> = {
   COMPLETED: [],
   REJECTED: [],
   DISPUTED: [],
+  CLOSED: [],
 };
 
 const CYCLE_TRANSITIONS: Record<CycleStatus, CycleStatus[]> = {
@@ -79,6 +80,7 @@ const CYCLE_TRANSITIONS: Record<CycleStatus, CycleStatus[]> = {
   ACTIVE: ["COMPLETED", "BROKEN"],
   COMPLETED: [],
   BROKEN: [],
+  CLOSED: [],
 };
 
 /* ========== Validation ========== */
@@ -398,48 +400,43 @@ export async function respondToLink(
   userId: string,
   action: "ACCEPTED" | "REJECTED",
 ) {
-  const link = await prisma.mutualAidLink.findUnique({
-    where: { id: linkId },
-    include: { cycle: true },
-  });
+  return prisma.$transaction(async (tx) => {
+    const initial = await tx.mutualAidLink.findUnique({ where: { id: linkId }, select: { cycleId: true } });
+    if (!initial) throw new Error("链接不存在");
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${initial.cycleId}`}))`;
+    const link = await tx.mutualAidLink.findUnique({ where: { id: linkId }, include: { cycle: true } });
+    if (!link) throw new Error("链接不存在");
+    if (link.toUserId !== userId) throw new Error("只有接收方可以响应互助请求");
+    const transition = canTransitionLink(link.status, action);
+    if (!transition.allowed) throw new Error(transition.reason);
 
-  if (!link) throw new Error("链接不存在");
-  if (link.toUserId !== userId) throw new Error("只有接收方可以响应互助请求");
-
-  if (action === "REJECTED") {
-    // 拒绝 → 标记该 Link + Cycle → BROKEN
-    await prisma.$transaction([
-      prisma.mutualAidLink.update({
-        where: { id: linkId },
+    if (action === "REJECTED") {
+      const updated = await tx.mutualAidLink.updateMany({
+        where: { id: linkId, status: link.status },
         data: { status: LinkStatus.REJECTED, breakReason: "接收方拒绝" },
-      }),
-      prisma.mutualAidCycle.update({
+      });
+      if (updated.count !== 1) throw new Error("互助关系状态已变化，请刷新后重试");
+      await tx.mutualAidCycle.update({
         where: { id: link.cycleId },
         data: { status: CycleStatus.BROKEN },
-      }),
-    ]);
-    return { cycleStatus: "BROKEN" as const, linkStatus: "REJECTED" as const };
-  }
+      });
+      return { cycleStatus: "BROKEN" as const, linkStatus: "REJECTED" as const };
+    }
 
-  // ACCEPTED
-  const result = canTransitionLink(link.status, "ACCEPTED");
-  if (!result.allowed) throw new Error(result.reason);
-
-  await prisma.$transaction([
-    prisma.mutualAidLink.update({
-      where: { id: linkId },
+    const updated = await tx.mutualAidLink.updateMany({
+      where: { id: linkId, status: link.status },
       data: { status: "ACCEPTED", acceptedAt: new Date() },
-    }),
-    prisma.user.update({
+    });
+    if (updated.count !== 1) throw new Error("互助关系状态已变化，请刷新后重试");
+    await tx.user.update({
       where: { id: userId },
       data: { dcrHelperAccess: true },
-    }),
-  ]);
-
-  // 检查是否所有 3 段都已 ACCEPTED → ACTIVE
-  await maybeActivateCycle(link.cycleId);
-
-  return { cycleStatus: link.cycle.status as CycleStatus, linkStatus: "ACCEPTED" as const };
+    });
+    const links = await tx.mutualAidLink.findMany({ where: { cycleId: link.cycleId }, select: { status: true } });
+    const cycleStatus = aggregateCycleLinkStatus(links.map((item) => item.status));
+    await tx.mutualAidCycle.update({ where: { id: link.cycleId }, data: { status: cycleStatus } });
+    return { cycleStatus, linkStatus: "ACCEPTED" as const };
+  });
 }
 
 /**
@@ -451,64 +448,153 @@ export async function updateLinkProgress(
   userId: string,
   newStatus: "IN_PROGRESS" | "COMPLETED",
 ) {
-  const link = await prisma.mutualAidLink.findUnique({
-    where: { id: linkId },
-    include: { cycle: true },
+  return prisma.$transaction(async (tx) => {
+    const initial = await tx.mutualAidLink.findUnique({ where: { id: linkId }, select: { cycleId: true } });
+    if (!initial) throw new Error("链接不存在");
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${initial.cycleId}`}))`;
+    const link = await tx.mutualAidLink.findUnique({ where: { id: linkId } });
+    if (!link) throw new Error("链接不存在");
+    if (link.fromUserId !== userId) throw new Error("只有发起方可以更新互助进度");
+    const transition = canTransitionLink(link.status, newStatus);
+    if (!transition.allowed) throw new Error(transition.reason);
+    const updated = await tx.mutualAidLink.updateMany({
+      where: { id: linkId, status: link.status },
+      data: { status: newStatus, ...(newStatus === "COMPLETED" ? { completedAt: new Date() } : {}) },
+    });
+    if (updated.count !== 1) throw new Error("互助关系状态已变化，请刷新后重试");
+    const links = await tx.mutualAidLink.findMany({ where: { cycleId: link.cycleId }, select: { status: true } });
+    const cycleStatus = aggregateCycleLinkStatus(links.map((item) => item.status));
+    await tx.mutualAidCycle.update({ where: { id: link.cycleId }, data: { status: cycleStatus } });
+    return { cycleStatus, linkStatus: newStatus };
   });
-
-  if (!link) throw new Error("链接不存在");
-  if (link.fromUserId !== userId) throw new Error("只有发起方可以更新互助进度");
-
-  const result = canTransitionLink(link.status, newStatus);
-  if (!result.allowed) throw new Error(result.reason);
-
-  const updateData: Record<string, unknown> = { status: newStatus };
-  if (newStatus === "COMPLETED") {
-    updateData.completedAt = new Date();
-  }
-
-  await prisma.mutualAidLink.update({
-    where: { id: linkId },
-    data: updateData,
-  });
-
-  // 如果完成 → 检查是否全部完成
-  if (newStatus === "COMPLETED") {
-    await maybeCompleteCycle(link.cycleId);
-  }
-
-  return { cycleStatus: link.cycle.status as CycleStatus, linkStatus: newStatus };
 }
 
 /**
  * 发起争议 (fromUser 或 toUser 均可)
  */
 export async function disputeLink(linkId: string, userId: string, reason: string) {
-  const link = await prisma.mutualAidLink.findUnique({
-    where: { id: linkId },
-    include: { cycle: true },
+  return prisma.$transaction(async (tx) => {
+    const initial = await tx.mutualAidLink.findUnique({ where: { id: linkId }, select: { cycleId: true } });
+    if (!initial) throw new Error("链接不存在");
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${initial.cycleId}`}))`;
+    const link = await tx.mutualAidLink.findUnique({ where: { id: linkId }, include: { cycle: true } });
+    if (!link) throw new Error("链接不存在");
+    if (link.fromUserId !== userId && link.toUserId !== userId) throw new Error("只有参与者可以发起争议");
+    const transition = canTransitionLink(link.status, "DISPUTED");
+    if (!transition.allowed) throw new Error(transition.reason);
+    const updated = await tx.mutualAidLink.updateMany({
+      where: { id: linkId, status: link.status },
+      data: { status: "DISPUTED", statusBeforeDispute: link.status, breakReason: reason },
+    });
+    if (updated.count !== 1) throw new Error("互助关系状态已变化，请刷新后重试");
+    await tx.mutualAidCycle.update({ where: { id: link.cycleId }, data: { status: "BROKEN" } });
+    return { cycleStatus: "BROKEN" as const, linkStatus: "DISPUTED" as const };
   });
+}
 
-  if (!link) throw new Error("链接不存在");
-  if (link.fromUserId !== userId && link.toUserId !== userId) {
-    throw new Error("只有参与者可以发起争议");
-  }
+export type CycleDisputeResolutionAction = "resume" | "reinvite" | "close";
 
-  const result = canTransitionLink(link.status, "DISPUTED");
-  if (!result.allowed) throw new Error(result.reason);
+export function restoreCycleLinkStatus(
+  statusBeforeDispute: LinkStatus | null,
+  action: Exclude<CycleDisputeResolutionAction, "close">,
+): LinkStatus {
+  if (action === "reinvite") return LinkStatus.PENDING_REQUEST;
+  return statusBeforeDispute === LinkStatus.IN_PROGRESS ? LinkStatus.IN_PROGRESS : LinkStatus.ACCEPTED;
+}
 
-  await prisma.$transaction([
-    prisma.mutualAidLink.update({
-      where: { id: linkId },
-      data: { status: "DISPUTED", breakReason: reason },
-    }),
-    prisma.mutualAidCycle.update({
-      where: { id: link.cycleId },
-      data: { status: "BROKEN" },
-    }),
-  ]);
+export function aggregateCycleLinkStatus(statuses: LinkStatus[]): CycleStatus {
+  if (statuses.includes(LinkStatus.DISPUTED) || statuses.includes(LinkStatus.REJECTED)) return CycleStatus.BROKEN;
+  if (statuses.every((status) => status === LinkStatus.COMPLETED)) return CycleStatus.COMPLETED;
+  if (statuses.includes(LinkStatus.CLOSED)) return CycleStatus.CLOSED;
+  if (statuses.includes(LinkStatus.PENDING_REQUEST)) return CycleStatus.INITIATING;
+  return CycleStatus.ACTIVE;
+}
 
-  return { cycleStatus: "BROKEN" as const, linkStatus: "DISPUTED" as const };
+/** Resolve one disputed cycle link without replacing or deleting unrelated links. */
+export async function resolveCycleDispute(
+  cycleId: string,
+  linkId: string,
+  action: CycleDisputeResolutionAction,
+  reason: string,
+  onResolved?: (
+    tx: Prisma.TransactionClient,
+    result: { cycleStatus: CycleStatus; linkStatus: LinkStatus; participantIds: string[] },
+  ) => Promise<void>,
+) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${cycleId}`}))`;
+    const link = await tx.mutualAidLink.findFirst({
+      where: { id: linkId, cycleId },
+      include: { cycle: { include: { links: true } } },
+    });
+    if (!link) throw new Error("互助关系不存在");
+    if (!["DISPUTED", "REJECTED"].includes(link.status)) throw new Error("该中断已被其他管理员处理");
+    if (link.status === "REJECTED" && action === "resume") {
+      throw new Error("已拒绝的链路只能重新邀请或终止循环");
+    }
+
+    if (action === "close") {
+      const claimed = await tx.mutualAidLink.updateMany({
+        where: { id: linkId, cycleId, status: link.status },
+        data: { status: "CLOSED", statusBeforeDispute: null, breakReason: reason },
+      });
+      if (claimed.count !== 1) throw new Error("该中断已被其他管理员处理");
+      await tx.mutualAidLink.updateMany({
+        where: { cycleId, id: { not: linkId }, status: { notIn: ["COMPLETED", "CLOSED"] } },
+        data: { status: "CLOSED", statusBeforeDispute: null, breakReason: reason },
+      });
+      await tx.mutualAidCycle.update({ where: { id: cycleId }, data: { status: "CLOSED" } });
+      const result = {
+        cycleStatus: "CLOSED" as const,
+        linkStatus: "CLOSED" as const,
+        participantIds: [...new Set(link.cycle.links.flatMap((item) => [item.fromUserId, item.toUserId]))],
+      };
+      await onResolved?.(tx, result);
+      return result;
+    }
+
+    const participantIds = [...new Set(link.cycle.links.flatMap((item) => [item.fromUserId, item.toUserId]))];
+    const conflictingCycle = await tx.mutualAidCycle.findFirst({
+      where: {
+        id: { not: cycleId },
+        status: { in: ["INITIATING", "ACTIVE"] },
+        OR: [
+          { initiatorId: { in: participantIds } },
+          { links: { some: { fromUserId: { in: participantIds } } } },
+          { links: { some: { toUserId: { in: participantIds } } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (conflictingCycle) throw new Error("参与者已加入其他活跃循环，只能终止当前循环");
+
+    if (action === "resume" && !link.statusBeforeDispute) {
+      throw new Error("历史争议缺少原状态，请选择重新邀请或终止循环");
+    }
+    const restoredStatus = restoreCycleLinkStatus(link.statusBeforeDispute, action);
+    const updated = await tx.mutualAidLink.updateMany({
+      where: { id: linkId, cycleId, status: link.status },
+      data: {
+        status: restoredStatus,
+        statusBeforeDispute: null,
+        breakReason: null,
+        ...(action === "reinvite" ? { acceptedAt: null, completedAt: null } : {}),
+      },
+    });
+    if (updated.count !== 1) throw new Error("该争议已被其他管理员处理");
+
+    const currentLinks = await tx.mutualAidLink.findMany({ where: { cycleId }, select: { status: true } });
+    const statuses = currentLinks.map((item) => item.status);
+    const cycleStatus = aggregateCycleLinkStatus(statuses);
+    await tx.mutualAidCycle.update({ where: { id: cycleId }, data: { status: cycleStatus } });
+    const result = {
+      cycleStatus,
+      linkStatus: restoredStatus,
+      participantIds,
+    };
+    await onResolved?.(tx, result);
+    return result;
+  });
 }
 
 /**
@@ -555,40 +641,4 @@ export async function repairLink(
       data: { status: "INITIATING" },
     }),
   ]);
-}
-
-/* ========== Internal Helpers ========== */
-
-/**
- * 当所有 3 段 Link 都 ACCEPTED → ACTIVATE
- */
-async function maybeActivateCycle(cycleId: string) {
-  const links = await prisma.mutualAidLink.findMany({
-    where: { cycleId },
-  });
-
-  const allAccepted = links.length >= 2 && links.every((l) => l.status === "ACCEPTED");
-  if (allAccepted) {
-    await prisma.mutualAidCycle.update({
-      where: { id: cycleId },
-      data: { status: "ACTIVE" },
-    });
-  }
-}
-
-/**
- * 当所有 3 段 Link 都 COMPLETED → COMPLETE
- */
-async function maybeCompleteCycle(cycleId: string) {
-  const links = await prisma.mutualAidLink.findMany({
-    where: { cycleId },
-  });
-
-  const allCompleted = links.length >= 2 && links.every((l) => l.status === "COMPLETED");
-  if (allCompleted) {
-    await prisma.mutualAidCycle.update({
-      where: { id: cycleId },
-      data: { status: "COMPLETED" },
-    });
-  }
 }

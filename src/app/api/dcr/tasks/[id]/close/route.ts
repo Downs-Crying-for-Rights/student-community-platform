@@ -88,8 +88,7 @@ export const POST = withAuth(async (
       }
 
       // Force-close: allow from EVIDENCE_PENDING or any state that can transition to COMPLETED
-      if (task.status !== "EVIDENCE_PENDING" &&
-          !canTransition(task.status as TaskStatus, "COMPLETED" as TaskStatus)) {
+      if (!canTransition(task.status as TaskStatus, "CLOSED" as TaskStatus)) {
         return NextResponse.json(
           { error: `当前状态 ${task.status} 不允许结案` },
           { status: 400 },
@@ -99,10 +98,19 @@ export const POST = withAuth(async (
       const completionReport = generateCompletionReport(task, "force", reason);
 
       const updated = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+        await tx.helpSession.updateMany({
+          where: { taskId: id, status: { notIn: ["COMPLETED", "CLOSED"] } },
+          data: {
+            status: "CLOSED",
+            statusBeforeDispute: null,
+            closedAt: new Date(),
+          },
+        });
         const updatedTask = await tx.mutualAidTask.update({
           where: { id },
           data: {
-            status: "COMPLETED",
+            status: "CLOSED",
             requesterConfirmed: true,
             helperConfirmed: true,
             closureReason: reason,
@@ -115,21 +123,28 @@ export const POST = withAuth(async (
             taskId: id,
             action: "force_close",
             oldStatus: task.status,
-            newStatus: "COMPLETED",
+             newStatus: "CLOSED",
             details: reason,
             operatorId: userId,
           },
         });
+        await logAudit(userId, "TASK_FORCE_CLOSE", "TASK", id, {
+          oldStatus: task.status,
+          reason,
+        }, undefined, tx);
 
         return updatedTask;
       });
 
-      await logAudit(userId, "TASK_FORCE_CLOSE", "TASK", id, {
-        oldStatus: task.status,
-        reason,
-      });
-
-      return NextResponse.json({
+       await notifyMutualAidUsersBestEffort(
+         task.helpSessions.flatMap((session) => [session.requesterId, session.helperId]),
+         {
+           title: "互助任务已由管理员终止",
+           content: `互助任务「${task.title}」已由管理员终止：${reason}`,
+           link: `/dcr/tasks/${id}`,
+         },
+       );
+       return NextResponse.json({
         status: updated.status,
         completionReport,
       });
@@ -149,18 +164,21 @@ export const POST = withAuth(async (
       && (isRequester || session.helperId === userId),
     );
     if (!selected) return NextResponse.json({ error: "互助会话不存在" }, { status: 404 });
-    if (!["IN_PROGRESS", "EVIDENCE_PENDING"].includes(selected.status)) {
+    const expectedStatus = action === "request" ? "IN_PROGRESS" : "EVIDENCE_PENDING";
+    if (selected.status !== expectedStatus) {
       return NextResponse.json({ error: `当前会话状态 ${selected.status} 不允许结案操作` }, { status: 400 });
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      await tx.helpSession.update({
-        where: { id: selected.id },
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+      const claimed = await tx.helpSession.updateMany({
+        where: { id: selected.id, status: expectedStatus },
         data: {
           ...(isRequester ? { requesterConfirmed: true } : { helperConfirmed: true }),
-          ...(action === "request" && selected.status === "IN_PROGRESS" ? { status: "EVIDENCE_PENDING" } : {}),
+          ...(action === "request" ? { status: "EVIDENCE_PENDING" } : {}),
         },
       });
+      if (claimed.count !== 1) throw new Error("SESSION_STATE_CHANGED");
       const current = await tx.helpSession.findUniqueOrThrow({
         where: { id: selected.id },
         include: { evidenceRoom: { include: { items: { select: { type: true } } } } },
@@ -170,10 +188,11 @@ export const POST = withAuth(async (
       if (bothConfirmed) {
         const check = checkCompletionRequirements(current.evidenceRoom?.items ?? []);
         if (!check.canComplete) throw new Error("EVIDENCE_INCOMPLETE");
-        await tx.helpSession.update({
-          where: { id: selected.id },
+        const completed = await tx.helpSession.updateMany({
+          where: { id: selected.id, status: "EVIDENCE_PENDING" },
           data: { status: "COMPLETED", closedAt: new Date() },
         });
+        if (completed.count !== 1) throw new Error("SESSION_STATE_CHANGED");
         sessionStatus = "COMPLETED";
       }
       const statuses = await tx.helpSession.findMany({ where: { taskId: id }, select: { status: true } });
@@ -189,11 +208,16 @@ export const POST = withAuth(async (
           operatorId: userId,
         },
       });
+      await logAudit(
+        userId,
+        bothConfirmed ? "TASK_COMPLETE" : action === "request" ? "TASK_CLOSE_REQUEST" : "TASK_CLOSE_CONFIRM",
+        "TASK",
+        id,
+        { sessionId: selected.id },
+        undefined,
+        tx,
+      );
       return { status, sessionStatus, bothConfirmed };
-    });
-
-    await logAudit(userId, result.bothConfirmed ? "TASK_COMPLETE" : action === "request" ? "TASK_CLOSE_REQUEST" : "TASK_CLOSE_CONFIRM", "TASK", id, {
-      sessionId: selected.id,
     });
     const counterpartId = isRequester ? selected.helperId : task.requesterId;
     await notifyMutualAidUsersBestEffort([counterpartId], {
@@ -205,6 +229,9 @@ export const POST = withAuth(async (
   } catch (error) {
     if (error instanceof Error && error.message === "EVIDENCE_INCOMPLETE") {
       return NextResponse.json({ error: "证据不完整，无法结案" }, { status: 400 });
+    }
+    if (error instanceof Error && error.message === "SESSION_STATE_CHANGED") {
+      return NextResponse.json({ error: "会话状态已变化，请刷新后重试" }, { status: 409 });
     }
     console.error("POST /api/dcr/tasks/[id]/close error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

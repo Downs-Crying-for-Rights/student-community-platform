@@ -39,7 +39,16 @@ export function getNextStates(current: TaskStatus): TaskStatus[] {
   ];
 }
 
-type HelpSessionStatus = 'CLAIMED' | 'IN_PROGRESS' | 'EVIDENCE_PENDING' | 'COMPLETED' | 'CLOSED' | 'DISPUTED';
+export type HelpSessionStatus = 'CLAIMED' | 'IN_PROGRESS' | 'EVIDENCE_PENDING' | 'COMPLETED' | 'CLOSED' | 'DISPUTED';
+
+const RESTORABLE_SESSION_STATES: HelpSessionStatus[] = ['CLAIMED', 'IN_PROGRESS', 'EVIDENCE_PENDING'];
+export type RestorableHelpSessionStatus = 'CLAIMED' | 'IN_PROGRESS' | 'EVIDENCE_PENDING';
+
+export function restoreHelpSessionStatus(statusBeforeDispute: HelpSessionStatus | null): RestorableHelpSessionStatus {
+  return statusBeforeDispute && RESTORABLE_SESSION_STATES.includes(statusBeforeDispute)
+    ? statusBeforeDispute as RestorableHelpSessionStatus
+    : 'IN_PROGRESS';
+}
 
 export function aggregateHelpSessionStatus(statuses: HelpSessionStatus[]): TaskStatus {
   if (statuses.includes('DISPUTED')) return 'DISPUTED';

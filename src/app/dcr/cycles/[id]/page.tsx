@@ -47,6 +47,7 @@ const CYCLE_STATUS: Record<string, { label: string; color: string }> = {
   ACTIVE: { label: "互助中", color: "text-blue-600" },
   COMPLETED: { label: "已完成", color: "text-green-600" },
   BROKEN: { label: "已中断", color: "text-red-600" },
+  CLOSED: { label: "已终止", color: "text-slate-600" },
 };
 
 const LINK_META: Record<string, { label: string; fromLabel: string; toLabel: string }> = {
@@ -63,6 +64,7 @@ const STATUS_ICON: Record<string, typeof CheckCircle2> = {
   COMPLETED: CheckCircle2,
   REJECTED: XCircle,
   DISPUTED: AlertTriangle,
+  CLOSED: XCircle,
 };
 
 /* ========== Page ========== */
@@ -198,7 +200,8 @@ export default function CycleDetailPage() {
                      link.status === "ACCEPTED" ? "已接受" :
                      link.status === "IN_PROGRESS" ? "进行中" :
                      link.status === "COMPLETED" ? "已完成" :
-                     link.status === "REJECTED" ? "已拒绝" : "争议中"}
+                     link.status === "REJECTED" ? "已拒绝" :
+                     link.status === "CLOSED" ? "已终止" : "争议中"}
                   </span>
                 </div>
 

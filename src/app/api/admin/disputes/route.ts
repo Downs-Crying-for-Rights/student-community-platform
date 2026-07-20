@@ -68,6 +68,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
             id: session.id,
             helperId: session.helperId,
             requesterId: session.requesterId,
+            statusBeforeDispute: session.statusBeforeDispute,
             createdAt: session.createdAt,
           },
         };
