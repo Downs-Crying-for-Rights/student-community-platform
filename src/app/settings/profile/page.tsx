@@ -18,12 +18,14 @@ export interface ProfileFormData {
   nickname: string;
   avatar: string;
   bio: string;
+  qqNumber: string;
 }
 
 export interface ValidationErrors {
   nickname?: string;
   avatar?: string;
   bio?: string;
+  qqNumber?: string;
 }
 
 const NICKNAME_REGEX = /^[\u4e00-\u9fa5a-zA-Z0-9_-]+$/;
@@ -53,14 +55,18 @@ export function validateBio(value: string): string | undefined {
   return undefined;
 }
 
-export function validateProfileForm(data: ProfileFormData): ValidationErrors {
+export function validateProfileForm(data: ProfileFormData, required = false): ValidationErrors {
   const errors: ValidationErrors = {};
+  if (required && !data.nickname.trim()) errors.nickname = "请填写昵称";
+  if (required && !data.avatar.trim()) errors.avatar = "请上传头像";
+  if (required && !data.qqNumber.trim()) errors.qqNumber = "请填写QQ号";
   const nicknameErr = validateNickname(data.nickname);
-  if (nicknameErr) errors.nickname = nicknameErr;
+  if (nicknameErr && !errors.nickname) errors.nickname = nicknameErr;
   const avatarErr = validateAvatarUrl(data.avatar);
-  if (avatarErr) errors.avatar = avatarErr;
+  if (avatarErr && !errors.avatar) errors.avatar = avatarErr;
   const bioErr = validateBio(data.bio);
   if (bioErr) errors.bio = bioErr;
+  if (data.qqNumber && !/^\d{5,12}$/.test(data.qqNumber)) errors.qqNumber = "QQ号应为 5-12 位数字";
   return errors;
 }
 
@@ -76,24 +82,28 @@ export function buildUpdatePayload(
   if (form.nickname !== original.nickname) payload.nickname = form.nickname;
   if (form.avatar !== original.avatar) payload.avatar = form.avatar;
   if (form.bio !== original.bio) payload.bio = form.bio;
+  if (form.qqNumber !== original.qqNumber) payload.qqNumber = form.qqNumber;
   return payload;
 }
 
 /* ---------- Main Page ---------- */
 
 export default function SettingsProfilePage() {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const userId = session?.user?.id;
+  const profileCompletionRequired = session?.user?.profileCompletionRequired === true;
 
   const [form, setForm] = useState<ProfileFormData>({
     nickname: "",
     avatar: "",
     bio: "",
+    qqNumber: "",
   });
   const [original, setOriginal] = useState<ProfileFormData>({
     nickname: "",
     avatar: "",
     bio: "",
+    qqNumber: "",
   });
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [loading, setLoading] = useState(true);
@@ -120,6 +130,7 @@ export default function SettingsProfilePage() {
           nickname: data.user.nickname ?? "",
           avatar: data.user.avatar ?? "",
           bio: data.user.bio ?? "",
+          qqNumber: data.user.qqNumber ?? "",
         };
         setForm(profile);
         setOriginal(profile);
@@ -182,11 +193,11 @@ export default function SettingsProfilePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const validationErrors = validateProfileForm(form);
+    const validationErrors = validateProfileForm(form, profileCompletionRequired);
     setErrors(validationErrors);
     if (hasErrors(validationErrors)) return;
 
-    const payload = buildUpdatePayload(form, original);
+    const payload = profileCompletionRequired ? form : buildUpdatePayload(form, original);
     if (Object.keys(payload).length === 0) {
       setMessage("没有需要保存的更改");
       return;
@@ -206,10 +217,15 @@ export default function SettingsProfilePage() {
           nickname: data.user.nickname ?? "",
           avatar: data.user.avatar ?? "",
           bio: data.user.bio ?? "",
+          qqNumber: data.user.qqNumber ?? "",
         };
         setForm(updated);
         setOriginal(updated);
         setMessage("资料已更新");
+        if (profileCompletionRequired) {
+          await update();
+          window.location.href = "/";
+        }
       } else {
         const data = await res.json();
         setMessage(data.error ?? "更新失败");
@@ -259,6 +275,12 @@ export default function SettingsProfilePage() {
 
       <main className={cn("mx-auto max-w-screen-md px-4 pb-24 pt-4")}>
         <h1 className="mb-6 text-2xl font-bold text-foreground">个人设置</h1>
+        {profileCompletionRequired && (
+          <div className="mb-6 rounded-lg border border-primary/30 bg-primary/5 p-4">
+            <p className="font-medium text-foreground">请先补齐个人资料</p>
+            <p className="mt-1 text-sm text-muted-foreground">昵称、头像和 QQ 号为必填项，个人简介可选。完成后即可继续使用社区。</p>
+          </div>
+        )}
 
         {/* Profile Edit Card */}
         <Card className="mb-6">
@@ -340,6 +362,20 @@ export default function SettingsProfilePage() {
                   {errors.nickname && (
                     <p className="mt-1 text-sm text-destructive">{errors.nickname}</p>
                   )}
+                </div>
+
+                {/* Bio */}
+                <div>
+                  <Label htmlFor="qq-number">QQ号{profileCompletionRequired ? "（必填）" : ""}</Label>
+                  <Input
+                    id="qq-number"
+                    inputMode="numeric"
+                    value={form.qqNumber}
+                    onChange={(e) => handleChange("qqNumber", e.target.value.replace(/\D/g, ""))}
+                    placeholder="请输入 5-12 位 QQ 号"
+                    maxLength={12}
+                  />
+                  {errors.qqNumber && <p className="mt-1 text-sm text-destructive">{errors.qqNumber}</p>}
                 </div>
 
                 {/* Bio */}

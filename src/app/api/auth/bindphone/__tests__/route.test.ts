@@ -113,13 +113,13 @@ describe("POST /api/auth/bindphone", () => {
       expect(data.error).toBe("参数校验失败");
     });
 
-    it("应拒绝缺少 code 字段", async () => {
+    it("验证码启用时应拒绝缺少 code 字段", async () => {
       const req = createRequest({ phone: "13800138000" });
       const res = await POST(req);
       const data = await res.json();
 
       expect(res.status).toBe(400);
-      expect(data.error).toBe("参数校验失败");
+      expect(data.error).toBe("验证码错误或已过期");
     });
   });
 

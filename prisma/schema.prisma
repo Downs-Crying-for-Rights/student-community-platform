@@ -81,6 +81,7 @@ model User {
   nickname        String?
   avatar          String?
   bio             String?
+  qqNumber        String?
   role            Role      @default(USER)
   isBanned        Boolean   @default(false)
   isShadowBanned  Boolean   @default(false)
@@ -95,6 +96,7 @@ model User {
   phone           String?   @unique // 手机号
   passwordHash    String? // bcrypt 哈希密码
   securityVersion Int       @default(0)
+  profileCompletionRequired Boolean @default(false)
   dmConsentVersion Int      @default(0)
   dmConsentAcceptedAt DateTime?
   createdAt       DateTime  @default(now())
@@ -173,6 +175,14 @@ model User {
   qqDelegationDrafts  QQDelegationDraft[]
   qqGrants            QQGrant[]
   qqConversation      QQConversation?
+}
+
+model SystemConfig {
+  id                     String   @id @default("default")
+  smsVerificationEnabled Boolean  @default(true)
+  revision               Int      @default(1)
+  updatedAt              DateTime @updatedAt
+  updatedById            String?
 }
 
 model QQIdentity {

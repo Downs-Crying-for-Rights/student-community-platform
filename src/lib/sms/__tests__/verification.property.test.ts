@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fc from "fast-check";
 
+vi.mock("@/lib/system-config", () => ({
+  getSmsVerificationEnabled: vi.fn().mockResolvedValue(true),
+}));
+
 // vi.mock factories are hoisted — use inline objects
 vi.mock("@/lib/redis", () => ({
   default: {

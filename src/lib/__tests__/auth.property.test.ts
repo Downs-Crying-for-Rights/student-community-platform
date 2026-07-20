@@ -315,8 +315,7 @@ describe("属性 11: 手机号登录隐含已绑定", () => {
         // Mock verifyCode to return true
         vi.mocked(verifyCode).mockResolvedValue(true);
 
-        // Mock prisma.user.findFirst to return an existing user with this phone
-        vi.mocked(prisma.user.findFirst).mockResolvedValue({
+        vi.mocked(prisma.user.findUnique).mockResolvedValue({
           id: "user-sms-1",
           email: null,
           nickname: "TestUser",
@@ -334,18 +333,26 @@ describe("属性 11: 手机号登录隐含已绑定", () => {
     );
   }, 30000);
 
-  it("未注册手机号不能通过登录隐式创建账户", async () => {
+  it("未注册手机号通过登录自动创建账户", async () => {
     const authorize = await getSmsAuthorize();
 
     await fc.assert(
       fc.asyncProperty(arbChinesePhone, async (phone) => {
         vi.mocked(verifyCode).mockResolvedValue(true);
-        vi.mocked(prisma.user.findFirst).mockResolvedValue(null);
+        vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+        vi.mocked(prisma.user.create).mockResolvedValue({
+          id: "user-new",
+          email: null,
+          nickname: null,
+          role: "USER",
+          phone,
+          isBanned: false,
+        } as any);
 
-        await expect(authorize({ phone, code: "888888" })).rejects.toThrow(
-          "手机号未注册，请通过注册页完成注册",
-        );
-        expect(prisma.user.create).not.toHaveBeenCalled();
+        await expect(authorize({ phone, code: "888888" })).resolves.toMatchObject({ phone });
+        expect(prisma.user.create).toHaveBeenCalledWith(expect.objectContaining({
+          data: { phone, profileCompletionRequired: true },
+        }));
       }),
       { numRuns: 100 },
     );
@@ -360,7 +367,7 @@ describe("属性 11: 手机号登录隐含已绑定", () => {
       fc.asyncProperty(arbChinesePhone, async (phone) => {
         vi.mocked(verifyCode).mockResolvedValue(true);
 
-        vi.mocked(prisma.user.findFirst).mockResolvedValue({
+        vi.mocked(prisma.user.findUnique).mockResolvedValue({
           id: "user-jwt-1",
           email: null,
           nickname: "TestUser",

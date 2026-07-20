@@ -35,6 +35,8 @@ import {
   resetPasswordSchema,
 } from "@/lib/validators";
 import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
+import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required";
+import { verificationCodeSchema } from "@/lib/validators";
 
 type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
 export type LoginTab = "email" | "password" | "sms";
@@ -106,6 +108,7 @@ export default function LoginPage() {
 function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const verificationRequired = useSmsVerificationRequired();
 
   // View state
   const [view, setView] = useState<ViewState>("form");
@@ -364,15 +367,18 @@ function LoginContent() {
 
     const result = loginSmsSchema.safeParse({
       phone: smsPhone.trim(),
-      code: smsCode.trim(),
+      ...(verificationRequired ? { code: smsCode.trim() } : {}),
     });
 
-    if (!result.success) {
+    if (!result.success || (verificationRequired && !verificationCodeSchema.safeParse(smsCode.trim()).success)) {
       const fieldErrors: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        const field = issue.path[0] as string;
-        if (!fieldErrors[field]) fieldErrors[field] = issue.message;
+      if (!result.success) {
+        for (const issue of result.error.issues) {
+          const field = issue.path[0] as string;
+          if (!fieldErrors[field]) fieldErrors[field] = issue.message;
+        }
       }
+      if (verificationRequired && !fieldErrors.code) fieldErrors.code = "验证码为 6 位数字";
       setSmsErrors(fieldErrors);
       return;
     }
@@ -382,7 +388,7 @@ function LoginContent() {
     try {
       const res = await signIn("credentials-sms", {
         phone: smsPhone.trim(),
-        code: smsCode.trim(),
+        ...(verificationRequired ? { code: smsCode.trim() } : {}),
         redirect: false,
         callbackUrl: "/",
       });
@@ -443,16 +449,19 @@ function LoginContent() {
     setResetErrors({});
     const parsed = resetPasswordSchema.safeParse({
       phone: resetPhone.trim(),
-      code: resetCode.trim(),
+      ...(verificationRequired ? { code: resetCode.trim() } : {}),
       password: resetPassword,
       confirmPassword: resetConfirmPassword,
     });
-    if (!parsed.success) {
+    if (!parsed.success || (verificationRequired && !verificationCodeSchema.safeParse(resetCode.trim()).success)) {
       const errors: Record<string, string> = {};
-      for (const issue of parsed.error.issues) {
-        const field = String(issue.path[0]);
-        if (!errors[field]) errors[field] = issue.message;
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) {
+          const field = String(issue.path[0]);
+          if (!errors[field]) errors[field] = issue.message;
+        }
       }
+      if (verificationRequired && !errors.code) errors.code = "验证码为 6 位数字";
       setResetErrors(errors);
       return;
     }
@@ -681,17 +690,19 @@ function LoginContent() {
                 <Label htmlFor="reset-phone">已绑定手机号</Label>
                 <div className="flex gap-2">
                   <Input id="reset-phone" type="tel" value={resetPhone} maxLength={11} autoComplete="tel" onChange={(event) => setResetPhone(event.target.value)} disabled={loading} />
-                  <Button type="button" variant="outline" onClick={() => void handleResetSendCode()} disabled={loading || resetCountdown > 0 || !resetPhone.trim()}>
-                    {resetCountdown > 0 ? `${resetCountdown}s` : "发送验证码"}
-                  </Button>
+                  {verificationRequired && (
+                    <Button type="button" variant="outline" onClick={() => void handleResetSendCode()} disabled={loading || resetCountdown > 0 || !resetPhone.trim()}>
+                      {resetCountdown > 0 ? `${resetCountdown}s` : "发送验证码"}
+                    </Button>
+                  )}
                 </div>
                 {resetErrors.phone && <p className="text-xs text-red-500" role="alert">{resetErrors.phone}</p>}
               </div>
-              <div className="space-y-2">
+              {verificationRequired && <div className="space-y-2">
                 <Label htmlFor="reset-code">验证码</Label>
                 <Input id="reset-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={resetCode} onChange={(event) => setResetCode(event.target.value)} disabled={loading} />
                 {resetErrors.code && <p className="text-xs text-red-500" role="alert">{resetErrors.code}</p>}
-              </div>
+              </div>}
               <div className="space-y-2">
                 <Label htmlFor="reset-password">新密码</Label>
                 <Input id="reset-password" type="password" autoComplete="new-password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} disabled={loading} />
@@ -1109,7 +1120,7 @@ function LoginContent() {
                       aria-invalid={!!smsErrors.phone}
                       aria-describedby={smsErrors.phone ? "sms-phone-error" : undefined}
                     />
-                    <Button
+                    {verificationRequired && <Button
                       type="button"
                       variant="outline"
                       onClick={handleSendCode}
@@ -1118,7 +1129,7 @@ function LoginContent() {
                       aria-label={countdown > 0 ? `${countdown} 秒后可重新发送` : "发送验证码"}
                     >
                       {countdown > 0 ? `${countdown}s` : "发送验证码"}
-                    </Button>
+                    </Button>}
                   </div>
                   {smsErrors.phone && (
                     <p id="sms-phone-error" className="text-xs text-red-500" role="alert">
@@ -1126,7 +1137,7 @@ function LoginContent() {
                     </p>
                   )}
                 </div>
-                <div className="space-y-2">
+                {verificationRequired && <div className="space-y-2">
                   <Label htmlFor="sms-code">验证码</Label>
                   <Input
                     id="sms-code"
@@ -1149,7 +1160,7 @@ function LoginContent() {
                       {smsErrors.code}
                     </p>
                   )}
-                </div>
+                </div>}
                 <Button
                   type="submit"
                   className="w-full"

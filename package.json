@@ -18,6 +18,10 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@alicloud/credentials": "^2.4.5",
+    "@alicloud/dypnsapi20170525": "^2.0.0",
+    "@alicloud/openapi-client": "^0.4.15",
+    "@alicloud/tea-util": "^1.4.11",
     "@auth/prisma-adapter": "^2.7.4",
     "@aws-sdk/client-s3": "^3.997.0",
     "@hookform/resolvers": "^5.2.2",

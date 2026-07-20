@@ -14,6 +14,7 @@ declare module "next-auth" {
       dcrAccess?: boolean;
       isBanned?: boolean;
       securityVersion?: number;
+      profileCompletionRequired?: boolean;
     } & DefaultSession["user"];
   }
 }
@@ -29,5 +30,6 @@ declare module "next-auth/jwt" {
     dcrAccess?: boolean;
     isBanned?: boolean;
     securityVersion?: number;
+    profileCompletionRequired?: boolean;
   }
 }

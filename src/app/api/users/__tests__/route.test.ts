@@ -5,12 +5,14 @@ import { NextRequest } from "next/server";
 
 const mockUserFindUnique = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockUserFindFirst = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
+      findFirst: (...args: unknown[]) => mockUserFindFirst(...args),
     },
   },
 }));
@@ -77,6 +79,7 @@ const publicProfile = {
 describe("GET /api/users/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUserFindFirst.mockResolvedValue(null);
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -143,6 +146,7 @@ describe("GET /api/users/[id]", () => {
 describe("PATCH /api/users/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUserFindFirst.mockResolvedValue(null);
   });
 
   it("应返回 401 当用户未登录", async () => {

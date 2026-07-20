@@ -24,6 +24,10 @@ export const avatarUrlSchema = z
   .url("请输入有效的头像 URL")
   .optional();
 
+export const qqNumberSchema = z
+  .string()
+  .regex(/^\d{5,12}$/, "QQ号应为 5-12 位数字");
+
 // ==================== 帖子相关 ====================
 
 export const postTitleSchema = z
@@ -111,6 +115,7 @@ export const updateProfileSchema = z.object({
   nickname: nicknameSchema.optional(),
   avatar: avatarUrlSchema,
   bio: bioSchema,
+  qqNumber: qqNumberSchema.optional(),
 });
 
 export const createCommentSchema = z.object({
@@ -228,7 +233,7 @@ export const loginPasswordSchema = z.object({
 
 export const loginSmsSchema = z.object({
   phone: phoneSchema,
-  code: verificationCodeSchema,
+  code: verificationCodeSchema.optional(),
 });
 
 export const sendCodeSchema = z.object({
@@ -238,7 +243,7 @@ export const sendCodeSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   phone: phoneSchema,
-  code: verificationCodeSchema,
+  code: verificationCodeSchema.optional(),
   password: passwordSchema,
   confirmPassword: passwordSchema,
 }).refine((data) => data.password === data.confirmPassword, {
@@ -248,7 +253,7 @@ export const resetPasswordSchema = z.object({
 
 export const bindPhoneSchema = z.object({
   phone: phoneSchema,
-  code: verificationCodeSchema,
+  code: verificationCodeSchema.optional(),
 });
 
 export const setPasswordSchema = z.object({

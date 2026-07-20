@@ -128,9 +128,9 @@ describe("bindPhoneSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects when code is missing", () => {
+  it("allows a missing code so the server-side verification policy can decide", () => {
     const result = bindPhoneSchema.safeParse({ phone: "13800138000" });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("rejects empty object", () => {

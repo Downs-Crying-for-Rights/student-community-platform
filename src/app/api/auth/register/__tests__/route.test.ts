@@ -74,6 +74,8 @@ describe("POST /api/auth/register", () => {
         email: "test@example.com",
         passwordHash: "hashed_password",
         nickname: "测试用户",
+        phone: undefined,
+        profileCompletionRequired: true,
       },
     });
   });

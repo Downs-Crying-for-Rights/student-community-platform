@@ -67,6 +67,30 @@ describe("NextAuth 配置", () => {
   });
 
   describe("魔法链接配置", () => {
+    it("Adapter 创建的新账号应要求补齐资料", async () => {
+      mockCreate.mockResolvedValueOnce({
+        id: "adapter-user",
+        email: "adapter@example.com",
+        emailVerified: null,
+        name: null,
+        image: null,
+      });
+
+      await authOptions.adapter!.createUser!({
+        email: "adapter@example.com",
+        emailVerified: null,
+        name: null,
+        image: null,
+      } as any);
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          email: "adapter@example.com",
+          profileCompletionRequired: true,
+        }),
+      });
+    });
+
     it("应转义 HTML 链接中的查询参数分隔符", () => {
       expect(escapeHtmlAttribute('https://example.com/callback?a=1&b="2"')).toBe(
         "https://example.com/callback?a=1&amp;b=&quot;2&quot;",
@@ -298,7 +322,7 @@ describe("NextAuth 配置", () => {
     it("正确验证码应返回用户对象", async () => {
       const authorize = getSmsAuthorize();
       vi.mocked(verifyCode).mockResolvedValueOnce(true);
-      mockFindFirst.mockResolvedValueOnce({
+      mockFindUnique.mockResolvedValueOnce({
         id: "user-1",
         email: "test@example.com",
         nickname: "测试用户",
@@ -330,15 +354,26 @@ describe("NextAuth 配置", () => {
       ).rejects.toThrow("验证码错误或已过期");
     });
 
-    it("手机号不存在时应要求先完成注册", async () => {
+    it("手机号不存在时应自动创建待补全资料的账户", async () => {
       const authorize = getSmsAuthorize();
       vi.mocked(verifyCode).mockResolvedValueOnce(true);
-      mockFindFirst.mockResolvedValueOnce(null); // No existing user
+      mockFindUnique.mockResolvedValueOnce(null);
+      mockCreate.mockResolvedValueOnce({
+        id: "user-new",
+        email: null,
+        nickname: null,
+        role: "USER",
+        phone: "13900139000",
+        isBanned: false,
+      });
 
-      await expect(
-        authorize({ phone: "13900139000", code: "888888" }),
-      ).rejects.toThrow("手机号未注册，请通过注册页完成注册");
-      expect(mockCreate).not.toHaveBeenCalled();
+      await expect(authorize({ phone: "13900139000", code: "888888" })).resolves.toMatchObject({
+        id: "user-new",
+        phone: "13900139000",
+      });
+      expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: { phone: "13900139000", profileCompletionRequired: true },
+      }));
     });
   });
 });

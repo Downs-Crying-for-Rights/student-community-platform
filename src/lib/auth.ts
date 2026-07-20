@@ -3,10 +3,11 @@ import type { JWT } from "next-auth/jwt";
 import EmailProvider from "next-auth/providers/email";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import type { Adapter } from "next-auth/adapters";
+import type { Adapter, AdapterUser } from "next-auth/adapters";
 import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { loginPasswordSchema, loginSmsSchema } from "@/lib/validators";
 import { verifyCode } from "@/lib/sms/verification";
 
@@ -34,8 +35,19 @@ async function getQQProvider() {
 
 // ==================== Auth Options ====================
 
+const baseAdapter = PrismaAdapter(prisma) as Adapter;
+const adapter: Adapter = {
+  ...baseAdapter,
+  createUser: (async (user: AdapterUser | Omit<AdapterUser, "id">) => {
+    const created = await prisma.user.create({
+      data: { ...user, profileCompletionRequired: true },
+    });
+    return { ...created, email: created.email ?? user.email } as AdapterUser;
+  }) as NonNullable<Adapter["createUser"]>,
+};
+
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma) as Adapter,
+  adapter,
   providers: [
     EmailProvider({
       server: {
@@ -104,14 +116,25 @@ export const authOptions: NextAuthOptions = {
         const { phone, code } = parsed.data;
         const isValid = await verifyCode(phone, code, "login");
         if (!isValid) throw new Error("验证码错误或已过期");
-        let user = await prisma.user.findFirst({
+        let user = await prisma.user.findUnique({
           where: { phone },
           select: { id: true, email: true, nickname: true, role: true, phone: true, isBanned: true },
         });
-        if (!user || user.isBanned) {
-          // Require explicit registration to ensure a nickname is provided
-          throw new Error("手机号未注册，请通过注册页完成注册");
+        if (!user) {
+          try {
+            user = await prisma.user.create({
+              data: { phone, profileCompletionRequired: true },
+              select: { id: true, email: true, nickname: true, role: true, phone: true, isBanned: true },
+            });
+          } catch (error) {
+            if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
+            user = await prisma.user.findUnique({
+              where: { phone },
+              select: { id: true, email: true, nickname: true, role: true, phone: true, isBanned: true },
+            });
+          }
         }
+        if (!user || user.isBanned) throw new Error("该账号无法登录");
         return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
       },
     }),
@@ -140,7 +163,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
-            select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true },
+            select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true },
         });
         token.role = dbUser?.role ?? "USER";
         token.phone = dbUser?.phone ?? null;
@@ -150,11 +173,12 @@ export const authOptions: NextAuthOptions = {
         token.dcrAccess = dbUser?.dcrAccess ?? false;
         token.isBanned = dbUser?.isBanned ?? false;
         token.securityVersion = dbUser?.securityVersion ?? 0;
+        token.profileCompletionRequired = dbUser?.profileCompletionRequired ?? false;
       } else if (token.sub) {
         // Refresh security-sensitive claims on every server session read so revocations apply immediately.
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
-          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true },
+          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true },
         });
         if (dbUser) {
           token.role = dbUser.role;
@@ -165,6 +189,7 @@ export const authOptions: NextAuthOptions = {
           token.dcrAccess = dbUser.dcrAccess;
           token.isBanned = dbUser.isBanned;
           token.securityVersion = dbUser.securityVersion;
+          token.profileCompletionRequired = dbUser.profileCompletionRequired;
         }
       }
       return token;
@@ -180,6 +205,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).nickname = token.nickname;
         (session.user as any).isBanned = token.isBanned;
         (session.user as any).securityVersion = token.securityVersion;
+        (session.user as any).profileCompletionRequired = token.profileCompletionRequired;
       }
       return session;
     },

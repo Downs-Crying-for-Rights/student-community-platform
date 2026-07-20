@@ -20,9 +20,14 @@ vi.mock("@/lib/sms", () => ({
   })),
 }));
 
+vi.mock("@/lib/system-config", () => ({
+  getSmsVerificationEnabled: vi.fn().mockResolvedValue(true),
+}));
+
 import redis from "@/lib/redis";
 import { getSmsProvider } from "@/lib/sms";
 import { generateCode, sendVerificationCode, verifyCode } from "../verification";
+import { getSmsVerificationEnabled } from "@/lib/system-config";
 
 const mockRedis = redis as unknown as {
   get: ReturnType<typeof vi.fn>;
@@ -59,6 +64,7 @@ describe("sendVerificationCode", () => {
     mockRedis.del.mockResolvedValue(1);
     mockSendCode.mockResolvedValue(true);
     mockGetSmsProvider.mockReturnValue({ sendCode: mockSendCode });
+    vi.mocked(getSmsVerificationEnabled).mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -85,7 +91,11 @@ describe("sendVerificationCode", () => {
       "EX",
       60
     );
-    expect(mockSendCode).toHaveBeenCalled();
+    expect(mockSendCode).toHaveBeenCalledWith(
+      "13800138000",
+      expect.stringMatching(/^\d{6}$/),
+      "login",
+    );
   });
 
   it("should return rate limit error when called within 60 seconds", async () => {
@@ -138,11 +148,41 @@ describe("sendVerificationCode", () => {
     expect(mockRedis.del).toHaveBeenCalledWith("sms:login:13800138000");
     expect(mockRedis.del).toHaveBeenCalledWith("sms:limit:13800138000");
   });
+
+  it("should clean up when the production provider is misconfigured", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGetSmsProvider.mockImplementation(() => {
+      throw new Error("Missing required SMS configuration");
+    });
+
+    const result = await sendVerificationCode("13800138000", "login");
+
+    expect(result).toEqual({ success: false, error: "验证码发送失败，请稍后再试" });
+    expect(mockRedis.del).toHaveBeenCalledWith("sms:login:13800138000");
+    expect(mockRedis.del).toHaveBeenCalledWith("sms:limit:13800138000");
+    consoleSpy.mockRestore();
+  });
+
+  it("skips Redis and the provider when verification is disabled", async () => {
+    vi.mocked(getSmsVerificationEnabled).mockResolvedValue(false);
+
+    await expect(sendVerificationCode("13800138000", "login")).resolves.toEqual({ success: true });
+    expect(mockRedis.get).not.toHaveBeenCalled();
+    expect(mockRedis.set).not.toHaveBeenCalled();
+    expect(mockGetSmsProvider).not.toHaveBeenCalled();
+  });
 });
 
 describe("verifyCode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getSmsVerificationEnabled).mockResolvedValue(true);
+  });
+
+  it("accepts a missing code without Redis when verification is disabled", async () => {
+    vi.mocked(getSmsVerificationEnabled).mockResolvedValue(false);
+    await expect(verifyCode("13800138000", undefined, "login")).resolves.toBe(true);
+    expect(mockRedis.get).not.toHaveBeenCalled();
   });
 
   it("should return true for correct code and delete it", async () => {

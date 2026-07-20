@@ -95,6 +95,7 @@ export async function createUserWithSession({
         phone,
         nickname,
         ...extraData,
+        profileCompletionRequired: true,
       },
     });
 

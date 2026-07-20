@@ -252,6 +252,8 @@ describe("POST /api/auth/invite", () => {
           email: "test@example.com",
           passwordHash: "hashed_password",
           nickname: "测试用户",
+          phone: undefined,
+          profileCompletionRequired: true,
           isAnonymous: false,
         },
       });

@@ -31,7 +31,7 @@ export function isAuthWhitelisted(pathname: string): boolean {
 /**
  * 认证中间件 — 纯 JWT 检测（无 DB 查询，兼容 Edge Runtime）
  *
- * 检查顺序：昵称 → 新手引导
+ * 检查顺序：短信注册资料补全 → 昵称 → 新手引导
  * 不设置用户名无法进行任何操作（仅允许 /set-username 和必需 API）
  *
  * 注意：Prisma Client 不支持 Edge Runtime，因此中间件仅依赖 JWT token。
@@ -46,6 +46,16 @@ export default async function middleware(req: NextRequest) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", `${req.nextUrl.pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // 新账号必须先在一个页面补齐昵称、头像和 QQ 号。
+  if ((token as any).profileCompletionRequired) {
+    if (pathname.startsWith("/settings/profile")) {
+      return NextResponse.next();
+    }
+    const profileUrl = new URL("/settings/profile", req.url);
+    profileUrl.searchParams.set("required", "1");
+    return NextResponse.redirect(profileUrl);
   }
 
   // ========== 第1优先级：强制设置用户名 ==========
