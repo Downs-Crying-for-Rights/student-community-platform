@@ -177,12 +177,12 @@ async function getPasswordAuthorize() {
     (p: any) => p.id === "credentials-password",
   ) as any;
   return provider.authorize as (
-    credentials: { email: string; password: string } | undefined,
+    credentials: { identifier?: string; email?: string; password: string } | undefined,
   ) => Promise<any>;
 }
 
 describe("属性 3: 统一错误提示不泄露信息", () => {
-  const EXPECTED_ERROR = "邮箱或密码错误";
+  const EXPECTED_ERROR = "账号或密码错误";
   // Pre-compute a bcrypt hash once to avoid slow hashing in every iteration
   const precomputedHash = bcrypt.hashSync("known-correct-password", 10);
 

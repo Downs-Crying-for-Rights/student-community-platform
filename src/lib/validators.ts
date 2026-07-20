@@ -239,8 +239,8 @@ export const loginPasswordSchema = z.object({
   identifier: z.string().trim().min(1).max(255).optional(),
   email: z.string().trim().min(1).max(255).optional(),
   password: z.string().min(1, "请输入密码"),
-}).strict().refine((value) => Boolean(value.identifier || value.email), {
-  message: "请输入邮箱或用户名",
+}).refine((value) => Boolean(value.identifier || value.email), {
+  message: "请输入邮箱、用户名或手机号",
   path: ["identifier"],
 }).transform((value) => ({ identifier: value.identifier || value.email!, password: value.password }));
 
