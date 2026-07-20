@@ -231,14 +231,9 @@ export const loginPasswordSchema = z.object({
   password: z.string().min(1, "请输入密码"),
 });
 
-export const loginSmsSchema = z.object({
-  phone: phoneSchema,
-  code: verificationCodeSchema.optional(),
-});
-
 export const sendCodeSchema = z.object({
   phone: phoneSchema,
-  purpose: z.enum(["login", "bindphone"]),
+  purpose: z.enum(["register", "bindphone"]),
 });
 
 export const resetPasswordSchema = z.object({
@@ -264,13 +259,12 @@ export const registerSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   nickname: nicknameSchema,
+  phone: phoneSchema,
+  code: verificationCodeSchema,
 });
 
-export const inviteRegisterSchema = z.object({
+export const inviteRegisterSchema = registerSchema.extend({
   inviteCode: inviteCodeSchema,
-  email: emailSchema,
-  password: passwordSchema,
-  nickname: nicknameSchema,
 });
 
 // ==================== DCR 委托表相关 ====================
@@ -294,7 +288,9 @@ export const delegationFormSchema = z.object({
   province: z.string().max(50).optional(),
   city: z.string().max(50).optional(),
   expectedHelperProvince: z.string().max(50).optional(),
-  riskPreference: z.enum(['不限', '仅站内沟通', '可电话', '仅模板咨询']).optional(),
+  riskPreference: z.enum(['不限', '仅站内沟通', '可电话', '仅模板咨询'], {
+    message: '请选择风险偏好',
+  }),
 });
 
 export const canonicalCaseRequestSchema = z.object({

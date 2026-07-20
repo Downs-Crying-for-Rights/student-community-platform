@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { inviteRegisterSchema } from "@/lib/validators";
-import { createUserWithSession, validateNickname } from "@/lib/auth/register-helpers";
+import {
+  checkEmailUnique,
+  checkPhoneUnique,
+  createUserWithSession,
+  validateNickname,
+} from "@/lib/auth/register-helpers";
+import { verifyCode } from "@/lib/sms/verification";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +22,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { inviteCode: code, email, password, nickname } = parsed.data;
+    const { inviteCode: inviteCodeValue, email, password, nickname, phone, code } = parsed.data;
 
     // 校验 nickname 非空
     const nicknameError = validateNickname(nickname);
@@ -26,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     // Find the invite code
     const inviteCode = await prisma.inviteCode.findUnique({
-      where: { code },
+      where: { code: inviteCodeValue },
     });
 
     if (!inviteCode) {
@@ -60,11 +66,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 创建用户并生成 session，在同一事务中标记邀请码已使用
+    const identityError = await checkEmailUnique(email) ?? await checkPhoneUnique(phone);
+    if (identityError) {
+      return NextResponse.json({ error: identityError.error }, { status: identityError.status });
+    }
+
+    if (!(await verifyCode(phone, code, "register"))) {
+      return NextResponse.json({ error: "验证码错误或已过期" }, { status: 400 });
+    }
+
+    // 创建用户并在同一事务中标记邀请码已使用
     const result = await createUserWithSession({
       email,
       password,
       nickname,
+      phone,
       extraData: {
         isAnonymous: false,
       },

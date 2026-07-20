@@ -6,7 +6,7 @@ import { loadAliyunSmsConfig, ProductionSmsProvider } from "../production-provid
 const aliyunConfig = {
   signName: "恒创联众",
   templateCodes: {
-    login: "100001",
+    register: "100001",
     "change-phone": "100002",
     "reset-password": "100003",
     bindphone: "100004",
@@ -30,7 +30,7 @@ describe("TestSmsProvider", () => {
   it("should log the code and return true", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const provider = new TestSmsProvider();
-    const result = await provider.sendCode("13800138000", "123456", "login");
+    const result = await provider.sendCode("13800138000", "123456", "register");
 
     expect(result).toBe(true);
     expect(consoleSpy).toHaveBeenCalledWith("[TEST SMS] 13800138000: 123456");
@@ -73,7 +73,7 @@ describe("ProductionSmsProvider", () => {
       config: aliyunConfig,
     });
 
-    await expect(provider.sendCode("13800138000", "123456", "login")).resolves.toBe(false);
+    await expect(provider.sendCode("13800138000", "123456", "register")).resolves.toBe(false);
     expect(consoleSpy).toHaveBeenCalledWith("Aliyun SMS authentication rejected request", expect.objectContaining({
       code: "isv.SMS_SIGNATURE_ILLEGAL",
       requestId: "request-2",
@@ -88,7 +88,7 @@ describe("ProductionSmsProvider", () => {
       config: aliyunConfig,
     });
 
-    await expect(provider.sendCode("13800138000", "123456", "login")).resolves.toBe(false);
+    await expect(provider.sendCode("13800138000", "123456", "register")).resolves.toBe(false);
     expect(JSON.stringify(consoleSpy.mock.calls)).not.toContain("13800138000");
     expect(JSON.stringify(consoleSpy.mock.calls)).not.toContain("123456");
     consoleSpy.mockRestore();

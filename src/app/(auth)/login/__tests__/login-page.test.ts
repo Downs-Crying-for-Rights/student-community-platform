@@ -41,9 +41,6 @@ const arbDirtyFormState: fc.Arbitrary<LoginFormState> = fc.record({
   pwEmail: arbNonEmptyStr,
   pwPassword: arbNonEmptyStr,
   pwErrors: arbErrorRecord,
-  smsPhone: arbNonEmptyStr,
-  smsCode: arbNonEmptyStr,
-  smsErrors: arbErrorRecord,
   errorMessage: arbNonEmptyStr,
 });
 
@@ -59,8 +56,6 @@ describe("属性 13: 标签页切换清空表单状态", () => {
         expect(result.formState.email).toBe("");
         expect(result.formState.pwEmail).toBe("");
         expect(result.formState.pwPassword).toBe("");
-        expect(result.formState.smsPhone).toBe("");
-        expect(result.formState.smsCode).toBe("");
         expect(result.formState.errorMessage).toBe("");
       }),
       { numRuns: 100 },
@@ -74,7 +69,6 @@ describe("属性 13: 标签页切换清空表单状态", () => {
 
         // Error records must be empty objects
         expect(Object.keys(result.formState.pwErrors)).toHaveLength(0);
-        expect(Object.keys(result.formState.smsErrors)).toHaveLength(0);
       }),
       { numRuns: 100 },
     );
@@ -127,8 +121,8 @@ describe("属性 13: 标签页切换清空表单状态", () => {
 // **Validates: Requirements 7.1, 7.2, 7.3, 7.5**
 
 describe("LOGIN_TABS", () => {
-  it("should contain exactly email, password, sms", () => {
-    expect(LOGIN_TABS).toEqual(["email", "password", "sms"]);
+  it("should contain exactly email and password", () => {
+    expect(LOGIN_TABS).toEqual(["email", "password"]);
   });
 });
 
@@ -140,9 +134,6 @@ describe("getEmptyFormState", () => {
       pwEmail: "",
       pwPassword: "",
       pwErrors: {},
-      smsPhone: "",
-      smsCode: "",
-      smsErrors: {},
       errorMessage: "",
     });
   });
@@ -153,7 +144,6 @@ describe("getEmptyFormState", () => {
     expect(a).toEqual(b);
     expect(a).not.toBe(b);
     expect(a.pwErrors).not.toBe(b.pwErrors);
-    expect(a.smsErrors).not.toBe(b.smsErrors);
   });
 });
 
@@ -164,9 +154,6 @@ describe("computeTabChangeState", () => {
       pwEmail: "x@y.com",
       pwPassword: "secret",
       pwErrors: { email: "bad" },
-      smsPhone: "13800138000",
-      smsCode: "123456",
-      smsErrors: { phone: "invalid" },
       errorMessage: "something went wrong",
     };
 
@@ -182,13 +169,10 @@ describe("computeTabChangeState", () => {
       pwEmail: "pw@example.com",
       pwPassword: "p@ssw0rd!",
       pwErrors: { email: "invalid email" },
-      smsPhone: "13912345678",
-      smsCode: "654321",
-      smsErrors: { code: "wrong code" },
       errorMessage: "login failed",
     };
 
-    const result = computeTabChangeState(dirty, "sms");
+    const result = computeTabChangeState(dirty, "email");
     const empty = getEmptyFormState();
     expect(result.formState).toEqual(empty);
   });
@@ -199,6 +183,8 @@ describe("注册方式分流", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
     expect(source).toContain("普通注册无需邀请码");
     expect(source).toContain('id="reg-invite-code"');
+    expect(source).toContain('id="reg-phone"');
+    expect(source).toContain('id="reg-sms-code"');
     expect(source).toContain('showInvite ? "/api/auth/invite" : "/api/auth/register"');
     expect(source).not.toContain('id="invite-phone"');
     expect(source).not.toContain('id="invite-sms-code"');
@@ -216,13 +202,22 @@ describe("注册方式分流", () => {
 });
 
 describe("登录协议与品牌", () => {
-  it("所有登录方式共享协议勾选并提供独立隐私政策链接", () => {
+  it("所有登录方式共享协议勾选并在弹窗中阅读协议", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
 
     expect(source).toContain('id="login-agreement"');
     expect(source).toContain("!loginAgreementAccepted");
-    expect(source).toContain('href="/help/policies?document=user-agreement"');
-    expect(source).toContain('href="/help/policies?document=privacy-policy"');
+    expect(source).toContain('openLoginPolicy("user-agreement")');
+    expect(source).toContain('openLoginPolicy("privacy-policy")');
+    expect(source).not.toContain('href="/help/policies?document=user-agreement"');
+    expect(source).not.toContain('href="/help/policies?document=privacy-policy"');
+  });
+
+  it("不提供手机号验证码登录入口或服务端 Provider", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+    expect(source).not.toContain("手机号登录");
+    expect(source).not.toContain('signIn("credentials-sms"');
+    expect(source).not.toContain('purpose: "login"');
   });
 
   it("登录和注册使用正式站名学互会", () => {

@@ -25,7 +25,7 @@ export function SmsVerificationPanel() {
   }, []);
 
   async function save() {
-    if (savedEnabled && !enabled && !window.confirm("高风险操作：关闭后，仅知道手机号即可登录对应账号或重置其密码，也可绑定未占用手机号。确认仍要关闭？")) {
+    if (savedEnabled && !enabled && !window.confirm("高风险操作：关闭后，可跳过手机号绑定和密码重置验证码。注册验证码不受此开关影响。确认仍要关闭？")) {
       return;
     }
     setSaving(true);
@@ -56,7 +56,7 @@ export function SmsVerificationPanel() {
           <CardTitle>短信验证码策略</CardTitle>
         </div>
         <CardDescription>
-          控制短信登录、绑定手机号和重置密码是否必须发送并校验验证码。
+          控制绑定手机号和重置密码是否必须发送并校验验证码；注册始终强制验证。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -73,7 +73,7 @@ export function SmsVerificationPanel() {
             <span>
               <span className="block font-medium">启用短信验证码</span>
               <span className="block text-sm text-muted-foreground">
-                关闭时不发送短信，并允许相关流程直接跳过验证码字段。这会使仅知道手机号的人能够登录或重置对应账号密码，仅限明确接受该风险时使用。
+                关闭时允许手机号绑定和密码重置跳过验证码，仅限应急使用。注册流程始终发送并校验短信验证码。
               </span>
             </span>
           </label>

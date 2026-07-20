@@ -14,6 +14,11 @@ const mockInviteCodeFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockUserFindFirst = vi.fn();
 const mockTransaction = vi.fn();
+const mockVerifyCode = vi.fn();
+
+vi.mock("@/lib/sms/verification", () => ({
+  verifyCode: (...args: unknown[]) => mockVerifyCode(...args),
+}));
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -52,12 +57,15 @@ const validEmail = fc
 // password: 8-72 printable chars (avoid control chars)
 const validPassword = fc.stringMatching(/^[A-Za-z0-9!@#$%^&*]{8,32}$/);
 const validNickname = fc.stringMatching(/^[A-Za-z][A-Za-z0-9_-]{1,15}$/);
+const validPhone = fc.stringMatching(/^1[3-9]\d{9}$/);
 
 const validBodyArb = fc.record({
   inviteCode: validInviteCode,
   email: validEmail,
   password: validPassword,
   nickname: validNickname,
+  phone: validPhone,
+  code: fc.stringMatching(/^\d{6}$/),
 });
 
 const requiredFields = [
@@ -65,6 +73,8 @@ const requiredFields = [
   "email",
   "password",
   "nickname",
+  "phone",
+  "code",
 ] as const;
 
 describe("邀请码注册属性测试", () => {
@@ -72,6 +82,7 @@ describe("邀请码注册属性测试", () => {
     vi.clearAllMocks();
     mockUserFindUnique.mockResolvedValue(null);
     mockUserFindFirst.mockResolvedValue(null);
+    mockVerifyCode.mockResolvedValue(true);
   });
 
   /**
@@ -106,6 +117,7 @@ describe("邀请码注册属性测试", () => {
         vi.clearAllMocks();
         mockUserFindUnique.mockResolvedValue(null);
         mockUserFindFirst.mockResolvedValue(null);
+        mockVerifyCode.mockResolvedValue(true);
 
         mockInviteCodeFindUnique.mockResolvedValue({
           id: "invite1",

@@ -55,7 +55,7 @@ const arbPhone = fc
 const arbSixDigitCode = fc.stringMatching(/^\d{6}$/);
 
 /** Generate a purpose string */
-const arbPurpose = fc.constantFrom("login", "bindphone");
+const arbPurpose = fc.constantFrom("register", "bindphone");
 
 // ==================== Property 4: 验证码格式 ====================
 // Feature: multi-auth-login, Property 4: 验证码格式

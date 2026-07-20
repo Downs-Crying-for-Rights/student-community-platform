@@ -23,12 +23,10 @@ import {
   AlertCircle,
   KeyRound,
   Lock,
-  Smartphone,
   UserPlus,
 } from "lucide-react";
 import {
   loginPasswordSchema,
-  loginSmsSchema,
   phoneSchema,
   registerSchema,
   inviteRegisterSchema,
@@ -37,14 +35,15 @@ import {
 import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required";
 import { verificationCodeSchema } from "@/lib/validators";
+import { LOGIN_POLICIES, type LoginPolicyId } from "@/lib/login-policies";
 
 type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
-export type LoginTab = "email" | "password" | "sms";
+export type LoginTab = "email" | "password";
 
 const USAGE_CONSENT_KEYS = new Set(["dm_consent", "chat_monitoring_consent", "community_guidelines"]);
 
 /** All tabs available on the login page */
-export const LOGIN_TABS: LoginTab[] = ["email", "password", "sms"];
+export const LOGIN_TABS: LoginTab[] = ["email", "password"];
 
 /** Represents the form state across all login tabs */
 export interface LoginFormState {
@@ -52,9 +51,6 @@ export interface LoginFormState {
   pwEmail: string;
   pwPassword: string;
   pwErrors: Record<string, string>;
-  smsPhone: string;
-  smsCode: string;
-  smsErrors: Record<string, string>;
   errorMessage: string;
 }
 
@@ -65,9 +61,6 @@ export function getEmptyFormState(): LoginFormState {
     pwEmail: "",
     pwPassword: "",
     pwErrors: {},
-    smsPhone: "",
-    smsCode: "",
-    smsErrors: {},
     errorMessage: "",
   };
 }
@@ -128,13 +121,6 @@ function LoginContent() {
   const [pwPassword, setPwPassword] = useState("");
   const [pwErrors, setPwErrors] = useState<Record<string, string>>({});
 
-  // SMS tab state
-  const [smsPhone, setSmsPhone] = useState("");
-  const [smsCode, setSmsCode] = useState("");
-  const [smsErrors, setSmsErrors] = useState<Record<string, string>>({});
-  const [countdown, setCountdown] = useState(0);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   // Password reset state
   const [resetPhone, setResetPhone] = useState("");
   const [resetCode, setResetCode] = useState("");
@@ -153,6 +139,10 @@ function LoginContent() {
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regNickname, setRegNickname] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [regCode, setRegCode] = useState("");
+  const [regCountdown, setRegCountdown] = useState(0);
+  const regCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
   const [agreedKeys, setAgreedKeys] = useState<Record<string, boolean>>({});
   const [showAgreement, setShowAgreement] = useState("");
@@ -195,7 +185,7 @@ function LoginContent() {
   // Cleanup countdown on unmount
   useEffect(() => {
     return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (regCountdownRef.current) clearInterval(regCountdownRef.current);
       if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
     };
   }, []);
@@ -208,6 +198,9 @@ function LoginContent() {
         return "服务器配置错误，请联系管理员。";
       case "CredentialsSignin":
         return "邮箱或密码错误";
+      case "EmailCreateAccount":
+      case "OAuthCreateAccount":
+        return "该账号尚未注册，请先使用手机号验证码完成注册。";
       default:
         return "登录过程中发生错误，请重试。";
     }
@@ -217,8 +210,7 @@ function LoginContent() {
   const handleTabChange = useCallback((value: string) => {
     const newTab = value as LoginTab;
     const prevState: LoginFormState = {
-      email, pwEmail, pwPassword, pwErrors,
-      smsPhone, smsCode, smsErrors, errorMessage,
+      email, pwEmail, pwPassword, pwErrors, errorMessage,
     };
     const result = computeTabChangeState(prevState, newTab);
     setActiveTab(result.activeTab);
@@ -226,12 +218,9 @@ function LoginContent() {
     setPwEmail(result.formState.pwEmail);
     setPwPassword(result.formState.pwPassword);
     setPwErrors(result.formState.pwErrors);
-    setSmsPhone(result.formState.smsPhone);
-    setSmsCode(result.formState.smsCode);
-    setSmsErrors(result.formState.smsErrors);
     setErrorMessage(result.formState.errorMessage);
     if (view === "error") setView("form");
-  }, [view, email, pwEmail, pwPassword, pwErrors, smsPhone, smsCode, smsErrors, errorMessage]);
+  }, [view, email, pwEmail, pwPassword, pwErrors, errorMessage]);
 
   // ===== Email magic link =====
   async function handleEmailSubmit(e: React.FormEvent) {
@@ -308,14 +297,11 @@ function LoginContent() {
     }
   }
 
-  // ===== SMS login =====
-  async function handleSendCode() {
-    if (!loginAgreementAccepted) return;
-    setSmsErrors({});
-
-    const result = phoneSchema.safeParse(smsPhone.trim());
+  async function handleRegisterSendCode() {
+    setRegErrors((current) => ({ ...current, phone: "", code: "" }));
+    const result = phoneSchema.safeParse(regPhone.trim());
     if (!result.success) {
-      setSmsErrors({ phone: result.error.issues[0].message });
+      setRegErrors((current) => ({ ...current, phone: result.error.issues[0].message }));
       return;
     }
 
@@ -325,82 +311,35 @@ function LoginContent() {
       const res = await fetch("/api/sms/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: smsPhone.trim(), purpose: "login" }),
+        body: JSON.stringify({ phone: regPhone.trim(), purpose: "register" }),
       });
 
       if (res.status === 429) {
-        setSmsErrors({ phone: "请求过于频繁，请稍后再试" });
+        setRegErrors((current) => ({ ...current, phone: "请求过于频繁，请稍后再试" }));
         return;
       }
 
       if (!res.ok) {
         const data = await res.json();
-        setSmsErrors({ phone: data.error || "验证码发送失败" });
+        setRegErrors((current) => ({ ...current, phone: data.error || "验证码发送失败" }));
         return;
       }
 
       // Start 60s countdown
-      setCountdown(60);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      countdownRef.current = setInterval(() => {
-        setCountdown((prev) => {
+      setRegCountdown(60);
+      if (regCountdownRef.current) clearInterval(regCountdownRef.current);
+      regCountdownRef.current = setInterval(() => {
+        setRegCountdown((prev) => {
           if (prev <= 1) {
-            if (countdownRef.current) clearInterval(countdownRef.current);
-            countdownRef.current = null;
+            if (regCountdownRef.current) clearInterval(regCountdownRef.current);
+            regCountdownRef.current = null;
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
     } catch {
-      setSmsErrors({ phone: "网络错误，请检查网络连接后重试" });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleSmsSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!loginAgreementAccepted) return;
-    setSmsErrors({});
-    setErrorMessage("");
-
-    const result = loginSmsSchema.safeParse({
-      phone: smsPhone.trim(),
-      ...(verificationRequired ? { code: smsCode.trim() } : {}),
-    });
-
-    if (!result.success || (verificationRequired && !verificationCodeSchema.safeParse(smsCode.trim()).success)) {
-      const fieldErrors: Record<string, string> = {};
-      if (!result.success) {
-        for (const issue of result.error.issues) {
-          const field = issue.path[0] as string;
-          if (!fieldErrors[field]) fieldErrors[field] = issue.message;
-        }
-      }
-      if (verificationRequired && !fieldErrors.code) fieldErrors.code = "验证码为 6 位数字";
-      setSmsErrors(fieldErrors);
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await signIn("credentials-sms", {
-        phone: smsPhone.trim(),
-        ...(verificationRequired ? { code: smsCode.trim() } : {}),
-        redirect: false,
-        callbackUrl: "/",
-      });
-
-      if (res?.error) {
-        setErrorMessage("验证码错误或已过期");
-      } else if (res?.url) {
-        router.push(res.url);
-        router.refresh();
-      }
-    } catch {
-      setErrorMessage("网络错误，请检查网络连接后重试。");
+      setRegErrors((current) => ({ ...current, phone: "网络错误，请检查网络连接后重试" }));
     } finally {
       setLoading(false);
     }
@@ -497,6 +436,12 @@ function LoginContent() {
     signIn("qq");
   }
 
+  function openLoginPolicy(policyId: LoginPolicyId) {
+    const policy = LOGIN_POLICIES[policyId];
+    setAgreementContent(policy.content);
+    setShowAgreement(policyId);
+  }
+
   // ===== Registration =====
   async function handleRegisterSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -508,6 +453,8 @@ function LoginContent() {
       email: regEmail.trim(),
       password: regPassword,
       nickname: regNickname.trim(),
+      phone: regPhone.trim(),
+      code: regCode.trim(),
       ...(showInvite ? { inviteCode: inviteCode.trim() } : {}),
     };
     const result = (showInvite ? inviteRegisterSchema : registerSchema).safeParse(registrationData);
@@ -820,6 +767,56 @@ function LoginContent() {
                 )}
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="reg-phone">手机号</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="reg-phone"
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="请输入手机号"
+                    value={regPhone}
+                    onChange={(event) => {
+                      setRegPhone(event.target.value);
+                      if (regErrors.phone) setRegErrors((current) => ({ ...current, phone: "" }));
+                    }}
+                    autoComplete="tel"
+                    maxLength={11}
+                    disabled={loading}
+                    aria-invalid={Boolean(regErrors.phone)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleRegisterSendCode()}
+                    disabled={loading || regCountdown > 0 || !regPhone.trim()}
+                    className="shrink-0 whitespace-nowrap"
+                  >
+                    {regCountdown > 0 ? `${regCountdown}s` : "发送验证码"}
+                  </Button>
+                </div>
+                {regErrors.phone && <p className="text-xs text-red-500" role="alert">{regErrors.phone}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reg-sms-code">短信验证码</Label>
+                <Input
+                  id="reg-sms-code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="请输入 6 位验证码"
+                  value={regCode}
+                  onChange={(event) => {
+                    setRegCode(event.target.value);
+                    if (regErrors.code) setRegErrors((current) => ({ ...current, code: "" }));
+                  }}
+                  maxLength={6}
+                  disabled={loading}
+                  aria-invalid={Boolean(regErrors.code)}
+                />
+                {regErrors.code && <p className="text-xs text-red-500" role="alert">{regErrors.code}</p>}
+              </div>
+
               {showInvite && (
                 <div className="space-y-2">
                   <Label htmlFor="reg-invite-code">邀请码</Label>
@@ -928,7 +925,7 @@ function LoginContent() {
         <Dialog open={!!showAgreement} onOpenChange={(v) => { if (!v) setShowAgreement(""); }}>
           <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{allKeys.find(k => k.key === showAgreement)?.title ?? "协议"}</DialogTitle>
+              <DialogTitle>{allKeys.find(k => k.key === showAgreement)?.title ?? LOGIN_POLICIES[showAgreement as LoginPolicyId]?.title ?? "协议"}</DialogTitle>
             </DialogHeader>
             <SafeMarkdown content={agreementContent || "暂无内容"} />
           </DialogContent>
@@ -969,7 +966,7 @@ function LoginContent() {
             onValueChange={handleTabChange}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-3" aria-label="登录方式">
+            <TabsList className="grid w-full grid-cols-2" aria-label="登录方式">
               <TabsTrigger value="email">
                 <Mail className="mr-1.5 h-4 w-4 hidden sm:inline-block" />
                 邮箱登录
@@ -977,10 +974,6 @@ function LoginContent() {
               <TabsTrigger value="password">
                 <Lock className="mr-1.5 h-4 w-4 hidden sm:inline-block" />
                 密码登录
-              </TabsTrigger>
-              <TabsTrigger value="sms">
-                <Smartphone className="mr-1.5 h-4 w-4 hidden sm:inline-block" />
-                手机号登录
               </TabsTrigger>
             </TabsList>
 
@@ -1098,88 +1091,6 @@ function LoginContent() {
               </form>
             </TabsContent>
 
-            {/* Tab 3: SMS login */}
-            <TabsContent value="sms">
-              <form onSubmit={handleSmsSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sms-phone">手机号</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="sms-phone"
-                      type="tel"
-                      placeholder="请输入手机号"
-                      value={smsPhone}
-                      onChange={(e) => {
-                        setSmsPhone(e.target.value);
-                        if (smsErrors.phone) setSmsErrors((prev) => ({ ...prev, phone: "" }));
-                      }}
-                      autoComplete="tel"
-                      disabled={loading}
-                      className="flex-1"
-                      maxLength={11}
-                      aria-invalid={!!smsErrors.phone}
-                      aria-describedby={smsErrors.phone ? "sms-phone-error" : undefined}
-                    />
-                    {verificationRequired && <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleSendCode}
-                      disabled={loading || countdown > 0 || !smsPhone.trim() || !loginAgreementAccepted}
-                      className="shrink-0 whitespace-nowrap"
-                      aria-label={countdown > 0 ? `${countdown} 秒后可重新发送` : "发送验证码"}
-                    >
-                      {countdown > 0 ? `${countdown}s` : "发送验证码"}
-                    </Button>}
-                  </div>
-                  {smsErrors.phone && (
-                    <p id="sms-phone-error" className="text-xs text-red-500" role="alert">
-                      {smsErrors.phone}
-                    </p>
-                  )}
-                </div>
-                {verificationRequired && <div className="space-y-2">
-                  <Label htmlFor="sms-code">验证码</Label>
-                  <Input
-                    id="sms-code"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="请输入 6 位验证码"
-                    value={smsCode}
-                    onChange={(e) => {
-                      setSmsCode(e.target.value);
-                      if (smsErrors.code) setSmsErrors((prev) => ({ ...prev, code: "" }));
-                    }}
-                    autoComplete="one-time-code"
-                    disabled={loading}
-                    maxLength={6}
-                    aria-invalid={!!smsErrors.code}
-                    aria-describedby={smsErrors.code ? "sms-code-error" : undefined}
-                  />
-                  {smsErrors.code && (
-                    <p id="sms-code-error" className="text-xs text-red-500" role="alert">
-                      {smsErrors.code}
-                    </p>
-                  )}
-                </div>}
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={loading || !loginAgreementAccepted}
-                >
-                  {loading ? (
-                    <span className="flex items-center">
-                      <LoadingSpinner />
-                      登录中...
-                    </span>
-                  ) : (
-                    <span className="flex items-center">
-                      <Smartphone className="mr-2 h-4 w-4" />
-                      登录
-                    </span>
-                  )}
-                </Button>
-              </form>
-            </TabsContent>
           </Tabs>
 
           <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3">
@@ -1189,13 +1100,14 @@ function LoginContent() {
               checked={loginAgreementAccepted}
               onChange={(event) => setLoginAgreementAccepted(event.target.checked)}
               className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+              aria-label="同意用户协议和隐私政策"
             />
-            <label htmlFor="login-agreement" className="text-xs leading-relaxed text-muted-foreground">
+            <div className="text-xs leading-relaxed text-muted-foreground">
               我已阅读并同意
-              <a href="/help/policies?document=user-agreement" target="_blank" rel="noreferrer" className="mx-1 text-primary underline hover:text-primary/80">《用户协议》</a>
+              <button type="button" onClick={() => openLoginPolicy("user-agreement")} className="mx-1 text-primary underline hover:text-primary/80">《用户协议》</button>
               和
-              <a href="/help/policies?document=privacy-policy" target="_blank" rel="noreferrer" className="ml-1 text-primary underline hover:text-primary/80">《隐私政策》</a>
-            </label>
+              <button type="button" onClick={() => openLoginPolicy("privacy-policy")} className="ml-1 text-primary underline hover:text-primary/80">《隐私政策》</button>
+            </div>
           </div>
 
           {/* Divider */}
@@ -1257,6 +1169,14 @@ function LoginContent() {
           </Button>
         </CardContent>
       </Card>
+      <Dialog open={!!showAgreement} onOpenChange={(open) => { if (!open) setShowAgreement(""); }}>
+        <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{LOGIN_POLICIES[showAgreement as LoginPolicyId]?.title ?? "协议"}</DialogTitle>
+          </DialogHeader>
+          <SafeMarkdown content={agreementContent || "暂无内容"} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

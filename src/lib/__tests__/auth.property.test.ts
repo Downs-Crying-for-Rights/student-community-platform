@@ -14,10 +14,6 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/sms/verification", () => ({
-  verifyCode: vi.fn(),
-}));
-
 vi.mock("@auth/prisma-adapter", () => ({
   PrismaAdapter: vi.fn(() => ({})),
 }));
@@ -47,7 +43,6 @@ vi.mock("next-auth/providers/credentials", () => ({
 }));
 
 import { prisma } from "../prisma";
-import { verifyCode } from "../sms/verification";
 
 // ==================== Generators ====================
 
@@ -278,127 +273,4 @@ describe("属性 3: 统一错误提示不泄露信息", () => {
       { numRuns: 100 },
     );
   }, 60000);
-});
-
-
-// ==================== Property 11: 手机号登录隐含已绑定 ====================
-// Feature: multi-auth-login, Property 11: 手机号登录隐含已绑定
-// **Validates: Requirements 5.8**
-
-/** Generate valid Chinese phone numbers: 1[3-9] followed by 9 digits */
-const arbChinesePhone = fc
-  .tuple(
-    fc.integer({ min: 3, max: 9 }),
-    fc.array(fc.integer({ min: 0, max: 9 }), { minLength: 9, maxLength: 9 }),
-  )
-  .map(([second, rest]) => `1${second}${rest.join("")}`);
-
-/**
- * Extract the authorize function from the credentials-sms provider.
- */
-async function getSmsAuthorize() {
-  const { authOptions } = await import("../auth");
-  const provider = authOptions.providers.find(
-    (p: any) => p.id === "credentials-sms",
-  ) as any;
-  return provider.authorize as (
-    credentials: { phone: string; code: string } | undefined,
-  ) => Promise<any>;
-}
-
-describe("属性 11: 手机号登录隐含已绑定", () => {
-  it("手机号登录返回的用户 phone 字段等于登录手机号", async () => {
-    const authorize = await getSmsAuthorize();
-
-    await fc.assert(
-      fc.asyncProperty(arbChinesePhone, async (phone) => {
-        // Mock verifyCode to return true
-        vi.mocked(verifyCode).mockResolvedValue(true);
-
-        vi.mocked(prisma.user.findUnique).mockResolvedValue({
-          id: "user-sms-1",
-          email: null,
-          nickname: "TestUser",
-          role: "USER",
-          phone,
-        } as any);
-
-        const user = await authorize({ phone, code: "888888" });
-
-        // The returned user's phone field must equal the login phone
-        expect(user).not.toBeNull();
-        expect(user.phone).toBe(phone);
-      }),
-      { numRuns: 100 },
-    );
-  }, 30000);
-
-  it("未注册手机号通过登录自动创建账户", async () => {
-    const authorize = await getSmsAuthorize();
-
-    await fc.assert(
-      fc.asyncProperty(arbChinesePhone, async (phone) => {
-        vi.mocked(verifyCode).mockResolvedValue(true);
-        vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
-        vi.mocked(prisma.user.create).mockResolvedValue({
-          id: "user-new",
-          email: null,
-          nickname: null,
-          role: "USER",
-          phone,
-          isBanned: false,
-        } as any);
-
-        await expect(authorize({ phone, code: "888888" })).resolves.toMatchObject({ phone });
-        expect(prisma.user.create).toHaveBeenCalledWith(expect.objectContaining({
-          data: { phone, profileCompletionRequired: true },
-        }));
-      }),
-      { numRuns: 100 },
-    );
-  }, 30000);
-
-  it("手机号登录后 JWT token 中 phone 字段等于登录手机号", async () => {
-    const authorize = await getSmsAuthorize();
-    const { authOptions } = await import("../auth");
-    const jwtCallback = authOptions.callbacks!.jwt!;
-
-    await fc.assert(
-      fc.asyncProperty(arbChinesePhone, async (phone) => {
-        vi.mocked(verifyCode).mockResolvedValue(true);
-
-        vi.mocked(prisma.user.findUnique).mockResolvedValue({
-          id: "user-jwt-1",
-          email: null,
-          nickname: "TestUser",
-          role: "USER",
-          phone,
-        } as any);
-
-        // Step 1: authorize returns user with phone
-        const user = await authorize({ phone, code: "888888" });
-
-        // Step 2: Mock prisma.user.findUnique for the jwt callback lookup
-        vi.mocked(prisma.user.findUnique).mockResolvedValue({
-          role: "USER",
-          phone,
-        } as any);
-
-        // Step 3: Pass user through jwt callback (simulates first sign-in)
-        const token = await jwtCallback({
-          token: {} as any,
-          user,
-          account: null,
-          profile: undefined,
-          trigger: "signIn",
-          isNewUser: false,
-          session: undefined,
-        } as any);
-
-        // The JWT token's phone field must equal the login phone
-        expect(token.phone).toBe(phone);
-      }),
-      { numRuns: 100 },
-    );
-  }, 30000);
 });

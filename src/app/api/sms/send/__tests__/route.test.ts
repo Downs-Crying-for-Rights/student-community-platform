@@ -27,10 +27,10 @@ describe("POST /api/sms/send", () => {
   // ========== 成功发送 ==========
 
   describe("成功发送验证码", () => {
-    it("应使用有效手机号和 login 目的成功发送", async () => {
+    it("应使用有效手机号和 register 目的成功发送", async () => {
       mockSendVerificationCode.mockResolvedValue({ success: true });
 
-      const req = createRequest({ phone: "13800138000", purpose: "login" });
+      const req = createRequest({ phone: "13800138000", purpose: "register" });
       const res = await POST(req);
       const data = await res.json();
 
@@ -38,7 +38,7 @@ describe("POST /api/sms/send", () => {
       expect(data).toEqual({ success: true });
       expect(mockSendVerificationCode).toHaveBeenCalledWith(
         "13800138000",
-        "login"
+        "register"
       );
     });
 
@@ -70,7 +70,7 @@ describe("POST /api/sms/send", () => {
         error: "请求过于频繁，请稍后再试",
       });
 
-      const req = createRequest({ phone: "13800138000", purpose: "login" });
+      const req = createRequest({ phone: "13800138000", purpose: "register" });
       const res = await POST(req);
       const data = await res.json();
 
@@ -83,7 +83,7 @@ describe("POST /api/sms/send", () => {
 
   describe("无效手机号拒绝", () => {
     it("应拒绝非 11 位手机号", async () => {
-      const req = createRequest({ phone: "1380013", purpose: "login" });
+      const req = createRequest({ phone: "1380013", purpose: "register" });
       const res = await POST(req);
       const data = await res.json();
 
@@ -93,7 +93,7 @@ describe("POST /api/sms/send", () => {
     });
 
     it("应拒绝不以 1 开头的手机号", async () => {
-      const req = createRequest({ phone: "23800138000", purpose: "login" });
+      const req = createRequest({ phone: "23800138000", purpose: "register" });
       const res = await POST(req);
       const data = await res.json();
 
@@ -103,7 +103,7 @@ describe("POST /api/sms/send", () => {
     });
 
     it("应拒绝包含非数字字符的手机号", async () => {
-      const req = createRequest({ phone: "138abcd8000", purpose: "login" });
+      const req = createRequest({ phone: "138abcd8000", purpose: "register" });
       const res = await POST(req);
       const data = await res.json();
 
@@ -113,7 +113,7 @@ describe("POST /api/sms/send", () => {
     });
 
     it("应拒绝缺少 phone 字段的请求", async () => {
-      const req = createRequest({ purpose: "login" });
+      const req = createRequest({ purpose: "register" });
       const res = await POST(req);
       const data = await res.json();
 
@@ -129,7 +129,7 @@ describe("POST /api/sms/send", () => {
     it("应拒绝不在枚举范围内的 purpose", async () => {
       const req = createRequest({
         phone: "13800138000",
-        purpose: "register",
+        purpose: "login",
       });
       const res = await POST(req);
       const data = await res.json();
@@ -159,7 +159,7 @@ describe("POST /api/sms/send", () => {
         error: "验证码发送失败，请稍后再试",
       });
 
-      const req = createRequest({ phone: "13800138000", purpose: "login" });
+      const req = createRequest({ phone: "13800138000", purpose: "register" });
       const res = await POST(req);
       const data = await res.json();
 
@@ -172,7 +172,7 @@ describe("POST /api/sms/send", () => {
         new Error("Redis connection failed")
       );
 
-      const req = createRequest({ phone: "13800138000", purpose: "login" });
+      const req = createRequest({ phone: "13800138000", purpose: "register" });
       const res = await POST(req);
       const data = await res.json();
 

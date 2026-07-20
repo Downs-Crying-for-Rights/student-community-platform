@@ -86,6 +86,7 @@ const validRequest = {
     feeStatus: "none",
     demands: ["停止补课"],
     confirmations: [true, true, true],
+    riskPreference: "仅站内沟通",
   },
 };
 

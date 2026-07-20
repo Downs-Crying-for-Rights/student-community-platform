@@ -9,6 +9,11 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
+const mockVerifyCode = vi.fn();
+vi.mock("@/lib/sms/verification", () => ({
+  verifyCode: (...args: unknown[]) => mockVerifyCode(...args),
+}));
+
 // Mock Prisma client
 const mockFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
@@ -36,6 +41,8 @@ const validBody = {
   email: "test@example.com",
   password: "password123",
   nickname: "测试用户",
+  phone: "13800138000",
+  code: "123456",
 };
 
 // Helper to create a NextRequest with JSON body
@@ -68,6 +75,7 @@ describe("POST /api/auth/invite", () => {
     vi.clearAllMocks();
     mockUserFindUnique.mockResolvedValue(null); // no existing email
     mockUserFindFirst.mockResolvedValue(null); // no existing phone
+    mockVerifyCode.mockResolvedValue(true);
   });
 
   // ========== 邀请码格式验证 ==========
@@ -252,7 +260,7 @@ describe("POST /api/auth/invite", () => {
           email: "test@example.com",
           passwordHash: "hashed_password",
           nickname: "测试用户",
-          phone: undefined,
+          phone: "13800138000",
           profileCompletionRequired: true,
           isAnonymous: false,
         },
@@ -275,6 +283,7 @@ describe("POST /api/auth/invite", () => {
 
       // JWT 会话由前端注册成功后通过 Credentials Provider 创建。
       expect(mockSessionCreate).not.toHaveBeenCalled();
+      expect(mockVerifyCode).toHaveBeenCalledWith("13800138000", "123456", "register");
     });
 
     it("成功注册后不应写入数据库 Session cookie", async () => {

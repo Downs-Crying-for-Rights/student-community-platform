@@ -49,9 +49,8 @@ describe("QQ delegation conversation", () => {
     expect(() => parseQQDelegationForm(completeForm.replace("收费情况：已收费", "收费情况：很多"))).toThrow("收费情况");
   });
 
-  it("treats risk preference as optional and supports unrestricted", () => {
-    const omitted = parseQQDelegationForm(completeForm.replace("风险偏好：仅站内沟通", ""));
-    expect(buildCanonicalQQDraft(omitted).payload.riskPreference).toBeUndefined();
+  it("requires risk preference and supports unrestricted", () => {
+    expect(() => parseQQDelegationForm(completeForm.replace("风险偏好：仅站内沟通", ""))).toThrow("风险偏好");
 
     const unrestricted = parseQQDelegationForm(completeForm.replace("风险偏好：仅站内沟通", "风险偏好：不限"));
     expect(buildCanonicalQQDraft(unrestricted).payload.riskPreference).toBe("不限");

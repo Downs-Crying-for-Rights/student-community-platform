@@ -7,9 +7,7 @@ import type { Adapter, AdapterUser } from "next-auth/adapters";
 import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
-import { Prisma } from "@prisma/client";
-import { loginPasswordSchema, loginSmsSchema } from "@/lib/validators";
-import { verifyCode } from "@/lib/sms/verification";
+import { loginPasswordSchema } from "@/lib/validators";
 
 export function escapeHtmlAttribute(value: string): string {
   return value
@@ -38,11 +36,8 @@ async function getQQProvider() {
 const baseAdapter = PrismaAdapter(prisma) as Adapter;
 const adapter: Adapter = {
   ...baseAdapter,
-  createUser: (async (user: AdapterUser | Omit<AdapterUser, "id">) => {
-    const created = await prisma.user.create({
-      data: { ...user, profileCompletionRequired: true },
-    });
-    return { ...created, email: created.email ?? user.email } as AdapterUser;
+  createUser: (async (_user: AdapterUser | Omit<AdapterUser, "id">) => {
+    throw new Error("RegistrationRequired");
   }) as NonNullable<Adapter["createUser"]>,
 };
 
@@ -100,41 +95,6 @@ export const authOptions: NextAuthOptions = {
         if (!user || !user.passwordHash || user.isBanned) throw new Error("邮箱或密码错误");
         const isValid = await bcrypt.compare(password, user.passwordHash);
         if (!isValid) throw new Error("邮箱或密码错误");
-        return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
-      },
-    }),
-    CredentialsProvider({
-      id: "credentials-sms",
-      name: "SMS",
-      credentials: {
-        phone: { label: "手机号", type: "text" },
-        code: { label: "验证码", type: "text" },
-      },
-      async authorize(credentials) {
-        const parsed = loginSmsSchema.safeParse(credentials);
-        if (!parsed.success) throw new Error("验证码错误或已过期");
-        const { phone, code } = parsed.data;
-        const isValid = await verifyCode(phone, code, "login");
-        if (!isValid) throw new Error("验证码错误或已过期");
-        let user = await prisma.user.findUnique({
-          where: { phone },
-          select: { id: true, email: true, nickname: true, role: true, phone: true, isBanned: true },
-        });
-        if (!user) {
-          try {
-            user = await prisma.user.create({
-              data: { phone, profileCompletionRequired: true },
-              select: { id: true, email: true, nickname: true, role: true, phone: true, isBanned: true },
-            });
-          } catch (error) {
-            if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
-            user = await prisma.user.findUnique({
-              where: { phone },
-              select: { id: true, email: true, nickname: true, role: true, phone: true, isBanned: true },
-            });
-          }
-        }
-        if (!user || user.isBanned) throw new Error("该账号无法登录");
         return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
       },
     }),

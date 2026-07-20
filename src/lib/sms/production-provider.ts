@@ -40,7 +40,7 @@ export function loadAliyunSmsConfig(): AliyunSmsConfig {
   return {
     signName: requiredEnv("ALIYUN_SMS_SIGN_NAME"),
     templateCodes: {
-      login: requiredEnv("ALIYUN_SMS_TEMPLATE_LOGIN"),
+      register: requiredEnv("ALIYUN_SMS_TEMPLATE_LOGIN"),
       "change-phone": requiredEnv("ALIYUN_SMS_TEMPLATE_CHANGE_PHONE"),
       "reset-password": requiredEnv("ALIYUN_SMS_TEMPLATE_RESET_PASSWORD"),
       bindphone: requiredEnv("ALIYUN_SMS_TEMPLATE_BIND_NEW_PHONE"),

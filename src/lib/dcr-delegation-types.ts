@@ -30,7 +30,7 @@ export interface CanonicalDelegationFormData extends Omit<DelegationFormData, 'r
   province?: string;
   city?: string;
   expectedHelperProvince?: string;
-  riskPreference?: '不限' | '仅站内沟通' | '可电话' | '仅模板咨询';
+  riskPreference: '不限' | '仅站内沟通' | '可电话' | '仅模板咨询';
 }
 
 /* ========== Constants ========== */

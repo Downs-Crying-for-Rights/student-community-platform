@@ -22,7 +22,7 @@ export async function sendVerificationCode(
   phone: string,
   purpose: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!(await getSmsVerificationEnabled())) {
+  if (purpose !== "register" && !(await getSmsVerificationEnabled())) {
     return { success: true };
   }
 
@@ -73,7 +73,7 @@ export async function verifyCode(
   code: string | undefined,
   purpose: string
 ): Promise<boolean> {
-  if (!(await getSmsVerificationEnabled())) {
+  if (purpose !== "register" && !(await getSmsVerificationEnabled())) {
     return true;
   }
 

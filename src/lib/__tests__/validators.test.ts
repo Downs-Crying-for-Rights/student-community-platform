@@ -61,6 +61,7 @@ describe("canonicalCaseRequestSchema", () => {
       feeStatus: "none",
       demands: ["停止补课"],
       confirmations: [true, true, true],
+      riskPreference: "不限",
     },
   };
 
@@ -68,12 +69,12 @@ describe("canonicalCaseRequestSchema", () => {
     expect(canonicalCaseRequestSchema.safeParse(request).success).toBe(true);
   });
 
-  it("keeps risk preference optional and accepts an explicit unrestricted choice", () => {
-    expect(canonicalCaseRequestSchema.safeParse(request).success).toBe(true);
+  it("requires an explicit risk preference", () => {
     expect(canonicalCaseRequestSchema.safeParse({
       ...request,
-      formData: { ...request.formData, riskPreference: "不限" },
-    }).success).toBe(true);
+      formData: { ...request.formData, riskPreference: undefined },
+    }).success).toBe(false);
+    expect(canonicalCaseRequestSchema.safeParse(request).success).toBe(true);
   });
 
   it("requires all confirmations and consistent category", () => {

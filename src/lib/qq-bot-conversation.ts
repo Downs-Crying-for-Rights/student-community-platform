@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { validateQQDelegationDraft } from "@/lib/qq-delegation";
+import { QQ_DELEGATION_SCHEMA_VERSION, validateQQDelegationDraft } from "@/lib/qq-delegation";
 
 export const QQ_FORM_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 export const QQ_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -88,13 +88,10 @@ const FIELDS: readonly FormField[] = [
   {
     label: "风险偏好",
     key: "riskPreference",
-    optional: true,
-    parse: (answer) => {
-      const value = answer.trim();
-      if (!value || value === "无") return undefined;
-      if (["不限", "仅站内沟通", "可电话", "仅模板咨询"].includes(value)) return value;
-      throw new Error("可留空，或填写不限、仅站内沟通、可电话、仅模板咨询。");
-    },
+    parse: choice(
+      { "不限": "不限", "仅站内沟通": "仅站内沟通", "可电话": "可电话", "仅模板咨询": "仅模板咨询" },
+      "请填写不限、仅站内沟通、可电话或仅模板咨询。",
+    ),
   },
 ] as const;
 
@@ -119,7 +116,7 @@ export const QQ_DELEGATION_TEMPLATE = `请一次填写并发送以下完整模�
 所在省份：
 所在城市：
 期望互助人省份：无
-风险偏好：不限/仅站内沟通/可电话/仅模板咨询（选填，可删除本行）
+风险偏好：不限/仅站内沟通/可电话/仅模板咨询（必填）
 
 自愿与真实性声明、最终核对和正式提交仅在登录后的网页中完成。`;
 
@@ -182,7 +179,7 @@ export function validateQQDelegationRequirements(payload: Payload): string[] {
 
 export function buildCanonicalQQDraft(payload: Payload): { payload: Payload; canonical: string; hash: string } {
   const core = validateQQDelegationDraft({
-    schemaVersion: 1,
+    schemaVersion: QQ_DELEGATION_SCHEMA_VERSION,
     contentType: payload.contentType,
     schoolName: payload.schoolName,
     schoolCategory: payload.schoolCategory,
