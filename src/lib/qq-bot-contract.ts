@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
-export const QQ_BOT_COMMANDS = ["帮助", "绑定", "状态", "新建委托", "取消", "草稿"] as const;
+export const QQ_BOT_COMMANDS = ["帮助", "绑定", "注册", "状态", "新建委托", "取消", "草稿"] as const;
 
 const qqId = z.string().regex(/^[1-9]\d{4,11}$/);
 const commandInput = z
@@ -37,11 +37,11 @@ export const qqBotMessageSchema = z
         message: "eventId must be scoped to selfId",
       });
     }
-    if (message.input.type === "command" && message.input.argument && message.input.command !== "绑定") {
+    if (message.input.type === "command" && message.input.argument && !["绑定", "注册"].includes(message.input.command)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["input", "argument"],
-        message: "only the binding command accepts an argument",
+        message: "only binding and registration commands accept an argument",
       });
     }
   });

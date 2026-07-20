@@ -24,23 +24,24 @@ import {
   KeyRound,
   Lock,
   UserPlus,
+  Bot,
+  Copy,
 } from "lucide-react";
 import {
   loginPasswordSchema,
   phoneSchema,
   registerSchema,
   inviteRegisterSchema,
+  qqRegistrationSchema,
   resetPasswordSchema,
 } from "@/lib/validators";
 import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required";
 import { verificationCodeSchema } from "@/lib/validators";
-import { LOGIN_POLICIES, type LoginPolicyId } from "@/lib/login-policies";
+import { LOGIN_POLICIES, REGISTRATION_POLICY_KEYS, type LoginPolicyId } from "@/lib/login-policies";
 
 type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
 export type LoginTab = "email" | "password";
-
-const USAGE_CONSENT_KEYS = new Set(["dm_consent", "chat_monitoring_consent", "community_guidelines"]);
 
 /** All tabs available on the login page */
 export const LOGIN_TABS: LoginTab[] = ["email", "password"];
@@ -143,11 +144,15 @@ function LoginContent() {
   const [regCode, setRegCode] = useState("");
   const [regCountdown, setRegCountdown] = useState(0);
   const regCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qqPollInFlightRef = useRef(false);
+  const qqPollCompletedRef = useRef(false);
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
+  const [regMethod, setRegMethod] = useState<"phone" | "qq">("phone");
+  const [qqRegistration, setQQRegistration] = useState<{ credential: string; command: string; expiresAt: string } | null>(null);
   const [agreedKeys, setAgreedKeys] = useState<Record<string, boolean>>({});
   const [showAgreement, setShowAgreement] = useState("");
   const [agreementContent, setAgreementContent] = useState("");
-  const [allKeys, setAllKeys] = useState<{ key: string; title: string }[]>([]);
+  const [allKeys, setAllKeys] = useState<{ key: string; title: string; revision: number }[]>([]);
 
   // Load site content keys when entering register view
   useEffect(() => {
@@ -156,7 +161,7 @@ function LoginContent() {
         .then(r => r.json())
         .then(d => {
           const registrationAgreements = (d.items ?? []).filter(
-            (item: { key: string }) => !USAGE_CONSENT_KEYS.has(item.key),
+            (item: { key: string }) => REGISTRATION_POLICY_KEYS.includes(item.key as LoginPolicyId),
           );
           setAllKeys(registrationAgreements);
           // Initialize all as unchecked
@@ -189,6 +194,59 @@ function LoginContent() {
       if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!qqRegistration) return;
+    qqPollCompletedRef.current = false;
+    let stopped = false;
+    const poll = async () => {
+      if (qqPollInFlightRef.current || qqPollCompletedRef.current) return;
+      qqPollInFlightRef.current = true;
+      try {
+        const response = await fetch("/api/auth/register/qq/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: qqRegistration.credential }),
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (stopped) return;
+        if (data.status === "EXPIRED") {
+          setErrorMessage("注册凭据已过期，请重新生成");
+          setQQRegistration(null);
+          return;
+        }
+        if (data.status !== "COMPLETED") return;
+        qqPollCompletedRef.current = true;
+        const signedIn = await signIn("credentials-password", {
+          identifier: regNickname.trim(),
+          password: regPassword,
+          redirect: false,
+          callbackUrl: "/",
+        });
+        if (signedIn?.error) {
+          setErrorMessage("注册成功，请使用用户名和密码登录");
+          setView("form");
+          setActiveTab("password");
+          setPwEmail(regNickname.trim());
+          return;
+        }
+        setRegPassword("");
+        router.push(signedIn?.url || "/");
+        router.refresh();
+      } catch {
+        // The next poll retries transient status failures.
+      } finally {
+        qqPollInFlightRef.current = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 2_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [qqRegistration, regNickname, regPassword, router]);
 
   function getErrorMessage(error: string): string {
     switch (error) {
@@ -260,7 +318,7 @@ function LoginContent() {
     setErrorMessage("");
 
     const result = loginPasswordSchema.safeParse({
-      email: pwEmail.trim(),
+      identifier: pwEmail.trim(),
       password: pwPassword,
     });
 
@@ -278,14 +336,14 @@ function LoginContent() {
 
     try {
       const res = await signIn("credentials-password", {
-        email: pwEmail.trim(),
+        identifier: pwEmail.trim(),
         password: pwPassword,
         redirect: false,
         callbackUrl: "/",
       });
 
       if (res?.error) {
-        setErrorMessage("邮箱或密码错误");
+        setErrorMessage("邮箱/用户名或密码错误");
       } else if (res?.url) {
         router.push(res.url);
         router.refresh();
@@ -430,12 +488,6 @@ function LoginContent() {
     }
   }
 
-  // ===== QQ login =====
-  function handleQQLogin() {
-    if (!loginAgreementAccepted) return;
-    signIn("qq");
-  }
-
   function openLoginPolicy(policyId: LoginPolicyId) {
     const policy = LOGIN_POLICIES[policyId];
     setAgreementContent(policy.content);
@@ -448,6 +500,43 @@ function LoginContent() {
     setRegErrors({});
     setInviteErrors({});
     setErrorMessage("");
+
+    if (regMethod === "qq") {
+      const registrationData = {
+        username: regNickname.trim(),
+        password: regPassword,
+        agreementRevisions: Object.fromEntries(allKeys.filter(({ key }) => agreedKeys[key]).map(({ key, revision }) => [key, revision])),
+      };
+      const parsed = qqRegistrationSchema.safeParse(registrationData);
+      if (!parsed.success) {
+        const fieldErrors: Record<string, string> = {};
+        for (const issue of parsed.error.issues) {
+          const field = String(issue.path[0]) === "username" ? "nickname" : String(issue.path[0]);
+          fieldErrors[field] ||= issue.message;
+        }
+        setRegErrors(fieldErrors);
+        return;
+      }
+      setLoading(true);
+      try {
+        const response = await fetch("/api/auth/register/qq", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(registrationData),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setErrorMessage(data.error || "注册凭据生成失败");
+          return;
+        }
+        setQQRegistration(data);
+      } catch {
+        setErrorMessage("网络错误，请检查网络连接后重试。");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     const registrationData = {
       email: regEmail.trim(),
@@ -487,7 +576,7 @@ function LoginContent() {
       }
 
       const signInRes = await signIn("credentials-password", {
-        email: regEmail.trim(),
+        identifier: regEmail.trim(),
         password: regPassword,
         redirect: false,
         callbackUrl: "/",
@@ -695,11 +784,27 @@ function LoginContent() {
             )}
 
             <div className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-              普通注册无需邀请码，填写以下信息并同意协议即可注册。
+              选择手机号验证，或通过个人 QQ 机器人验证 QQ 所有权完成注册。
             </div>
+            <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
+              <Button type="button" variant={regMethod === "phone" ? "secondary" : "ghost"} onClick={() => { setRegMethod("phone"); setQQRegistration(null); setErrorMessage(""); }}>手机号验证</Button>
+              <Button type="button" variant={regMethod === "qq" ? "secondary" : "ghost"} onClick={() => { setRegMethod("qq"); setShowInvite(false); setQQRegistration(null); setErrorMessage(""); }}><Bot className="mr-2 h-4 w-4" />QQ 机器人验证</Button>
+            </div>
+            {qqRegistration ? (
+              <div className="space-y-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                <div>
+                  <p className="font-medium">私聊机器人发送以下完整指令</p>
+                  <p className="mt-1 text-xs text-muted-foreground">凭据 15 分钟内有效。指令不含密码，请勿向任何人发送密码。</p>
+                </div>
+                <code className="block break-all rounded-lg bg-background p-3 text-sm">{qqRegistration.command}</code>
+                <Button type="button" variant="outline" className="w-full" onClick={() => void navigator.clipboard.writeText(qqRegistration.command)}><Copy className="mr-2 h-4 w-4" />复制机器人指令</Button>
+                <p className="text-center text-sm text-muted-foreground">等待机器人确认，页面每 2 秒自动检测...</p>
+                <Button type="button" variant="ghost" className="w-full" onClick={() => setQQRegistration(null)}>重新填写</Button>
+              </div>
+            ) : (
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="reg-nickname">用户名</Label>
+                <Label htmlFor="reg-nickname">{regMethod === "qq" ? "登录用户名" : "用户名"}</Label>
                 <Input
                   id="reg-nickname"
                   type="text"
@@ -721,7 +826,7 @@ function LoginContent() {
                 )}
               </div>
 
-              <div className="space-y-2">
+              {regMethod === "phone" && <div className="space-y-2">
                 <Label htmlFor="reg-email">邮箱地址</Label>
                 <Input
                   id="reg-email"
@@ -742,7 +847,7 @@ function LoginContent() {
                     {regErrors.email}
                   </p>
                 )}
-              </div>
+              </div>}
 
               <div className="space-y-2">
                 <Label htmlFor="reg-password">密码</Label>
@@ -767,7 +872,7 @@ function LoginContent() {
                 )}
               </div>
 
-              <div className="space-y-2">
+              {regMethod === "phone" && <div className="space-y-2">
                 <Label htmlFor="reg-phone">手机号</Label>
                 <div className="flex gap-2">
                   <Input
@@ -796,9 +901,9 @@ function LoginContent() {
                   </Button>
                 </div>
                 {regErrors.phone && <p className="text-xs text-red-500" role="alert">{regErrors.phone}</p>}
-              </div>
+              </div>}
 
-              <div className="space-y-2">
+              {regMethod === "phone" && <div className="space-y-2">
                 <Label htmlFor="reg-sms-code">短信验证码</Label>
                 <Input
                   id="reg-sms-code"
@@ -815,9 +920,9 @@ function LoginContent() {
                   aria-invalid={Boolean(regErrors.code)}
                 />
                 {regErrors.code && <p className="text-xs text-red-500" role="alert">{regErrors.code}</p>}
-              </div>
+              </div>}
 
-              {showInvite && (
+              {regMethod === "phone" && showInvite && (
                 <div className="space-y-2">
                   <Label htmlFor="reg-invite-code">邀请码</Label>
                   <Input
@@ -874,23 +979,24 @@ function LoginContent() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading || allKeys.some(({ key }) => !agreedKeys[key])}
+                disabled={loading || allKeys.length !== REGISTRATION_POLICY_KEYS.length || allKeys.some(({ key }) => !agreedKeys[key])}
               >
                 {loading ? (
                   <span className="flex items-center">
                     <LoadingSpinner />
-                    注册中...
+                     {regMethod === "qq" ? "生成凭据中..." : "注册中..."}
                   </span>
                 ) : (
                   <span className="flex items-center">
                     <UserPlus className="mr-2 h-4 w-4" />
-                    注册
+                     {regMethod === "qq" ? "生成机器人注册凭据" : "注册"}
                   </span>
                 )}
               </Button>
             </form>
+            )}
 
-            <Button
+            {regMethod === "phone" && <Button
               type="button"
               variant="ghost"
               className="w-full"
@@ -903,7 +1009,7 @@ function LoginContent() {
             >
               <KeyRound className="mr-2 h-4 w-4" />
               {showInvite ? "不使用邀请码" : "我有邀请码"}
-            </Button>
+            </Button>}
 
             <div className="text-center">
               <Button
@@ -1021,24 +1127,24 @@ function LoginContent() {
             <TabsContent value="password">
               <form onSubmit={handlePasswordSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="pw-email">邮箱地址</Label>
+                  <Label htmlFor="pw-email">邮箱或 QQ 注册用户名</Label>
                   <Input
                     id="pw-email"
-                    type="email"
-                    placeholder="you@example.com"
+                    type="text"
+                    placeholder="邮箱地址或 QQ 注册用户名"
                     value={pwEmail}
                     onChange={(e) => {
                       setPwEmail(e.target.value);
-                      if (pwErrors.email) setPwErrors((prev) => ({ ...prev, email: "" }));
+                      if (pwErrors.identifier) setPwErrors((prev) => ({ ...prev, identifier: "" }));
                     }}
-                    autoComplete="email"
+                    autoComplete="username"
                     disabled={loading}
-                    aria-invalid={!!pwErrors.email}
-                    aria-describedby={pwErrors.email ? "pw-email-error" : undefined}
+                    aria-invalid={!!pwErrors.identifier}
+                    aria-describedby={pwErrors.identifier ? "pw-email-error" : undefined}
                   />
-                  {pwErrors.email && (
+                  {pwErrors.identifier && (
                     <p id="pw-email-error" className="text-xs text-red-500" role="alert">
-                      {pwErrors.email}
+                      {pwErrors.identifier}
                     </p>
                   )}
                 </div>
@@ -1109,38 +1215,6 @@ function LoginContent() {
               <button type="button" onClick={() => openLoginPolicy("privacy-policy")} className="ml-1 text-primary underline hover:text-primary/80">《隐私政策》</button>
             </div>
           </div>
-
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">
-                其他登录方式
-              </span>
-            </div>
-          </div>
-
-          {/* QQ Login */}
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={handleQQLogin}
-            disabled={!loginAgreementAccepted}
-            aria-label="使用 QQ 账号登录"
-          >
-            <svg
-              className="mr-2 h-5 w-5"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3v1c0 1.66-1.34 3-3 3S9 10.66 9 9V8c0-1.66 1.34-3 3-3zm0 14c-2.5 0-4.71-1.28-6-3.22.03-2 4-3.08 6-3.08s5.97 1.08 6 3.08C16.71 17.72 14.5 19 12 19z" />
-            </svg>
-            QQ 登录
-          </Button>
 
           {/* Divider for registration */}
           <div className="relative">

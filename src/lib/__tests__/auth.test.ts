@@ -225,7 +225,7 @@ describe("NextAuth 配置", () => {
 
     it("正确密码应返回用户对象", async () => {
       const authorize = getPasswordAuthorize();
-      mockFindUnique.mockResolvedValueOnce({
+      mockFindFirst.mockResolvedValueOnce({
         id: "user-1",
         email: "test@example.com",
         nickname: "测试用户",
@@ -251,7 +251,7 @@ describe("NextAuth 配置", () => {
 
     it("错误密码应抛出 '邮箱或密码错误'", async () => {
       const authorize = getPasswordAuthorize();
-      mockFindUnique.mockResolvedValueOnce({
+      mockFindFirst.mockResolvedValueOnce({
         id: "user-1",
         email: "test@example.com",
         nickname: "测试用户",
@@ -268,7 +268,7 @@ describe("NextAuth 配置", () => {
 
     it("不存在的邮箱应抛出 '邮箱或密码错误'", async () => {
       const authorize = getPasswordAuthorize();
-      mockFindUnique.mockResolvedValueOnce(null);
+      mockFindFirst.mockResolvedValueOnce(null);
 
       await expect(
         authorize({ email: "nonexistent@example.com", password: "anyPassword" })
@@ -277,7 +277,7 @@ describe("NextAuth 配置", () => {
 
     it("用户无 passwordHash 应抛出 '邮箱或密码错误'", async () => {
       const authorize = getPasswordAuthorize();
-      mockFindUnique.mockResolvedValueOnce({
+      mockFindFirst.mockResolvedValueOnce({
         id: "user-1",
         email: "test@example.com",
         nickname: "测试用户",

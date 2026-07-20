@@ -3,6 +3,7 @@ import { createHmac, randomBytes } from "node:crypto";
 export const QQ_GRANT_TOKEN_PREFIX = "qqg_";
 export const QQ_GRANT_PURPOSES = [
   "IDENTITY_BIND",
+  "REGISTRATION_FINALIZE",
   "DELEGATION_SUBMIT",
   "CASE_REVIEW",
   "TASK_PUBLISH",

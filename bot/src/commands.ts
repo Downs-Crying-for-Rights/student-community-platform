@@ -7,7 +7,7 @@ export function routeInput(text: string): RoutedInput {
   if (first && (COMMANDS as readonly string[]).includes(first)) {
     const command = first as (typeof COMMANDS)[number];
     const argument = rest.join(" ");
-    if (command === "绑定" && argument) return { type: "command", command, argument };
+    if ((command === "绑定" || command === "注册") && argument) return { type: "command", command, argument };
     if (!argument) return { type: "command", command };
   }
 

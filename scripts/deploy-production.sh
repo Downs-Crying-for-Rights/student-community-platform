@@ -172,6 +172,7 @@ if [[ -f "$BOT_DIR/docker-compose.yml" ]]; then
 fi
 
 chmod +x "$CURRENT_LINK/scripts/collect-production-logs.sh"
+chmod +x "$CURRENT_LINK/scripts/cleanup-expired-qq-registrations.sh"
 cat > /etc/systemd/system/forum-dcr2026-log-collector.service <<EOF
 [Unit]
 Description=Forum DCR2026 production log collector
@@ -189,6 +190,30 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+cat > /etc/systemd/system/forum-dcr2026-qq-registration-cleanup.service <<EOF
+[Unit]
+Description=Remove expired QQ registration credentials
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=$CURRENT_LINK/scripts/cleanup-expired-qq-registrations.sh
+EOF
+
+cat > /etc/systemd/system/forum-dcr2026-qq-registration-cleanup.timer <<EOF
+[Unit]
+Description=Run QQ registration credential cleanup every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 cat > /etc/logrotate.d/forum-dcr2026-console <<EOF
 $SHARED_DIR/logs/*.log {
   daily
@@ -204,6 +229,7 @@ EOF
 systemctl daemon-reload
 systemctl enable --now forum-dcr2026-log-collector.service
 systemctl restart forum-dcr2026-log-collector.service
+systemctl enable --now forum-dcr2026-qq-registration-cleanup.timer
 
 find "$APP_DIR/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
   | sort -nr \

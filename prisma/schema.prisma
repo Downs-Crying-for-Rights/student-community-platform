@@ -53,6 +53,7 @@ enum PostRevisionStatus {
 
 enum QQGrantPurpose {
   IDENTITY_BIND
+  REGISTRATION_FINALIZE
   DELEGATION_SUBMIT
   CASE_REVIEW
   TASK_PUBLISH
@@ -76,6 +77,7 @@ model User {
   id              String    @id @default(cuid())
   name            String?
   email           String?   @unique
+  username        String?   @unique
   emailVerified   DateTime?
   image           String?
   nickname        String?
@@ -177,6 +179,7 @@ model User {
   qqDelegationDrafts  QQDelegationDraft[]
   qqGrants            QQGrant[]
   qqConversation      QQConversation?
+  pendingQQRegistration PendingQQRegistration?
 }
 
 model SystemConfig {
@@ -232,6 +235,7 @@ model QQGrant {
   userId     String?
   draftId    String?
   targetId   String?
+  pendingRegistrationId String?
   identityLookupHash String?
   identityCiphertext String?
   identityIv         String?
@@ -244,9 +248,27 @@ model QQGrant {
 
   user  User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
   draft QQDelegationDraft? @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  pendingRegistration PendingQQRegistration? @relation(fields: [pendingRegistrationId], references: [id], onDelete: Cascade)
 
   @@index([userId, purpose, createdAt])
   @@index([draftId])
+  @@index([pendingRegistrationId])
+  @@index([expiresAt])
+}
+
+model PendingQQRegistration {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String?
+  agreementRevisions Json
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  userId       String?   @unique
+
+  user   User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  grants QQGrant[]
+
   @@index([expiresAt])
 }
 

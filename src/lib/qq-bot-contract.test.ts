@@ -16,6 +16,18 @@ describe("QQ bot internal contract", () => {
     expect(qqBotMessageSchema.parse(validMessage)).toEqual(validMessage);
   });
 
+  it("accepts only a bounded registration command argument", () => {
+    const credential = `qqg_${"A".repeat(43)}`;
+    expect(qqBotMessageSchema.safeParse({
+      ...validMessage,
+      input: { type: "command", command: "注册", argument: credential },
+    }).success).toBe(true);
+    expect(qqBotMessageSchema.safeParse({
+      ...validMessage,
+      input: { type: "command", command: "状态", argument: credential },
+    }).success).toBe(false);
+  });
+
   it("rejects unknown properties, invalid QQ IDs, and unscoped events", () => {
     expect(qqBotMessageSchema.safeParse({ ...validMessage, extra: true }).success).toBe(false);
     expect(qqBotMessageSchema.safeParse({ ...validMessage, userId: "123" }).success).toBe(false);

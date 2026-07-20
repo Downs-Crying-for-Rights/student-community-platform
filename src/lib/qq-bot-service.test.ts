@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   inboxFindUnique: vi.fn(),
   identityFindUnique: vi.fn(),
   conversationFindUnique: vi.fn(),
+  allowRegistration: vi.fn(),
+  finalizeRegistration: vi.fn(),
   transaction: vi.fn(),
   tx: {
     qQBotEventInbox: { create: vi.fn(), update: vi.fn() },
@@ -35,6 +37,10 @@ vi.mock("@/lib/qq-config", () => ({
 }));
 vi.mock("@/lib/sensitive-engine", () => ({ scanContent: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/qq-draft-ai-review", () => ({ reviewQQDraftWithAi: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/lib/qq-registration", () => ({
+  allowQQRegistrationAttempt: mocks.allowRegistration,
+  finalizeQQRegistration: mocks.finalizeRegistration,
+}));
 
 import { processQQBotMessage } from "./qq-bot-service";
 import type { QQBotMessage, QQBotResponse } from "./qq-bot-contract";
@@ -61,6 +67,8 @@ describe("QQ bot transactional service", () => {
     mocks.tx.qQBotEventInbox.update.mockResolvedValue({});
     mocks.tx.qQGrant.create.mockResolvedValue({});
     mocks.tx.qQDelegationDraft.create.mockResolvedValue({ id: "draft-1" });
+    mocks.allowRegistration.mockResolvedValue(true);
+    mocks.finalizeRegistration.mockResolvedValue("注册成功。请返回网站登录。");
   });
 
   it("returns the exact saved response as a duplicate without applying the event", async () => {
@@ -104,6 +112,19 @@ describe("QQ bot transactional service", () => {
         processedAt: expect.any(Date),
       }),
     });
+  });
+
+  it("finalizes registration before requiring an existing QQ identity", async () => {
+    const credential = `qqg_${"A".repeat(43)}`;
+    const result = await processQQBotMessage({
+      ...bindingMessage,
+      eventId: "1000000000:registration",
+      input: { type: "command", command: "注册", argument: credential },
+    });
+    expect(mocks.allowRegistration).toHaveBeenCalledOnce();
+    expect(mocks.finalizeRegistration).toHaveBeenCalledWith(mocks.tx, credential, bindingMessage.userId);
+    expect(result.replies).toEqual(["注册成功。请返回网站登录。"]);
+    expect(mocks.tx.qQIdentity.findUnique).not.toHaveBeenCalled();
   });
 
   it("persists the complete final answer, seven-day draft, submit grant, and saved link response", async () => {

@@ -29,10 +29,13 @@ export class EventProcessor {
     // Group events and notices are intentionally rejected before any identifying details are read or forwarded.
     if (!isPrivateMessage(value)) return "ignored";
     if (String(value.self_id) !== this.expectedSelfId) return "ignored";
-    if (!this.allowedUserIds.has(String(value.user_id))) return "ignored";
 
     const text = extractText(value.message, value.raw_message);
     if (!text || Buffer.byteLength(text, "utf8") > this.maxMessageBytes) return "ignored";
+    const input = routeInput(text);
+    const isRegistration = input.type === "command" && input.command === "注册"
+      && typeof input.argument === "string" && /^qqg_[A-Za-z0-9_-]{43}$/.test(input.argument);
+    if (!this.allowedUserIds.has(String(value.user_id)) && !isRegistration) return "ignored";
 
     const occurredAt = new Date(value.time * 1_000);
     if (!Number.isFinite(occurredAt.getTime())) return "ignored";
@@ -44,7 +47,7 @@ export class EventProcessor {
       selfId: this.expectedSelfId,
       userId: String(value.user_id),
       occurredAt: occurredAt.toISOString(),
-      input: routeInput(text),
+      input,
     };
 
     try {

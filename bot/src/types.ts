@@ -1,4 +1,4 @@
-export const COMMANDS = ["帮助", "绑定", "状态", "新建委托", "取消", "草稿"] as const;
+export const COMMANDS = ["帮助", "绑定", "注册", "状态", "新建委托", "取消", "草稿"] as const;
 
 export type Command = (typeof COMMANDS)[number];
 

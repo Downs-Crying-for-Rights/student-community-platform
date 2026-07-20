@@ -80,14 +80,14 @@ const arbEmptyPassword = fc.constant("");
 // **Validates: Requirements 1.3**
 
 describe("属性 2: 无效登录输入拒绝", () => {
-  it("无效邮箱格式应被 loginPasswordSchema 拒绝", () => {
+  it("空登录标识应被 loginPasswordSchema 拒绝", () => {
     fc.assert(
       fc.property(
-        arbInvalidEmail,
+        fc.constantFrom("", " ", "   "),
         fc.string({ minLength: 1, maxLength: 72 }),
-        (invalidEmail, password) => {
+        (invalidIdentifier, password) => {
           const result = loginPasswordSchema.safeParse({
-            email: invalidEmail,
+            identifier: invalidIdentifier,
             password,
           });
           expect(result.success).toBe(false);
@@ -114,11 +114,11 @@ describe("属性 2: 无效登录输入拒绝", () => {
     );
   });
 
-  it("无效邮箱且空密码应被 loginPasswordSchema 拒绝", () => {
+  it("空登录标识且空密码应被 loginPasswordSchema 拒绝", () => {
     fc.assert(
-      fc.property(arbInvalidEmail, arbEmptyPassword, (invalidEmail, emptyPassword) => {
+      fc.property(fc.constantFrom("", " "), arbEmptyPassword, (invalidIdentifier, emptyPassword) => {
         const result = loginPasswordSchema.safeParse({
-          email: invalidEmail,
+          identifier: invalidIdentifier,
           password: emptyPassword,
         });
         expect(result.success).toBe(false);
@@ -192,7 +192,7 @@ describe("属性 3: 统一错误提示不泄露信息", () => {
     await fc.assert(
       fc.asyncProperty(fc.emailAddress(), fc.string({ minLength: 8, maxLength: 72 }), async (email, password) => {
         // Mock: user not found
-        vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+        vi.mocked(prisma.user.findFirst).mockResolvedValue(null);
 
         try {
           await authorize({ email, password });
@@ -211,7 +211,7 @@ describe("属性 3: 统一错误提示不泄露信息", () => {
     await fc.assert(
       fc.asyncProperty(fc.emailAddress(), async (email) => {
         // Mock: user exists but password won't match (we use a random wrong password)
-        vi.mocked(prisma.user.findUnique).mockResolvedValue({
+        vi.mocked(prisma.user.findFirst).mockResolvedValue({
           id: "user-1",
           email,
           nickname: "Test",
@@ -240,7 +240,7 @@ describe("属性 3: 统一错误提示不泄露信息", () => {
         fc.emailAddress(),
         async (email) => {
           // Case 1: non-existent email
-          vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+          vi.mocked(prisma.user.findFirst).mockResolvedValue(null);
           let errorNonExistent: string | undefined;
           try {
             await authorize({ email, password: "some-password-123" });
@@ -249,7 +249,7 @@ describe("属性 3: 统一错误提示不泄露信息", () => {
           }
 
           // Case 2: wrong password (user exists but password doesn't match)
-          vi.mocked(prisma.user.findUnique).mockResolvedValue({
+          vi.mocked(prisma.user.findFirst).mockResolvedValue({
             id: "user-1",
             email,
             nickname: "Test",

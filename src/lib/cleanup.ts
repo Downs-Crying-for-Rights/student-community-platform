@@ -10,6 +10,7 @@ export interface CleanupReport {
   archivableAuditLogs: number;
   expiredListeningSessions: number;
   expiredAiReviews: number;
+  expiredQQRegistrations: number;
   executedAt: string;
 }
 
@@ -136,6 +137,13 @@ export async function cleanupExpiredAiReviews(): Promise<number> {
   return result.count;
 }
 
+export async function cleanupExpiredQQRegistrations(): Promise<number> {
+  const result = await prisma.pendingQQRegistration.deleteMany({
+    where: { consumedAt: null, expiresAt: { lt: new Date() } },
+  });
+  return result.count;
+}
+
 /**
  * Run all cleanup tasks and return a consolidated report.
  *
@@ -149,6 +157,7 @@ export async function runAllCleanup(): Promise<CleanupReport> {
     archivableAuditLogs,
     expiredListeningSessions,
     expiredAiReviews,
+    expiredQQRegistrations,
   ] = await Promise.all([
     cleanupExpiredConfideRequests(),
     cleanupOldAnonymousSessions(),
@@ -156,6 +165,7 @@ export async function runAllCleanup(): Promise<CleanupReport> {
     countArchivableAuditLogs(),
     cleanupExpiredListeningSessions(),
     cleanupExpiredAiReviews(),
+    cleanupExpiredQQRegistrations(),
   ]);
 
   return {
@@ -165,6 +175,7 @@ export async function runAllCleanup(): Promise<CleanupReport> {
     archivableAuditLogs,
     expiredListeningSessions,
     expiredAiReviews,
+    expiredQQRegistrations,
     executedAt: new Date().toISOString(),
   };
 }

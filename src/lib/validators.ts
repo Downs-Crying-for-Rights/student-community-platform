@@ -14,6 +14,14 @@ export const nicknameSchema = z
   .max(20, "昵称不能超过 20 个字符")
   .regex(/^[\u4e00-\u9fa5a-zA-Z0-9_-]+$/, "昵称只能包含中文、英文、数字、下划线和连字符");
 
+export const usernameSchema = z
+  .string()
+  .trim()
+  .min(3, "用户名至少 3 个字符")
+  .max(20, "用户名不能超过 20 个字符")
+  .regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/, "用户名须以英文字母开头，只能包含英文、数字、下划线和连字符")
+  .transform((value) => value.toLowerCase());
+
 export const bioSchema = z
   .string()
   .max(200, "个人简介不能超过 200 个字符")
@@ -224,12 +232,27 @@ export const verificationCodeSchema = z
 export const passwordSchema = z
   .string()
   .min(8, "密码至少 8 个字符")
-  .max(72, "密码不能超过 72 个字符");
+  .max(72, "密码不能超过 72 个字符")
+  .refine((value) => new TextEncoder().encode(value).byteLength <= 72, "密码 UTF-8 长度不能超过 72 字节");
 
 export const loginPasswordSchema = z.object({
-  email: emailSchema,
+  identifier: z.string().trim().min(1).max(255).optional(),
+  email: z.string().trim().min(1).max(255).optional(),
   password: z.string().min(1, "请输入密码"),
-});
+}).strict().refine((value) => Boolean(value.identifier || value.email), {
+  message: "请输入邮箱或用户名",
+  path: ["identifier"],
+}).transform((value) => ({ identifier: value.identifier || value.email!, password: value.password }));
+
+export const qqRegistrationSchema = z.object({
+  username: usernameSchema,
+  password: passwordSchema,
+  agreementRevisions: z.record(z.string().min(1).max(100), z.number().int().positive()),
+}).strict();
+
+export const qqRegistrationStatusSchema = z.object({
+  credential: z.string().regex(/^qqg_[A-Za-z0-9_-]{43}$/, "注册凭据无效"),
+}).strict();
 
 export const sendCodeSchema = z.object({
   phone: phoneSchema,

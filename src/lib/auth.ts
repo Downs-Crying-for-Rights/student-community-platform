@@ -17,20 +17,6 @@ export function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-// ==================== QQ OAuth (dynamic import to avoid build crash) ====================
-
-async function getQQProvider() {
-  try {
-    const mod = await import("@/lib/auth/qq-provider");
-    return mod.default({
-      clientId: process.env.QQ_APP_ID || "",
-      clientSecret: process.env.QQ_APP_SECRET || "",
-    });
-  } catch {
-    return null;
-  }
-}
-
 // ==================== Auth Options ====================
 
 const baseAdapter = PrismaAdapter(prisma) as Adapter;
@@ -81,15 +67,20 @@ export const authOptions: NextAuthOptions = {
       id: "credentials-password",
       name: "Password",
       credentials: {
-        email: { label: "邮箱", type: "email" },
+        identifier: { label: "邮箱或用户名", type: "text" },
         password: { label: "密码", type: "password" },
       },
       async authorize(credentials) {
         const parsed = loginPasswordSchema.safeParse(credentials);
         if (!parsed.success) throw new Error("邮箱或密码错误");
-        const { email, password } = parsed.data;
-        const user = await prisma.user.findUnique({
-          where: { email },
+        const { identifier, password } = parsed.data;
+        const normalized = identifier.toLowerCase();
+        const user = await prisma.user.findFirst({
+          where: { OR: [
+            { email: identifier },
+            ...(normalized === identifier ? [] : [{ email: normalized }]),
+            { username: normalized },
+          ] },
           select: { id: true, email: true, nickname: true, role: true, phone: true, passwordHash: true, isBanned: true },
         });
         if (!user || !user.passwordHash || user.isBanned) throw new Error("邮箱或密码错误");
@@ -98,7 +89,6 @@ export const authOptions: NextAuthOptions = {
         return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
       },
     }),
-    // QQ OAuth will be injected at runtime by the route handler
   ],
   session: {
     strategy: "jwt",
@@ -172,20 +162,6 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-// ==================== Runtime provider injection ====================
-
-/**
- * Returns the auth options with QQ OAuth provider injected if configured.
- * This avoids build-time webpack static analysis crashes.
- */
 export async function getAuthOptionsWithQQ(): Promise<NextAuthOptions> {
-  const snapshot = authOptions;
-  const qqProvider = await getQQProvider();
-  if (qqProvider) {
-    return {
-      ...snapshot,
-      providers: [...snapshot.providers, qqProvider],
-    };
-  }
-  return snapshot;
+  return authOptions;
 }

@@ -5,8 +5,9 @@ import { z } from "zod";
 import { DM_CONSENT_KEY } from "@/lib/dm-consent";
 import { CHAT_MONITORING_CONSENT_KEY } from "@/lib/chat-monitoring-consent";
 import { COMMUNITY_GUIDELINES_KEY } from "@/lib/community-guidelines";
+import { REGISTRATION_POLICY_KEYS } from "@/lib/login-policies";
 
-const VERSIONED_SYSTEM_CONTENT_KEYS = new Set([DM_CONSENT_KEY, CHAT_MONITORING_CONSENT_KEY]);
+const VERSIONED_SYSTEM_CONTENT_KEYS = new Set([DM_CONSENT_KEY, CHAT_MONITORING_CONSENT_KEY, ...REGISTRATION_POLICY_KEYS]);
 const REQUIRED_SYSTEM_CONTENT_KEYS = new Set([...VERSIONED_SYSTEM_CONTENT_KEYS, COMMUNITY_GUIDELINES_KEY]);
 
 const updateSchema = z.object({

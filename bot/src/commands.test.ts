@@ -10,6 +10,11 @@ describe("routeInput", () => {
     expect(routeInput("绑定 abc-123")).toEqual({ type: "command", command: "绑定", argument: "abc-123" });
   });
 
+  it("routes a registration credential without changing it", () => {
+    const credential = `qqg_${"A".repeat(43)}`;
+    expect(routeInput(`注册 ${credential}`)).toEqual({ type: "command", command: "注册", argument: credential });
+  });
+
   it("treats form answers and malformed commands as text", () => {
     expect(routeInput("这是表单答案")).toEqual({ type: "text", text: "这是表单答案" });
     expect(routeInput("状态 now")).toEqual({ type: "text", text: "状态 now" });

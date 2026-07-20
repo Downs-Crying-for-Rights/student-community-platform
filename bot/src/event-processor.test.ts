@@ -83,4 +83,26 @@ describe("EventProcessor", () => {
     expect(app.processMessage).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
+
+  it("allows only a valid registration command outside the rollout allowlist", async () => {
+    const processMessage = vi.fn().mockResolvedValue(response);
+    const processor = new EventProcessor({ processMessage }, "42", new Set(["100"]), 65_536);
+    const credential = `qqg_${"A".repeat(43)}`;
+    const result = await processor.process(
+      { time: 1, self_id: 42, post_type: "message", message_type: "private", message_id: 2, user_id: 7, message: `注册 ${credential}` },
+      vi.fn(),
+    );
+    expect(result).toBe("processed");
+    expect(processMessage).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "7",
+      input: { type: "command", command: "注册", argument: credential },
+    }));
+
+    processMessage.mockClear();
+    await expect(processor.process(
+      { time: 1, self_id: 42, post_type: "message", message_type: "private", message_id: 3, user_id: 7, message: "注册 invalid" },
+      vi.fn(),
+    )).resolves.toBe("ignored");
+    expect(processMessage).not.toHaveBeenCalled();
+  });
 });

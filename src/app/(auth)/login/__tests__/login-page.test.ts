@@ -181,11 +181,14 @@ describe("computeTabChangeState", () => {
 describe("注册方式分流", () => {
   it("邀请码注册复用普通注册字段且只增加邀请码输入框", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
-    expect(source).toContain("普通注册无需邀请码");
+    expect(source).toContain("QQ 机器人验证");
     expect(source).toContain('id="reg-invite-code"');
     expect(source).toContain('id="reg-phone"');
     expect(source).toContain('id="reg-sms-code"');
     expect(source).toContain('showInvite ? "/api/auth/invite" : "/api/auth/register"');
+    expect(source).toContain('fetch("/api/auth/register/qq"');
+    expect(source).toContain('body: JSON.stringify({ credential: qqRegistration.credential })');
+    expect(source).toContain("指令不含密码");
     expect(source).not.toContain('id="invite-phone"');
     expect(source).not.toContain('id="invite-sms-code"');
     expect(source).not.toContain('id="invite-nickname"');
@@ -193,11 +196,18 @@ describe("注册方式分流", () => {
     expect(source).not.toContain('id="invite-password"');
   });
 
+  it("QQ 机器人注册只发送一次性凭据且支持用户名登录", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+    expect(source).toContain("qqRegistration.command");
+    expect(source).toContain('identifier: regNickname.trim()');
+    expect(source).toContain("凭据 15 分钟内有效");
+    expect(source).not.toContain('`注册 ${regPassword}`');
+  });
+
   it("注册页不展示私信和群聊的使用时授权协议", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
 
-    expect(source).toContain('["dm_consent", "chat_monitoring_consent", "community_guidelines"]');
-    expect(source).toContain("!USAGE_CONSENT_KEYS.has(item.key)");
+    expect(source).toContain("REGISTRATION_POLICY_KEYS.includes");
   });
 });
 

@@ -17,9 +17,10 @@ import { reviewQQDraftWithAi } from "@/lib/qq-draft-ai-review";
 import { decryptQQAuditValue, encryptQQMessageInput, encryptQQMessageReplies } from "@/lib/qq-message-audit";
 import type { QQBotMessage, QQBotResponse } from "@/lib/qq-bot-contract";
 import { QQ_DELEGATION_SCHEMA_VERSION } from "@/lib/qq-delegation";
+import { allowQQRegistrationAttempt, finalizeQQRegistration } from "@/lib/qq-registration";
 
 const SITE_ORIGIN = "https://forum.dcr2026.com";
-const HELP = "可用命令：帮助、绑定、状态、新建委托、取消、草稿。发送“新建委托”获取完整模板，填写后一次发送。";
+const HELP = "可用命令：帮助、绑定、注册 <凭据>、状态、新建委托、取消、草稿。发送“新建委托”获取完整模板，填写后一次发送。";
 const AI_NOTICE = "本回复由 AI 辅助生成，仅作信息整理，不表达任何观点或立场，AI 输出与 DCR 无关；最终结果以网页确认和管理员人工审核为准。";
 
 interface DraftPreflight {
@@ -238,6 +239,10 @@ async function applyMessage(
   answerHasSensitiveContent: boolean,
   draftPreflight: DraftPreflight | null,
 ): Promise<QQBotResponse> {
+  if (message.input.type === "command" && message.input.command === "注册") {
+    const reply = await finalizeQQRegistration(tx, message.input.argument, message.userId);
+    return response([reply], "idle", 1, null);
+  }
   const identity = await tx.qQIdentity.findUnique({
     where: { lookupHash },
     select: { user: { select: { id: true, isBanned: true } } },
@@ -286,6 +291,9 @@ export async function processQQBotMessage(message: QQBotMessage): Promise<QQBotR
   const inboxSelect = { eventId: true, response: true, replyCiphertext: true, replyIv: true, replyAuthTag: true, replyKeyVersion: true } as const;
   const existing = await prisma.qQBotEventInbox.findUnique({ where: { eventId: message.eventId }, select: inboxSelect });
   if (existing?.response) return storedResponse({ ...existing, response: existing.response });
+  if (message.input.type === "command" && message.input.command === "注册" && !await allowQQRegistrationAttempt(lookupHash)) {
+    return response(["注册尝试过于频繁，请稍后再试。"], "idle", 1, null);
+  }
   const answerHasSensitiveContent = message.input.type === "text"
     && (await scanContent(message.input.text)).length > 0;
   const draftPreflight = await prepareDraftPreflight(message, lookupHash, answerHasSensitiveContent);
