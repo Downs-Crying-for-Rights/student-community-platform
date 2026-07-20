@@ -64,15 +64,27 @@ describe("telemetry privacy helpers", () => {
   });
 
   it("captures returned and thrown handlers and correlates returned responses", async () => {
-    const returned = telemetry.withTelemetry(async () => new Response(null, { status: 202 }), { route: "/api/items/[id]" });
+    const returned = telemetry.withTelemetry(async () => Response.json({
+      error: "invalid",
+      details: { password: "hidden", field: ["required"] },
+    }, { status: 422 }), { route: "/api/items/[id]" });
     const response = await returned(new Request("https://example.test/api/items/private-value", {
       method: "POST",
       headers: { "x-request-id": "known-request" },
     }));
     expect(response.headers.get("x-request-id")).toBe("known-request");
     await vi.waitFor(() => expect(mockTelemetryEventCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ type: "request", route: "/api/items/[id]", status: 202 }),
+      data: expect.objectContaining({
+        type: "request",
+        route: "/api/items/[id]",
+        status: 422,
+        metadata: expect.objectContaining({
+          errorDetail: "invalid",
+          errorValidation: expect.stringContaining("required"),
+        }),
+      }),
     }));
+    expect(JSON.stringify(mockTelemetryEventCreate.mock.calls)).not.toContain("hidden");
 
     const thrown = telemetry.withTelemetry(async () => { throw new Error("secret body"); }, { route: "/api/items/[id]" });
     await expect(thrown(new Request("https://example.test/api/items/secret?token=nope"))).rejects.toThrow("secret body");
@@ -82,7 +94,7 @@ describe("telemetry privacy helpers", () => {
         metadata: expect.objectContaining({ outcome: "thrown" }),
       }),
     }));
-    expect(JSON.stringify(mockTelemetryEventCreate.mock.calls)).not.toContain("secret body");
+    expect(JSON.stringify(mockTelemetryEventCreate.mock.calls)).toContain("secret body");
     expect(JSON.stringify(mockTelemetryEventCreate.mock.calls)).not.toContain("token=nope");
   });
 
