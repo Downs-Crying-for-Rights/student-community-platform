@@ -6,6 +6,7 @@ import {
   claimQQOutboxMessages,
 } from "@/lib/qq-outbox";
 import { alertQQBotReconnectFailure, recordQQBotHeartbeat } from "@/lib/qq-bot-monitor";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ const claimSchema = z
   })
   .strict();
 
-export async function POST(request: Request) {
+const post = async (request: Request) => {
   const authorization = authorizeQQInternalRequest(request);
   if (!authorization.ok) {
     return NextResponse.json(
@@ -58,4 +59,6 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/v1/internal/onebot/outbox/claim" });

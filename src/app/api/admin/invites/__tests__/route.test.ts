@@ -250,7 +250,7 @@ describe("POST /api/admin/invites", () => {
       "INVITE_CREATE",
       "INVITE_CODE",
       expect.any(String),
-      { count: 1, expiresInDays: 7 },
+      { count: 1, expiresInDays: 7, dcrContributionAccess: false },
     );
   });
 

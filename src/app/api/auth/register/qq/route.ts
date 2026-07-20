@@ -7,6 +7,7 @@ import { rateLimitKeyForIP } from "@/lib/rate-limiter";
 import { qqRegistrationSchema } from "@/lib/validators";
 import prisma from "@/lib/prisma";
 import { LOGIN_POLICIES, REGISTRATION_POLICY_KEYS } from "@/lib/login-policies";
+import { withTelemetry } from "@/lib/telemetry";
 
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ function noStore(response: NextResponse) {
   return response;
 }
 
-export async function POST(request: Request) {
+const post = async (request: Request) => {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const parsed = qqRegistrationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -58,4 +59,6 @@ export async function POST(request: Request) {
     }
     return noStore(NextResponse.json({ error: "注册凭据生成失败，请稍后重试" }, { status: 500 }));
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/auth/register/qq" });

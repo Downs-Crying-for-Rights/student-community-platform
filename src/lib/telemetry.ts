@@ -1,5 +1,16 @@
 import prisma from "@/lib/prisma";
 
+type DirectRouteHandler<TRequest extends Request, TContext, TResponse extends Response> = (
+  request: TRequest,
+  context: TContext,
+) => TResponse | Promise<TResponse>;
+
+export interface RouteTelemetryOptions {
+  route?: string;
+  params?: Record<string, string | string[]>;
+  persist?: boolean;
+}
+
 export interface ServerTelemetryInput {
   type: "request" | "error" | "event";
   name: string;
@@ -35,9 +46,33 @@ export function sanitizeTelemetryMetadata(
   ]));
 }
 
-export function normalizeTelemetryRoute(value: string): string {
-  const route = value.split("?")[0].slice(0, 300);
-  return route.startsWith("/") ? route : "/unknown";
+export function normalizeTelemetryRoute(
+  value: string,
+  params?: Record<string, string | string[]>,
+): string {
+  const pathname = value.split("?")[0];
+  if (!pathname.startsWith("/")) return "/unknown";
+  const parameterSegments = new Map<string, string>();
+  for (const [key, rawValue] of Object.entries(params ?? {})) {
+    for (const segment of Array.isArray(rawValue) ? rawValue : [rawValue]) {
+      parameterSegments.set(segment, `[${key}]`);
+      try {
+        parameterSegments.set(encodeURIComponent(segment), `[${key}]`);
+      } catch {}
+    }
+  }
+  const route = pathname
+    .split("/")
+    .map((segment) => {
+      if (!segment || /^\[.+\]$/.test(segment)) return segment;
+      if (parameterSegments.has(segment)) return parameterSegments.get(segment)!;
+      if (/^\d+$/.test(segment)) return "[id]";
+      if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(segment)) return "[id]";
+      if (/^(?:c[a-z0-9]{20,}|[0-9a-f]{16,})$/i.test(segment)) return "[id]";
+      return segment;
+    })
+    .join("/");
+  return route.slice(0, 300);
 }
 
 export function sanitizeTelemetryName(value: string): string {
@@ -73,4 +108,57 @@ export function trackServerTelemetryLater(input: ServerTelemetryInput): void {
   void trackServerTelemetry(input).catch((error) => {
     process.stderr.write(`telemetry.server.write_failed ${sanitizeTelemetryDetail(error, 500)}\n`);
   });
+}
+
+function requestIdFor(request: Request): string {
+  const supplied = request.headers.get("x-request-id");
+  return supplied && /^[A-Za-z0-9._:-]{1,128}$/.test(supplied) ? supplied : crypto.randomUUID();
+}
+
+export function recordCompletedRequest(
+  request: Request,
+  response: Response | undefined,
+  startedAt: number,
+  options: RouteTelemetryOptions & { requestId: string; userId?: string; thrown?: boolean },
+): void {
+  if (options.persist === false) return;
+  const route = normalizeTelemetryRoute(options.route ?? new URL(request.url).pathname, options.params);
+  trackServerTelemetryLater({
+    type: "request",
+    name: `${request.method} ${route}`,
+    route,
+    duration: Math.max(0, performance.now() - startedAt),
+    status: response?.status ?? 500,
+    userId: options.userId,
+    force: true,
+    metadata: {
+      requestId: options.requestId,
+      method: request.method.slice(0, 16),
+      outcome: options.thrown ? "thrown" : "returned",
+    },
+  });
+}
+
+/** Adds request correlation and completion telemetry without inspecting request or response content. */
+export function withTelemetry<TRequest extends Request, TContext = unknown, TResponse extends Response = Response>(
+  handler: DirectRouteHandler<TRequest, TContext, TResponse>,
+  options: RouteTelemetryOptions = {},
+): (request?: TRequest, context?: TContext) => Promise<TResponse> {
+  return async (request, context) => {
+    if (!request) throw new TypeError("Route request is required");
+    const startedAt = performance.now();
+    const requestId = requestIdFor(request);
+    try {
+      const response = await handler(request, context as TContext);
+      response.headers.set("X-Request-Id", requestId);
+      if (options.persist === false) {
+        response.headers.set("X-Telemetry-Ingestion", response.status < 400 ? "accepted" : response.status < 500 ? "rejected" : "unhealthy");
+      }
+      recordCompletedRequest(request, response, startedAt, { ...options, requestId });
+      return response;
+    } catch (error) {
+      recordCompletedRequest(request, undefined, startedAt, { ...options, requestId, thrown: true });
+      throw error;
+    }
+  };
 }

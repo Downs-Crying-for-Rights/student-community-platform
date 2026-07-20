@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { DEFAULT_HOME_HERO, getHomeHeroConfig } from "@/lib/home-content";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+const get = async () => {
   try {
     return NextResponse.json(
       { hero: await getHomeHeroConfig() },
@@ -16,4 +17,6 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } },
     );
   }
-}
+};
+
+export const GET = withTelemetry(get, { route: "/api/home-content" });

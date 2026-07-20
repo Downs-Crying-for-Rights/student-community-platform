@@ -151,27 +151,25 @@ function LoginContent() {
   const [qqRegistration, setQQRegistration] = useState<{ credential: string; command: string; expiresAt: string } | null>(null);
   const [agreedKeys, setAgreedKeys] = useState<Record<string, boolean>>({});
   const [showAgreement, setShowAgreement] = useState("");
+  const [agreementTitle, setAgreementTitle] = useState("");
   const [agreementContent, setAgreementContent] = useState("");
   const [allKeys, setAllKeys] = useState<{ key: string; title: string; revision: number }[]>([]);
 
-  // Load site content keys when entering register view
+  // Login and registration share the same database-managed agreements.
   useEffect(() => {
-    if (view === "register" && allKeys.length === 0) {
-      fetch("/api/site-content")
-        .then(r => r.json())
-        .then(d => {
-          const registrationAgreements = (d.items ?? []).filter(
-            (item: { key: string }) => REGISTRATION_POLICY_KEYS.includes(item.key as LoginPolicyId),
-          );
-          setAllKeys(registrationAgreements);
-          // Initialize all as unchecked
-          const init: Record<string, boolean> = {};
-          registrationAgreements.forEach((item: { key: string }) => { init[item.key] = false; });
-          setAgreedKeys(init);
-        })
-        .catch(() => {});
-    }
-  }, [view, allKeys.length]);
+    fetch("/api/site-content")
+      .then(r => r.json())
+      .then(d => {
+        const registrationAgreements = (d.items ?? []).filter(
+          (item: { key: string }) => REGISTRATION_POLICY_KEYS.includes(item.key as LoginPolicyId),
+        );
+        setAllKeys(registrationAgreements);
+        const init: Record<string, boolean> = {};
+        registrationAgreements.forEach((item: { key: string }) => { init[item.key] = false; });
+        setAgreedKeys(init);
+      })
+      .catch(() => {});
+  }, []);
 
   // Handle URL params (verify, error)
   useEffect(() => {
@@ -488,9 +486,16 @@ function LoginContent() {
     }
   }
 
-  function openLoginPolicy(policyId: LoginPolicyId) {
-    const policy = LOGIN_POLICIES[policyId];
-    setAgreementContent(policy.content);
+  async function openLoginPolicy(policyId: LoginPolicyId) {
+    try {
+      const response = await fetch(`/api/site-content/${policyId}`);
+      const data = await response.json();
+      setAgreementTitle(data.title || allKeys.find((item) => item.key === policyId)?.title || LOGIN_POLICIES[policyId].title);
+      setAgreementContent(data.content || "暂无内容");
+    } catch {
+      setAgreementTitle(allKeys.find((item) => item.key === policyId)?.title || LOGIN_POLICIES[policyId].title);
+      setAgreementContent("加载失败");
+    }
     setShowAgreement(policyId);
   }
 
@@ -944,7 +949,7 @@ function LoginContent() {
                       {inviteErrors.inviteCode}
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground">邀请码只用于注册资格，不会跳过 DCR 安全准入流程。</p>
+                  <p className="text-xs text-muted-foreground">特定邀请码可授予 DCR 发帖与委托提交权限，但不会开放互助任务、互助循环或完整 DCR 工作台。</p>
                 </div>
               )}
 
@@ -961,14 +966,7 @@ function LoginContent() {
                     />
                     <label htmlFor={`reg-${key}`} className="text-xs text-muted-foreground leading-relaxed">
                       我已阅读并同意
-                      <button type="button" className="ml-1 underline text-primary hover:text-primary/80" onClick={async () => {
-                        try {
-                          const r = await fetch(`/api/site-content/${key}`);
-                          const d = await r.json();
-                          setAgreementContent(d.content || "暂无内容");
-                        } catch { setAgreementContent("加载失败"); }
-                        setShowAgreement(key);
-                      }}>
+                      <button type="button" className="ml-1 underline text-primary hover:text-primary/80" onClick={() => void openLoginPolicy(key as LoginPolicyId)}>
                         《{title}》
                       </button>
                     </label>
@@ -1031,7 +1029,7 @@ function LoginContent() {
         <Dialog open={!!showAgreement} onOpenChange={(v) => { if (!v) setShowAgreement(""); }}>
           <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{allKeys.find(k => k.key === showAgreement)?.title ?? LOGIN_POLICIES[showAgreement as LoginPolicyId]?.title ?? "协议"}</DialogTitle>
+              <DialogTitle>{agreementTitle || allKeys.find(k => k.key === showAgreement)?.title || LOGIN_POLICIES[showAgreement as LoginPolicyId]?.title || "协议"}</DialogTitle>
             </DialogHeader>
             <SafeMarkdown content={agreementContent || "暂无内容"} />
           </DialogContent>
@@ -1210,9 +1208,15 @@ function LoginContent() {
             />
             <div className="text-xs leading-relaxed text-muted-foreground">
               我已阅读并同意
-              <button type="button" onClick={() => openLoginPolicy("user-agreement")} className="mx-1 text-primary underline hover:text-primary/80">《用户协议》</button>
-              和
-              <button type="button" onClick={() => openLoginPolicy("privacy-policy")} className="ml-1 text-primary underline hover:text-primary/80">《隐私政策》</button>
+              {REGISTRATION_POLICY_KEYS.map((key, index) => {
+                const title = allKeys.find((item) => item.key === key)?.title || LOGIN_POLICIES[key].title;
+                return (
+                  <span key={key}>
+                    {index > 0 ? "和" : null}
+                    <button type="button" onClick={() => void openLoginPolicy(key)} className="mx-1 text-primary underline hover:text-primary/80">《{title}》</button>
+                  </span>
+                );
+              })}
             </div>
           </div>
 
@@ -1246,7 +1250,7 @@ function LoginContent() {
       <Dialog open={!!showAgreement} onOpenChange={(open) => { if (!open) setShowAgreement(""); }}>
         <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{LOGIN_POLICIES[showAgreement as LoginPolicyId]?.title ?? "协议"}</DialogTitle>
+            <DialogTitle>{agreementTitle || allKeys.find(k => k.key === showAgreement)?.title || LOGIN_POLICIES[showAgreement as LoginPolicyId]?.title || "协议"}</DialogTitle>
           </DialogHeader>
           <SafeMarkdown content={agreementContent || "暂无内容"} />
         </DialogContent>

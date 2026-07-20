@@ -90,6 +90,14 @@ describe("AdminUsersPage", () => {
     expect(source).toContain("setSearch(searchInput.trim())");
     expect(source).toContain("setPage(1)");
   });
+
+  it("详情使用按域懒加载、分页和超级管理员限制", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../users/page.tsx"), "utf8");
+    expect(source).toContain("数据域浏览器");
+    expect(source).toContain("activity?domain=${activityDomain}&page=${activityPage}&pageSize=20");
+    expect(source).toContain("disabled={!!restricted && !isSuperAdmin}");
+    expect(source).toContain("完整分页记录请使用上方数据域浏览器");
+  });
 });
 
 describe("AdminUsersPage SUPER_ADMIN 条件渲染", () => {

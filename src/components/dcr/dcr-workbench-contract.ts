@@ -35,6 +35,11 @@ export interface DcrAdmissionProgress {
   linkedCase: DcrLinkedCaseSummary | null;
   application: DcrApplicationSummary | null;
   blockers: DcrBlocker[];
+  capabilities: {
+    canCreateDcrPost: boolean;
+    canSubmitDelegation: boolean;
+    canUseWorkspace: boolean;
+  };
 }
 
 export interface DcrWorkspaceItem {

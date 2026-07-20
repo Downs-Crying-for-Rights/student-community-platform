@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
-import { normalizeTelemetryRoute, sanitizeTelemetryMetadata, sanitizeTelemetryName } from "@/lib/telemetry";
+import { normalizeTelemetryRoute, sanitizeTelemetryMetadata, sanitizeTelemetryName, withTelemetry } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +28,7 @@ const bodySchema = z.object({
   events: z.array(eventSchema).min(1).max(20),
 });
 
-export async function POST(req: Request) {
+const post = async (req: Request) => {
   const origin = req.headers.get("origin");
   const expectedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim()
     || req.headers.get("host")
@@ -67,4 +67,7 @@ export async function POST(req: Request) {
   });
 
   return new NextResponse(null, { status: 204, headers: { "Cache-Control": "no-store" } });
-}
+};
+
+// This endpoint persists client events itself; tracking its own request would recurse on failures.
+export const POST = withTelemetry(post, { route: "/api/telemetry", persist: false });

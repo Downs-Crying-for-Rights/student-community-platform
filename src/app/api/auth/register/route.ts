@@ -7,8 +7,9 @@ import {
   validateNickname,
 } from "@/lib/auth/register-helpers";
 import { verifyCode } from "@/lib/sms/verification";
+import { withTelemetry } from "@/lib/telemetry";
 
-export async function POST(request: NextRequest) {
+const post = async (request: NextRequest) => {
   try {
     const body = await request.json();
     const parsed = registerSchema.safeParse(body);
@@ -58,4 +59,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/auth/register" });

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { User, Save, Loader2, Lock, Camera } from "lucide-react";
+import { User, Save, Loader2, Lock, Camera, UserX } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
@@ -287,6 +287,13 @@ export default function SettingsProfilePage() {
           <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
             <div><p className="font-medium">身份认证</p><p className="text-sm text-muted-foreground">申请真实用户、学生用户公开身份标签。</p></div>
             <Button asChild variant="outline"><Link href="/settings/identity">进入身份认证</Link></Button>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="font-medium">账号与注销</p><p className="text-sm text-muted-foreground">提交注销申请、查看审核状态或撤回待审核申请。</p></div>
+            <Button asChild variant="outline"><Link href="/settings/account"><UserX className="mr-2 h-4 w-4" />账号设置</Link></Button>
           </CardContent>
         </Card>
 

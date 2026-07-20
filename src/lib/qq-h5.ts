@@ -17,6 +17,7 @@ import { buildQQGrantConsumeWhere, hashQQGrant } from "@/lib/qq-grants";
 import { decryptQQIdentity, hashQQIdentity } from "@/lib/qq-identity";
 import prisma from "@/lib/prisma";
 import { hasMinimumRole } from "@/lib/rbac";
+import { canSubmitDcrDelegation } from "@/lib/dcr-capabilities";
 import {
   runSerializableTransaction,
   SerializableTransactionConflict,
@@ -307,15 +308,16 @@ export async function submitQQDraft(
 
     const user = await tx.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, phone: true, quizPassed: true, dcrAccess: true },
+      select: { id: true, role: true, phone: true, quizPassed: true, dcrAccess: true, dcrContributionAccess: true },
     });
     if (!user) throw new QQH5Error("USER_NOT_FOUND", "用户不存在", 404);
-    if (!user.dcrAccess) await reconcileRejectedDcrApplications(tx, userId);
-    const pending = user.dcrAccess ? null : await tx.accessApplication.findFirst({
+    const hasDelegationCapability = canSubmitDcrDelegation(user);
+    if (!hasDelegationCapability) await reconcileRejectedDcrApplications(tx, userId);
+    const pending = hasDelegationCapability ? null : await tx.accessApplication.findFirst({
       where: { applicantId: userId, type: "DCR", status: "PENDING" },
       select: { id: true },
     });
-    const admission = evaluateDcrAdmission({
+    const admission = hasDelegationCapability ? { allowed: true as const } : evaluateDcrAdmission({
       stage: "SUBMIT_CASE",
       user,
       hasOtherPendingApplication: Boolean(pending),
@@ -371,7 +373,7 @@ export async function submitQQDraft(
       select: { id: true, category: true },
     });
 
-    if (!user.dcrAccess) {
+    if (!user.dcrAccess && !user.dcrContributionAccess) {
       const applicationAdmission = evaluateDcrAdmission({
         stage: "CREATE_APPLICATION",
         user,

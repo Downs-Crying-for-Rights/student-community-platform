@@ -7,6 +7,7 @@ import {
   type DcrProgressDto,
   type DcrWorkspaceItem,
 } from "@/components/dcr/dcr-workbench-contract";
+import { canCreateDcrPost, canSubmitDcrDelegation } from "@/lib/dcr-capabilities";
 
 const ACTIVE_CASE_STATUSES = ["PENDING", "NEED_MORE_INFO", "MANUAL_REVIEW"] as const;
 const ACTIVE_TASK_STATUSES = [
@@ -67,6 +68,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           quizPassed: true,
           dcrAccess: true,
           dcrPledgeSigned: true,
+          dcrContributionAccess: true,
         },
       }),
       prisma.accessApplication.findFirst({
@@ -244,6 +246,11 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
             }
           : null,
         blockers,
+        capabilities: {
+          canCreateDcrPost: canCreateDcrPost(user),
+          canSubmitDelegation: canSubmitDcrDelegation(user),
+          canUseWorkspace: accessGranted,
+        },
       },
       workspace: {
         cases: { count: casesCount, todoCount: casesTodoCount, recent: caseItems },

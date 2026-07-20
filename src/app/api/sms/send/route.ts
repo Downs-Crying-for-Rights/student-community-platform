@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendCodeSchema } from "@/lib/validators";
 import { sendVerificationCode } from "@/lib/sms/verification";
+import { withTelemetry } from "@/lib/telemetry";
 
-export async function POST(request: NextRequest) {
+const post = async (request: NextRequest) => {
   try {
     const body = await request.json();
 
@@ -35,4 +36,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/sms/send" });

@@ -9,6 +9,7 @@ interface InviteItem {
   code: string;
   isUsed: boolean;
   isRevoked: boolean;
+  dcrContributionAccess: boolean;
   expiresAt: string;
   createdAt: string;
   usedAt: string | null;
@@ -35,6 +36,7 @@ export default function AdminInvitesPage() {
   const [generating, setGenerating] = useState(false);
   const [count, setCount] = useState(1);
   const [expiresInDays, setExpiresInDays] = useState(7);
+  const [dcrContributionAccess, setDcrContributionAccess] = useState(false);
 
   const fetchInvites = useCallback(async () => {
     setLoading(true);
@@ -62,7 +64,7 @@ export default function AdminInvitesPage() {
       const res = await fetch("/api/admin/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count, expiresInDays }),
+        body: JSON.stringify({ count, expiresInDays, dcrContributionAccess }),
       });
       if (res.ok) fetchInvites();
     } finally {
@@ -112,6 +114,11 @@ export default function AdminInvitesPage() {
           <Button onClick={handleGenerate} disabled={generating}>
             {generating ? "生成中..." : "生成邀请码"}
           </Button>
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" checked={dcrContributionAccess} onChange={(event) => setDcrContributionAccess(event.target.checked)} className="h-4 w-4 accent-primary" />
+            授予 DCR 发帖和委托提交权限
+          </label>
+          <p className="w-full text-xs text-muted-foreground">此权限不包含 DCR 内容浏览、互助任务、互助循环或完整工作台权限。</p>
         </CardContent>
       </Card>
 
@@ -149,6 +156,7 @@ export default function AdminInvitesPage() {
                       <th className="text-left p-3">邀请码</th>
                       <th className="text-left p-3">创建者</th>
                       <th className="text-left p-3">状态</th>
+                      <th className="text-left p-3">权限</th>
                       <th className="text-left p-3">创建时间</th>
                       <th className="text-left p-3">过期时间</th>
                       <th className="text-left p-3">使用者</th>
@@ -169,6 +177,7 @@ export default function AdminInvitesPage() {
                               {status.text}
                             </span>
                           </td>
+                          <td className="p-3 text-xs">{invite.dcrContributionAccess ? "DCR 发帖 + 委托" : "仅注册"}</td>
                           <td className="p-3 text-xs text-muted-foreground">
                             {new Date(invite.createdAt).toLocaleDateString("zh-CN")}
                           </td>

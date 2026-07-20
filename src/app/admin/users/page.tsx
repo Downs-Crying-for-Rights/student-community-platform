@@ -42,7 +42,21 @@ interface PunishmentItem {
   action: "APPLIED" | "REVOKED";
   reason: string;
   createdAt: string;
-  operator: { id: string; nickname: string | null; phone: string | null };
+  operator: { id: string; nickname: string | null };
+}
+
+interface UserSummary {
+  user: UserItem & Record<string, unknown>;
+  counts: Record<string, number>;
+}
+
+interface ActivityResponse {
+  domain: string;
+  items: unknown[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 const ROLES = ["USER", "TRUSTED_USER", "MODERATOR", "ADMIN", "DCR_HELPER", "SUPER_ADMIN"] as const;
@@ -57,6 +71,19 @@ const OVERRIDE_FIELDS = [
   { key: "dcrPledgeSigned", label: "已签署 DCR 私密区守则", description: "需与 DCR 准入授权同时开启，用户才能按统一准入规则使用 DCR。" },
   { key: "quizPassed", label: "已通过 DCR 入频考核", description: "只表示考核通过，不会单独授予 DCR 权限；仍需手机号、委托审核和准入授权。" },
   { key: "onboardingDone", label: "已完成平台新手引导", description: "表示完成平台引导；考核已通过的用户也不会再被强制跳转到引导页。" },
+] as const;
+
+const ACTIVITY_DOMAINS = [
+  ["posts", "帖子"], ["revisions", "修订"], ["comments", "评论"], ["likes", "点赞"], ["bookmarks", "收藏"],
+  ["reports-filed", "发起举报"], ["reports-received", "收到举报"], ["punishments", "处罚"], ["notifications", "通知"],
+  ["dm-threads", "私信会话"], ["dm-messages", "私信正文", true], ["chat-memberships", "群聊成员"],
+  ["chat-messages", "群聊正文", true], ["chat-requests", "入群申请"], ["chat-bans", "群聊封禁"],
+  ["case-messages", "工单消息正文", true], ["help-sessions", "互助会话"], ["help-messages", "互助消息正文", true],
+  ["dcr-cases", "DCR 工单"], ["dcr-applications", "准入申请"], ["dcr-tasks", "互助任务"], ["dcr-claims", "认领"],
+  ["dcr-evidence", "证据元数据"], ["dcr-timeline", "任务时间线"], ["dcr-cycles", "互助循环"],
+  ["psychology", "心理记录", true], ["dcr-private", "DCR 私密原始内容", true], ["identity", "身份核验"], ["auth-providers", "认证提供方"], ["auth-sessions", "登录会话"],
+  ["invites", "邀请"], ["announcements", "公告"], ["qq", "QQ 元数据"], ["qq-private", "QQ 原始交互", true],
+  ["audit", "审计", true], ["diagnostics", "系统/遥测", true], ["ai", "AI 诊断", true],
 ] as const;
 
 export default function AdminUsersPage() {
@@ -88,6 +115,12 @@ export default function AdminUsersPage() {
   const [punishments, setPunishments] = useState<PunishmentItem[]>([]);
   const [punishmentsLoading, setPunishmentsLoading] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [summary, setSummary] = useState<UserSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [activityDomain, setActivityDomain] = useState("posts");
+  const [activity, setActivity] = useState<ActivityResponse | null>(null);
+  const [activityPage, setActivityPage] = useState(1);
+  const [activityLoading, setActivityLoading] = useState(false);
   const detailRequestRef = useRef(0);
 
   const fetchUsers = useCallback(async () => {
@@ -171,25 +204,57 @@ export default function AdminUsersPage() {
     setDetailError("");
     setProfileReason("");
     setProfileTicketId("");
+    setSummary(null);
+    setActivity(null);
+    setActivityDomain("posts");
+    setActivityPage(1);
+    setSummaryLoading(true);
     setPunishmentsLoading(true);
     setPostsLoading(true);
     try {
-      const [punishmentResponse, postsResponse] = await Promise.all([
-        fetch(`/api/admin/users/${user.id}/punishments`),
-        fetch(`/api/admin/posts?authorId=${user.id}&pageSize=50`),
+      const [response, punishmentResponse, postsResponse] = await Promise.all([
+        isSuperAdmin ? fetch(`/api/admin/users/${user.id}`) : Promise.resolve(null),
+        fetch(`/api/admin/users/${user.id}/punishments?pageSize=20`),
+        fetch(`/api/admin/posts?authorId=${user.id}&pageSize=20`),
       ]);
+      const data = response?.ok ? await response.json() : null;
       const punishmentData = punishmentResponse.ok ? await punishmentResponse.json() : { punishments: [] };
       const postsData = postsResponse.ok ? await postsResponse.json() : { posts: [] };
       if (requestId !== detailRequestRef.current) return;
+      if (response && !response.ok) setDetailError(data?.error || "加载用户摘要失败");
+      else if (response) setSummary(data);
       setPunishments(punishmentData.punishments ?? []);
       setUserPosts(postsData.posts ?? []);
     } finally {
       if (requestId === detailRequestRef.current) {
+        setSummaryLoading(false);
         setPunishmentsLoading(false);
         setPostsLoading(false);
       }
     }
   };
+
+  useEffect(() => {
+    if (!editingUser || !isSuperAdmin) return;
+    const privateDomain = ACTIVITY_DOMAINS.find(([key]) => key === activityDomain)?.[2];
+    if (privateDomain && !isSuperAdmin) {
+      setActivity(null);
+      return;
+    }
+    const controller = new AbortController();
+    setActivityLoading(true);
+    fetch(`/api/admin/users/${editingUser.id}/activity?domain=${activityDomain}&page=${activityPage}&pageSize=20`, { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "加载活动失败");
+        setActivity(data);
+      })
+      .catch((error) => {
+        if (error instanceof Error && error.name !== "AbortError") setDetailError(error.message);
+      })
+      .finally(() => { if (!controller.signal.aborted) setActivityLoading(false); });
+    return () => controller.abort();
+  }, [activityDomain, activityPage, editingUser, isSuperAdmin]);
 
   const handleSaveProfile = async () => {
     if (!editingUser || profileSaving) return;
@@ -498,6 +563,34 @@ export default function AdminUsersPage() {
             </div>
 
             {isSuperAdmin && <div className="space-y-4 rounded-lg border bg-background/95 p-4">
+              <div>
+                <h3 className="font-semibold">完整账户摘要</h3>
+                <p className="mt-1 text-xs text-muted-foreground">安全字段、认证提供方、会话元数据、身份核验元数据与各域计数。密钥、令牌、哈希和原始身份材料永不返回。</p>
+              </div>
+              {summaryLoading ? <p className="text-sm text-muted-foreground">加载摘要中...</p> : summary ? <>
+                <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                  {Object.entries(summary.user).filter(([key]) => !["accounts", "sessions", "identityVerificationApplications", "qqIdentity", "pendingQQRegistration", "accountDeletionRequest"].includes(key)).map(([key, value]) => (
+                    <div key={key} className="min-w-0 rounded-md bg-muted/40 px-3 py-2"><span className="text-xs text-muted-foreground">{key}</span><div className="break-all">{value === null ? "-" : typeof value === "object" ? JSON.stringify(value) : String(value)}</div></div>
+                  ))}
+                </div>
+                <details className="rounded-md border p-3"><summary className="cursor-pointer text-sm font-medium">认证、核验、QQ 与注销元数据</summary><pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify({ accounts: summary.user.accounts, sessions: summary.user.sessions, identityVerificationApplications: summary.user.identityVerificationApplications, qqIdentity: summary.user.qqIdentity, pendingQQRegistration: summary.user.pendingQQRegistration, accountDeletionRequest: summary.user.accountDeletionRequest }, null, 2)}</pre></details>
+                <div className="flex flex-wrap gap-2">{Object.entries(summary.counts).map(([key, value]) => <span key={key} className="rounded-full border px-2.5 py-1 text-xs"><strong>{key}</strong> {value}</span>)}</div>
+              </> : <p className="text-sm text-destructive">摘要不可用</p>}
+            </div>}
+
+            {isSuperAdmin && <div className="space-y-4 rounded-lg border bg-background/95 p-4">
+              <div><h3 className="font-semibold">数据域浏览器</h3><p className="mt-1 text-xs text-muted-foreground">每次仅加载一个域，每页最多 20 条。带“超级管理员”的正文或诊断读取会写入审计日志。</p></div>
+              <div className="flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="用户数据域">
+                {ACTIVITY_DOMAINS.map(([key, label, restricted]) => <button key={key} type="button" role="tab" aria-selected={activityDomain === key} disabled={!!restricted && !isSuperAdmin} onClick={() => { setActivityDomain(key); setActivityPage(1); setDetailError(""); }} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs ${activityDomain === key ? "bg-primary text-primary-foreground" : "bg-background"} disabled:cursor-not-allowed disabled:opacity-40`}>{label}{restricted ? " · 超级管理员" : ""}</button>)}
+              </div>
+              {activityLoading ? <p className="text-sm text-muted-foreground">加载数据域中...</p> : activity ? <>
+                <div className="flex items-center justify-between text-xs text-muted-foreground"><span>共 {activity.total} 条</span><span>{activity.page} / {Math.max(1, activity.totalPages)}</span></div>
+                {activity.items.length === 0 ? <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">此域暂无记录</p> : <div className="space-y-2">{activity.items.map((item, index) => <pre key={`${activityDomain}-${index}`} className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md border bg-muted/30 p-3 text-xs">{JSON.stringify(item, null, 2)}</pre>)}</div>}
+                <div className="flex justify-end gap-2"><Button size="sm" variant="outline" disabled={activityPage <= 1} onClick={() => setActivityPage((value) => value - 1)}>上一页</Button><Button size="sm" variant="outline" disabled={activityPage >= activity.totalPages} onClick={() => setActivityPage((value) => value + 1)}>下一页</Button></div>
+              </> : <p className="text-sm text-muted-foreground">选择可访问的数据域。</p>}
+            </div>}
+
+            {isSuperAdmin && <div className="space-y-4 rounded-lg border bg-background/95 p-4">
               <div><h3 className="font-semibold">编辑身份资料与联系方式</h3><p className="mt-1 text-xs text-muted-foreground">手机号和邮箱必须保持唯一；昵称和简介会经过敏感内容与个人信息检查。</p></div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1 text-sm"><span className="font-medium">昵称</span><input value={profileForm.nickname} onChange={(event) => setProfileForm((form) => ({ ...form, nickname: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2" /></label>
@@ -558,7 +651,7 @@ export default function AdminUsersPage() {
                   {punishments.map((item) => <div key={item.id} className="rounded-md border p-3 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.type === "ACCOUNT_BAN" ? "账号封禁" : "帖子影子隐藏"} · {item.action === "APPLIED" ? "执行处罚" : "解除处罚"}</strong><time className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString("zh-CN")}</time></div>
                     <p className="mt-1">原因：{item.reason}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">操作人：{item.operator.nickname || item.operator.phone || item.operator.id}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">操作人：{item.operator.nickname || item.operator.id}</p>
                   </div>)}
                 </div>
               )}
@@ -566,7 +659,7 @@ export default function AdminUsersPage() {
             </div>
 
             <div className="space-y-3 rounded-lg border bg-background/95 p-4">
-              <div><h3 className="font-semibold">该用户的帖子</h3><p className="mt-1 text-xs text-muted-foreground">显示最多 50 篇帖子，可进入详情或调整审核状态。</p></div>
+              <div><h3 className="font-semibold">该用户的帖子</h3><p className="mt-1 text-xs text-muted-foreground">显示最近 20 篇帖子，可进入详情或调整审核状态；完整分页记录请使用上方数据域浏览器。</p></div>
               {postsLoading ? <p className="text-sm text-muted-foreground">加载中...</p> : userPosts.length === 0 ? <p className="text-sm text-muted-foreground">暂无帖子</p> : <div className="space-y-2">
                 {userPosts.map((post) => <div key={post.id} className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center">
                   <div className="min-w-0 flex-1">{editingPostId === post.id ? <div className="space-y-2"><input value={postForm.title} maxLength={30} onChange={(event) => setPostForm((form) => ({ ...form, title: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm" /><textarea value={postForm.content} maxLength={10000} rows={5} onChange={(event) => setPostForm((form) => ({ ...form, content: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm" /><div className="flex gap-2"><Button size="sm" onClick={handleSavePost} disabled={postSaving || !postForm.title.trim() || !postForm.content.trim()}>保存正文</Button><Button size="sm" variant="outline" onClick={() => setEditingPostId(null)}>取消</Button></div></div> : <><a href={`/post/${post.id}`} className="font-medium hover:underline">{post.title}</a><p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{post.content}</p><p className="mt-1 text-xs text-muted-foreground">{post.board.name} · {new Date(post.createdAt).toLocaleString("zh-CN")}</p></>}</div>

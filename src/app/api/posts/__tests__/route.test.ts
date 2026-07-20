@@ -373,6 +373,28 @@ describe("POST /api/posts", () => {
     );
   });
 
+  it("投稿邀请码用户可创建 DCR 帖子但无需完整准入", async () => {
+    setSession("contributor", "USER");
+    mockUserFindUnique.mockResolvedValue({
+      ...defaultUserAttrs,
+      role: "USER",
+      dcrAccess: false,
+      dcrPledgeSigned: false,
+      dcrContributionAccess: true,
+    });
+    mockBoardFindUnique.mockResolvedValue({ id: "b2", zone: "DCR", isActive: true });
+    mockPostCount.mockResolvedValue(0);
+    mockScanContent.mockResolvedValue([]);
+    mockPostCreate.mockResolvedValue({ id: "p-contribution", status: "PENDING", board: { zone: "DCR" } });
+
+    const { POST } = await import("../route");
+    const res = await POST(makeRequest("POST", undefined, {
+      title: "投稿帖子", content: "投稿内容", boardId: "clxxxxxxxxxxxxxxxxxx002", dcrCategory: "TUTORING",
+    }), { params: {} });
+
+    expect(res.status).toBe(201);
+  });
+
   it("DCR 帖子可关联本人参与且已过审的工单", async () => {
     setSession("user1", "TRUSTED_USER");
     mockUserFindUnique.mockResolvedValue({ ...defaultUserAttrs, dcrAccess: true, dcrPledgeSigned: true });

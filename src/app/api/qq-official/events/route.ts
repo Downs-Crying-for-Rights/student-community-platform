@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withTelemetry } from "@/lib/telemetry";
 import { z } from "zod";
 import {
   getQQOfficialConfig,
@@ -30,7 +31,7 @@ const eventSchema = z.object({
 
 const replyText = "学互会 QQ 官方机器人已接入。当前支持基础消息回复；账号绑定、委托提交等敏感操作请在学互会网站完成。";
 
-export async function POST(req: Request) {
+const post = async (req: Request) => {
   const config = getQQOfficialConfig();
   if (!config.enabled || !config.configured) {
     return NextResponse.json({ error: "机器人未启用" }, { status: 503 });
@@ -110,4 +111,6 @@ export async function POST(req: Request) {
   // Delivery succeeded. If Redis completion is uncertain, ACK instead of risking a duplicate reply.
   await completeQQOfficialEvent(event.data.id, event.data.t, leaseToken).catch(() => false);
   return NextResponse.json({ op: 12 });
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/qq-official/events" });

@@ -4,12 +4,13 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
   punishmentFindMany: vi.fn(),
+  punishmentCount: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     user: { findUnique: mocks.userFindUnique },
-    userPunishment: { findMany: mocks.punishmentFindMany },
+    userPunishment: { findMany: mocks.punishmentFindMany, count: mocks.punishmentCount },
   },
 }));
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
@@ -45,13 +46,14 @@ describe("GET /api/admin/users/[id]/punishments", () => {
       expires: new Date(Date.now() + 86_400_000).toISOString(),
     } as never);
     mocks.userFindUnique.mockResolvedValue({ id: "user1" });
+    mocks.punishmentCount.mockResolvedValue(1);
     mocks.punishmentFindMany.mockResolvedValue([{
       id: "punishment1",
       type: "ACCOUNT_BAN",
       action: "APPLIED",
       reason: "多次发布违规内容",
       createdAt: new Date("2026-07-17T00:00:00Z"),
-      operator: { id: "admin1", nickname: "管理员", phone: "18888888888" },
+      operator: { id: "admin1", nickname: "管理员" },
     }]);
 
     const response = await GET(request(), { params: { id: "user1" } });
@@ -61,10 +63,12 @@ describe("GET /api/admin/users/[id]/punishments", () => {
     expect(data.punishments).toHaveLength(1);
     expect(mocks.punishmentFindMany).toHaveBeenCalledWith({
       where: { userId: "user1" },
-      include: { operator: { select: { id: true, nickname: true, phone: true } } },
+      include: { operator: { select: { id: true, nickname: true } } },
       orderBy: { createdAt: "desc" },
-      take: 100,
+      skip: 0,
+      take: 20,
     });
+    expect(data).toMatchObject({ total: 1, page: 1, pageSize: 20, totalPages: 1 });
   });
 
   it("目标用户不存在时返回 404", async () => {

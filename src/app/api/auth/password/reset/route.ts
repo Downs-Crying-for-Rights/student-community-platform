@@ -6,6 +6,7 @@ import { resetPasswordSchema } from "@/lib/validators";
 import { verifyCode } from "@/lib/sms/verification";
 import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
+import { withTelemetry } from "@/lib/telemetry";
 
 function requestIp(request: NextRequest) {
   return request.headers.get("x-forwarded-for")?.split(",")[0].trim()
@@ -13,7 +14,7 @@ function requestIp(request: NextRequest) {
     || "unknown";
 }
 
-export async function POST(request: NextRequest) {
+const post = async (request: NextRequest) => {
   try {
     const parsed = resetPasswordSchema.safeParse(await request.json());
     if (!parsed.success) {
@@ -50,4 +51,6 @@ export async function POST(request: NextRequest) {
     console.error("POST /api/auth/password/reset error:", error);
     return NextResponse.json({ error: "密码重置失败，请稍后再试" }, { status: 500 });
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/auth/password/reset" });

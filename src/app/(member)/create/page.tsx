@@ -186,6 +186,9 @@ export default function CreatePage() {
           if (requestedZone === "PSYCHOLOGY") {
             const psychBoard = (data.boards ?? []).find((board: Board) => board.zone === "PSYCHOLOGY");
             if (psychBoard) setBoardId(psychBoard.id);
+          } else if (requestedZone === "DCR") {
+            const dcrBoard = (data.boards ?? []).find((board: Board) => board.zone === "DCR");
+            if (dcrBoard) setBoardId(dcrBoard.id);
           }
         }
       } catch {

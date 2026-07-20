@@ -153,6 +153,26 @@ describe("POST /api/cases", () => {
     expect(res.status).toBe(201);
   });
 
+  it("投稿邀请码用户无需考核即可提交委托且不创建完整准入申请", async () => {
+    setSession("contributor", "USER");
+    mockUserFindUnique.mockResolvedValue({
+      id: "contributor", role: "USER", dcrAccess: false,
+      dcrContributionAccess: true, phone: null, quizPassed: false,
+    });
+    mockCaseCreate.mockResolvedValue({
+      id: "case-contribution", category: "TUTORING", formData: {}, status: "OPENED",
+      pledgeText: "声明", submitterId: "contributor", handlerId: null,
+      createdAt: new Date(), updatedAt: new Date(),
+      submitter: { id: "contributor", nickname: "投稿用户" }, timeline: [],
+    });
+
+    const { POST } = await import("../route");
+    const res = await POST(makePostRequest(validRequest), { params: {} });
+
+    expect(res.status).toBe(201);
+    expect(mockAppCreate).not.toHaveBeenCalled();
+  });
+
   it("应返回 400 当参数校验失败", async () => {
     setSession("user1", "USER");
     mockUserFindUnique.mockResolvedValue({ id: "user1", dcrAccess: false, phone: "13800138000", quizPassed: true });

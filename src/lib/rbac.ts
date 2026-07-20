@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
-import { sanitizeTelemetryDetail, trackServerTelemetryLater } from "@/lib/telemetry";
+import { recordCompletedRequest } from "@/lib/telemetry";
 
 // ==================== Action & Resource Types ====================
 
@@ -190,111 +190,49 @@ type AuthenticatedHandler = (
 export function withAuth(
   handler: AuthenticatedHandler,
   requiredRole?: Role,
-  options?: { captureAllTelemetry?: boolean },
+  options?: { route?: string; captureAllTelemetry?: boolean },
 ): RouteHandler {
   return async (req, context) => {
     const startedAt = performance.now();
-    const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      const response = NextResponse.json({ error: "未登录" }, { status: 401 });
-      trackServerTelemetryLater({
-        type: "error",
-        name: `${req.method} ${new URL(req.url).pathname}`,
-        route: new URL(req.url).pathname,
-        duration: performance.now() - startedAt,
-        status: 401,
-        force: options?.captureAllTelemetry,
-        metadata: { requestId, method: req.method, errorMessage: "未登录" },
-      });
-      return response;
-    }
-
-    if (session.user.isBanned) {
-      return NextResponse.json({ error: "账号已被封禁" }, { status: 403 });
-    }
-
-    const pathname = new URL(req.url).pathname;
-    const profileCompletionAllowed = pathname.startsWith("/api/users/")
-      || pathname === "/api/upload"
-      || /^\/api\/announcements\/[^/]+\/dismiss$/.test(pathname);
-    if (session.user.profileCompletionRequired && !profileCompletionAllowed) {
-      return NextResponse.json(
-        { error: "请先补齐昵称、头像和QQ号", profileCompletionRequired: true },
-        { status: 403 },
-      );
-    }
-
-    const userRole = (session.user.role ?? "USER") as Role;
-
-    if (requiredRole && !hasMinimumRole(userRole, requiredRole)) {
-      const response = NextResponse.json({ error: "权限不足" }, { status: 403 });
-      trackServerTelemetryLater({
-        type: "error",
-        name: `${req.method} ${new URL(req.url).pathname}`,
-        route: new URL(req.url).pathname,
-        duration: performance.now() - startedAt,
-        status: 403,
-        userId: session.user.id,
-        force: options?.captureAllTelemetry,
-        metadata: { requestId, method: req.method, errorMessage: "权限不足" },
-      });
-      return response;
-    }
-
-    // Attach user info to request for downstream handlers
-    const authenticatedReq = req as AuthenticatedRequest;
-    authenticatedReq.user = { id: session.user.id, role: userRole };
-
+    const suppliedId = req.headers.get("x-request-id");
+    const requestId = suppliedId && /^[A-Za-z0-9._:-]{1,128}$/.test(suppliedId) ? suppliedId : crypto.randomUUID();
+    let userId: string | undefined;
+    let response: NextResponse | undefined;
     try {
-      const response = await handler(authenticatedReq, context);
-      response.headers.set("X-Request-Id", requestId);
-      let responseError: string | undefined;
-      let validationDetails: string | undefined;
-      if (response.status >= 400) {
-        try {
-          const body = await response.clone().json() as { error?: unknown; message?: unknown; details?: unknown };
-          responseError = sanitizeTelemetryDetail(body.error ?? body.message ?? response.statusText, 2_000);
-          if (body.details != null) {
-            validationDetails = sanitizeTelemetryDetail(JSON.stringify(body.details), 8_000);
-          }
-        } catch {
-          responseError = sanitizeTelemetryDetail(response.statusText, 2_000);
+      const session = await getServerSession(authOptions);
+      const sessionUser = session?.user;
+      userId = sessionUser?.id;
+      if (!userId) {
+        response = NextResponse.json({ error: "未登录" }, { status: 401 });
+      } else if (sessionUser?.isBanned) {
+        response = NextResponse.json({ error: "账号已被封禁" }, { status: 403 });
+      } else {
+        const pathname = new URL(req.url).pathname;
+        const profileCompletionAllowed = pathname.startsWith("/api/users/")
+          || pathname === "/api/upload"
+          || /^\/api\/announcements\/[^/]+\/dismiss$/.test(pathname);
+        const userRole = (sessionUser?.role ?? "USER") as Role;
+        if (sessionUser?.profileCompletionRequired && !profileCompletionAllowed) {
+          response = NextResponse.json(
+            { error: "请先补齐昵称、头像和QQ号", profileCompletionRequired: true },
+            { status: 403 },
+          );
+        } else if (requiredRole && !hasMinimumRole(userRole, requiredRole)) {
+          response = NextResponse.json({ error: "权限不足" }, { status: 403 });
+        } else {
+          const authenticatedReq = req as AuthenticatedRequest;
+          authenticatedReq.user = { id: userId, role: userRole };
+          response = await handler(authenticatedReq, context);
         }
       }
-      trackServerTelemetryLater({
-        type: response.status >= 400 ? "error" : "request",
-        name: `${req.method} ${new URL(req.url).pathname}`,
-        route: new URL(req.url).pathname,
-        duration: performance.now() - startedAt,
-        status: response.status,
-        userId: session.user.id,
-        force: options?.captureAllTelemetry,
-        metadata: {
-          requestId,
-          method: req.method,
-          statusText: response.statusText,
-          ...(responseError ? { errorMessage: responseError } : {}),
-          ...(validationDetails ? { validationDetails } : {}),
-        },
+      response.headers.set("X-Request-Id", requestId);
+      recordCompletedRequest(req, response, startedAt, {
+        requestId, userId, route: options?.route, params: context.params,
       });
       return response;
     } catch (error) {
-      trackServerTelemetryLater({
-        type: "error",
-        name: error instanceof Error ? error.name : "route_error",
-        route: new URL(req.url).pathname,
-        duration: performance.now() - startedAt,
-        status: 500,
-        userId: session.user.id,
-        force: options?.captureAllTelemetry,
-        metadata: {
-          requestId,
-          method: req.method,
-          errorMessage: sanitizeTelemetryDetail(error instanceof Error ? error.message : error, 2_000),
-          stack: sanitizeTelemetryDetail(error instanceof Error ? error.stack : "", 8_000),
-        },
+      recordCompletedRequest(req, undefined, startedAt, {
+        requestId, userId, route: options?.route, params: context.params, thrown: true,
       });
       throw error;
     }
@@ -317,15 +255,27 @@ type OptionalAuthHandler = (
  */
 export function withOptionalAuth(handler: OptionalAuthHandler): RouteHandler {
   return async (req, context) => {
-    const session = await getServerSession(authOptions);
-    const optReq = req as OptionalAuthRequest;
-
-    if (session?.user?.id && !session.user.isBanned) {
-      const userRole = (session.user.role ?? "USER") as Role;
-      optReq.user = { id: session.user.id, role: userRole };
+    const startedAt = performance.now();
+    const suppliedId = req.headers.get("x-request-id");
+    const requestId = suppliedId && /^[A-Za-z0-9._:-]{1,128}$/.test(suppliedId) ? suppliedId : crypto.randomUUID();
+    let userId: string | undefined;
+    try {
+      const session = await getServerSession(authOptions);
+      const optReq = req as OptionalAuthRequest;
+      if (session?.user?.id && !session.user.isBanned) {
+        userId = session.user.id;
+        optReq.user = { id: userId, role: (session.user.role ?? "USER") as Role };
+      }
+      const response = await handler(optReq, context);
+      response.headers.set("X-Request-Id", requestId);
+      recordCompletedRequest(req, response, startedAt, { requestId, userId, params: context.params });
+      return response;
+    } catch (error) {
+      recordCompletedRequest(req, undefined, startedAt, {
+        requestId, userId, params: context.params, thrown: true,
+      });
+      throw error;
     }
-
-    return handler(optReq, context);
   };
 }
 

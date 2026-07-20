@@ -61,6 +61,7 @@ function buildInviteCode(overrides: Record<string, unknown> = {}) {
     code: "VALID123",
     isUsed: false,
     isRevoked: false,
+    dcrContributionAccess: false,
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 1 day from now
     createdAt: new Date(),
     usedAt: null,
@@ -254,7 +255,7 @@ describe("POST /api/auth/invite", () => {
       expect(data.message).toBe("注册成功");
       expect(data.userId).toBe("newuser1");
 
-      // 邀请码只授予注册资格，DCR 权限仍需走统一安全准入流程。
+      // 普通邀请码不授予 DCR 投稿权限。
       expect(mockCreate).toHaveBeenCalledWith({
         data: {
           email: "test@example.com",
@@ -263,6 +264,7 @@ describe("POST /api/auth/invite", () => {
           phone: "13800138000",
           profileCompletionRequired: true,
           isAnonymous: false,
+          dcrContributionAccess: false,
         },
       });
 
@@ -284,6 +286,25 @@ describe("POST /api/auth/invite", () => {
       // JWT 会话由前端注册成功后通过 Credentials Provider 创建。
       expect(mockSessionCreate).not.toHaveBeenCalled();
       expect(mockVerifyCode).toHaveBeenCalledWith("13800138000", "123456", "register");
+    });
+
+    it("应复制 DCR 投稿权限但不授予完整准入", async () => {
+      mockFindUnique.mockResolvedValue(buildInviteCode({ dcrContributionAccess: true }));
+      mockTransaction.mockImplementation(async (fn: Function) => fn({
+        user: { create: mockCreate.mockResolvedValue({ id: "contributor" }) },
+        inviteCode: { update: mockUpdate.mockResolvedValue({}) },
+      }));
+
+      const res = await POST(createRequest(validBody));
+
+      expect(res.status).toBe(201);
+      expect(mockCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          dcrContributionAccess: true,
+        }),
+      });
+      expect(mockCreate.mock.calls[0][0].data).not.toHaveProperty("dcrAccess");
+      expect(mockCreate.mock.calls[0][0].data).not.toHaveProperty("dcrPledgeSigned");
     });
 
     it("成功注册后不应写入数据库 Session cookie", async () => {

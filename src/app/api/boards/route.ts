@@ -32,6 +32,7 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
           psychAccess: true,
           dcrAccess: true,
           dcrPledgeSigned: true,
+          dcrContributionAccess: true,
           role: true,
         },
       });
@@ -46,6 +47,8 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
         accessibleZones.push("PSYCHOLOGY");
       }
       if (canAccessZone(userAttrs, "DCR").allowed) {
+        accessibleZones.push("DCR");
+      } else if (user.dcrContributionAccess) {
         accessibleZones.push("DCR");
       }
 

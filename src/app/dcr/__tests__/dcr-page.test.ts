@@ -16,6 +16,7 @@ function admission(overrides: Partial<DcrAdmissionProgress> = {}): DcrAdmissionP
     linkedCase: null,
     application: null,
     blockers: [],
+    capabilities: { canCreateDcrPost: false, canSubmitDelegation: false, canUseWorkspace: false },
     ...overrides,
   };
 }
