@@ -58,6 +58,15 @@ fi
 if ! grep -q '^SYSTEM_SECRET_ENCRYPTION_KEY=' "$SHARED_DIR/.env"; then
   printf 'SYSTEM_SECRET_ENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)" >> "$SHARED_DIR/.env"
 fi
+if ! grep -q '^IDENTITY_VERIFICATION_ENCRYPTION_KEY=' "$SHARED_DIR/.env"; then
+  printf 'IDENTITY_VERIFICATION_ENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)" >> "$SHARED_DIR/.env"
+fi
+if ! grep -q '^IDENTITY_VERIFICATION_HMAC_KEY=' "$SHARED_DIR/.env"; then
+  printf 'IDENTITY_VERIFICATION_HMAC_KEY=%s\n' "$(openssl rand -hex 32)" >> "$SHARED_DIR/.env"
+fi
+if ! grep -q '^IDENTITY_VERIFICATION_KEY_VERSION=' "$SHARED_DIR/.env"; then
+  printf 'IDENTITY_VERIFICATION_KEY_VERSION=1\n' >> "$SHARED_DIR/.env"
+fi
 
 cp "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 chmod 600 "$RELEASE_DIR/.env"
@@ -173,6 +182,7 @@ fi
 
 chmod +x "$CURRENT_LINK/scripts/collect-production-logs.sh"
 chmod +x "$CURRENT_LINK/scripts/cleanup-expired-qq-registrations.sh"
+chmod +x "$CURRENT_LINK/scripts/cleanup-expired-identity-evidence.sh"
 cat > /etc/systemd/system/forum-dcr2026-log-collector.service <<EOF
 [Unit]
 Description=Forum DCR2026 production log collector
@@ -214,6 +224,30 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+cat > /etc/systemd/system/forum-dcr2026-identity-evidence-cleanup.service <<EOF
+[Unit]
+Description=Remove expired identity verification evidence
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=$CURRENT_LINK/scripts/cleanup-expired-identity-evidence.sh
+EOF
+
+cat > /etc/systemd/system/forum-dcr2026-identity-evidence-cleanup.timer <<EOF
+[Unit]
+Description=Run identity verification evidence cleanup daily
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1d
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
 cat > /etc/logrotate.d/forum-dcr2026-console <<EOF
 $SHARED_DIR/logs/*.log {
   daily
@@ -230,6 +264,7 @@ systemctl daemon-reload
 systemctl enable --now forum-dcr2026-log-collector.service
 systemctl restart forum-dcr2026-log-collector.service
 systemctl enable --now forum-dcr2026-qq-registration-cleanup.timer
+systemctl enable --now forum-dcr2026-identity-evidence-cleanup.timer
 
 find "$APP_DIR/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
   | sort -nr \

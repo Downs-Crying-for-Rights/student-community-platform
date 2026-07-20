@@ -7,6 +7,13 @@ const mockCaseUpdateMany = vi.fn();
 const mockAuditLogCount = vi.fn();
 const mockAiReviewDeleteMany = vi.fn();
 const mockPendingQQRegistrationDeleteMany = vi.fn();
+const mockIdentityVerificationFindMany = vi.fn();
+const mockIdentityVerificationUpdateMany = vi.fn();
+const mockDeleteSensitiveObject = vi.fn();
+
+vi.mock("../oss", () => ({
+  deleteSensitiveObject: (...args: unknown[]) => mockDeleteSensitiveObject(...args),
+}));
 
 vi.mock("../prisma", () => ({
   default: {
@@ -29,6 +36,10 @@ vi.mock("../prisma", () => ({
     pendingQQRegistration: {
       deleteMany: (...args: unknown[]) => mockPendingQQRegistrationDeleteMany(...args),
     },
+    identityVerificationApplication: {
+      findMany: (...args: unknown[]) => mockIdentityVerificationFindMany(...args),
+      updateMany: (...args: unknown[]) => mockIdentityVerificationUpdateMany(...args),
+    },
   },
 }));
 
@@ -40,6 +51,7 @@ import {
   cleanupExpiredListeningSessions,
   cleanupExpiredAiReviews,
   cleanupExpiredQQRegistrations,
+  cleanupExpiredIdentityEvidence,
   runAllCleanup,
 } from "../cleanup";
 
@@ -47,6 +59,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2024-06-15T00:00:00Z"));
+  mockIdentityVerificationFindMany.mockResolvedValue([]);
+  mockIdentityVerificationUpdateMany.mockResolvedValue({ count: 0 });
+  mockDeleteSensitiveObject.mockResolvedValue(undefined);
 });
 
 describe("数据清理模块", () => {
@@ -223,6 +238,8 @@ describe("数据清理模块", () => {
       mockAuditLogCount.mockResolvedValue(10);
       mockAiReviewDeleteMany.mockResolvedValue({ count: 4 });
       mockPendingQQRegistrationDeleteMany.mockResolvedValue({ count: 2 });
+      mockIdentityVerificationFindMany.mockResolvedValue([{ id: "identity-1", evidenceKey: "identity-verification/identity-1/file.webp" }]);
+      mockIdentityVerificationUpdateMany.mockResolvedValue({ count: 1 });
 
       const report = await runAllCleanup();
 
@@ -234,6 +251,7 @@ describe("数据清理模块", () => {
         expiredListeningSessions: 3,
         expiredAiReviews: 4,
         expiredQQRegistrations: 2,
+        deletedIdentityEvidence: 1,
         executedAt: expect.any(String),
       });
     });
@@ -255,7 +273,24 @@ describe("数据清理模块", () => {
       expect(report.expiredAiReviews).toBe(0);
       expect(report.expiredListeningSessions).toBe(0);
       expect(report.expiredQQRegistrations).toBe(0);
+      expect(report.deletedIdentityEvidence).toBe(0);
       expect(report.executedAt).toBeTruthy();
+    });
+  });
+
+  describe("cleanupExpiredIdentityEvidence", () => {
+    it("应删除到期的私有认证材料并清空对象引用", async () => {
+      mockIdentityVerificationFindMany.mockResolvedValue([{ id: "identity-1", evidenceKey: "identity-verification/identity-1/file.webp" }]);
+      mockIdentityVerificationUpdateMany.mockResolvedValue({ count: 1 });
+
+      await expect(cleanupExpiredIdentityEvidence()).resolves.toBe(1);
+      expect(mockDeleteSensitiveObject).toHaveBeenCalledWith("identity-verification/identity-1/file.webp");
+      expect(mockIdentityVerificationUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          evidenceKey: null,
+          identityCiphertext: null,
+        }),
+      }));
     });
   });
 });

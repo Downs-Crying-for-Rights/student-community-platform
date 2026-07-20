@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ReportDialog } from "@/components/shared/ReportDialog";
 import { useDMConsent } from "@/components/dm/DMConsentDialog";
+import { IdentityBadges } from "@/components/shared/IdentityBadges";
 
 /* ---------- Types ---------- */
 
@@ -23,6 +24,9 @@ export interface ProfileUser {
   avatar: string | null;
   bio: string | null;
   createdAt: string;
+  isAdministrator?: boolean;
+  realVerified?: boolean;
+  studentVerified?: boolean;
   _count?: {
     posts: number;
     likes: number;
@@ -290,6 +294,7 @@ export default function ProfilePage() {
             <h1 className="text-xl font-bold text-foreground">
               {user.nickname ?? "未命名用户"}
             </h1>
+            <IdentityBadges administrator={user.isAdministrator} realVerified={user.realVerified} studentVerified={user.studentVerified} />
             {user.bio && (
               <p className="max-w-sm text-center text-sm text-muted-foreground">
                 {user.bio}

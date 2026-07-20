@@ -25,6 +25,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
         bio: true,
         qqNumber: true,
         role: true,
+        realVerifiedAt: true,
+        studentVerifiedAt: true,
         createdAt: true,
         onboardingDone: true,
         psychAccess: true,
@@ -48,7 +50,14 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
 
     // Expose hasPassword boolean instead of the actual hash
     const { passwordHash, ...rest } = user;
-    return NextResponse.json({ user: { ...rest, hasPassword: !!passwordHash } });
+    return NextResponse.json({ user: {
+      ...rest,
+      realVerified: Boolean(rest.realVerifiedAt),
+      studentVerified: Boolean(rest.studentVerifiedAt),
+      realVerifiedAt: undefined,
+      studentVerifiedAt: undefined,
+      hasPassword: !!passwordHash,
+    } });
   }
 
   // 查看他人资料：仅返回公开字段
@@ -59,6 +68,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
       nickname: true,
       avatar: true,
       bio: true,
+      role: true,
+      realVerifiedAt: true,
+      studentVerifiedAt: true,
       createdAt: true,
       _count: {
         select: {
@@ -73,7 +85,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
     return NextResponse.json({ error: "用户不存在" }, { status: 404 });
   }
 
-  return NextResponse.json({ user });
+  const { realVerifiedAt, studentVerifiedAt, role, ...publicUser } = user;
+  return NextResponse.json({ user: {
+    ...publicUser,
+    isAdministrator: role === "ADMIN" || role === "SUPER_ADMIN",
+    realVerified: Boolean(realVerifiedAt),
+    studentVerified: Boolean(studentVerifiedAt),
+  } });
 });
 
 // ==================== PATCH — 更新用户资料 ====================
