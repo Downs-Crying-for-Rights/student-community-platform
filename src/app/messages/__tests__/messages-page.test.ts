@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 /**
  * 通知页面逻辑测试
@@ -40,6 +42,11 @@ function makeNotification(overrides: Partial<Notification> = {}): Notification {
 /* ---------- Tests ---------- */
 
 describe("通知页面逻辑", () => {
+  it("标记通知已读后立即通知全局导航刷新", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+    expect(source.match(/window\.dispatchEvent\(new Event\("notifications:changed"\)\)/g)).toHaveLength(2);
+  });
+
   describe("消息页标签路由", () => {
     it("支持全部、互动、系统和群聊四个固定标签", () => {
       expect(getMessagesTab(null)).toBe("all");

@@ -89,8 +89,10 @@ describe("统一会员导航壳", () => {
   it("全局导航只由 MemberShell 挂载", () => {
     const shell = read("components/layout/MemberShell.tsx");
     expect(shell.match(/<TopBar \/>/g)).toHaveLength(1);
-    expect(shell.match(/<Sidebar \/>/g)).toHaveLength(1);
-    expect(shell.match(/<BottomNav \/>/g)).toHaveLength(1);
+    expect(shell.match(/<Sidebar[^>]*\/>/g)).toHaveLength(1);
+    expect(shell.match(/<BottomNav[^>]*\/>/g)).toHaveLength(1);
+    expect(shell).toContain("<Sidebar unreadCount={unreadCount} />");
+    expect(shell).toContain("<BottomNav unreadCount={unreadCount} />");
 
     const appDir = path.join(SRC, "app");
     for (const file of walkTsx(appDir)) {
@@ -99,6 +101,16 @@ describe("统一会员导航壳", () => {
         /<(?:TopBar|Sidebar|BottomNav|PageShell)\s*\/?\s*>/,
       );
     }
+  });
+
+  it("全局导航统一轮询未读通知数", () => {
+    const shell = read("components/layout/MemberShell.tsx");
+    expect(shell).toContain('fetch("/api/notifications?pageSize=1"');
+    expect(shell).toContain('status !== "authenticated"');
+    expect(shell).toContain("window.setInterval(loadUnreadCount, 30_000)");
+    expect(shell).toContain("window.clearInterval(timer)");
+    expect(shell).toContain('window.addEventListener("notifications:changed", loadUnreadCount)');
+    expect(shell).toContain('window.removeEventListener("notifications:changed", loadUnreadCount)');
   });
 
   it("页面不再重复应用 PC 侧栏偏移", () => {

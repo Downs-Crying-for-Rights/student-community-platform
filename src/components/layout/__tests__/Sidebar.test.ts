@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
   adminNavItems,
   hasMinRole,
@@ -10,6 +12,14 @@ import {
 } from "../navigation-config";
 
 describe("Sidebar navigation contract", () => {
+  it("shows an accessible red dot only on the messages item when unread", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../Sidebar.tsx"), "utf8");
+    expect(source).toContain('item.href === "/messages" && unreadCount > 0');
+    expect(source).toContain("有未读消息");
+    expect(source).toContain('aria-hidden="true"');
+    expect(source).toContain("bg-destructive");
+  });
+
   it("uses the shared six-item core navigation", () => {
     expect(sidebarCoreNavItems.map((item) => [item.label, item.href])).toEqual([
       ["首页", "/"],

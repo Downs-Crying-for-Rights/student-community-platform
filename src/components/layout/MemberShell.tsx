@@ -1,6 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
@@ -43,9 +45,48 @@ interface MemberShellProps {
  */
 export function MemberShell({ children }: MemberShellProps) {
   const pathname = usePathname();
+  const memberPath = isMemberPath(pathname);
+  const { data: session, status } = useSession();
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!memberPath || status !== "authenticated" || !userId) {
+      setUnreadCount(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadUnreadCount() {
+      try {
+        const response = await fetch("/api/notifications?pageSize=1", {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (!cancelled) {
+          setUnreadCount(typeof data.unreadCount === "number" ? data.unreadCount : 0);
+        }
+      } catch {
+        // Keep the last known count during transient network failures.
+      }
+    }
+
+    void loadUnreadCount();
+    const timer = window.setInterval(loadUnreadCount, 30_000);
+    window.addEventListener("notifications:changed", loadUnreadCount);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("notifications:changed", loadUnreadCount);
+    };
+  }, [memberPath, status, userId]);
 
   // 公有页面 — 不包裹导航
-  if (!isMemberPath(pathname)) {
+  if (!memberPath) {
     return <main id="main-content">{children}</main>;
   }
 
@@ -53,11 +94,11 @@ export function MemberShell({ children }: MemberShellProps) {
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-6">
       <TopBar />
-      <Sidebar />
+      <Sidebar unreadCount={unreadCount} />
       <div id="main-content" className="lg:ml-60">
         {children}
       </div>
-      <BottomNav />
+      <BottomNav unreadCount={unreadCount} />
     </div>
   );
 }

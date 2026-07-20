@@ -264,6 +264,11 @@ describe("component a11y audit: Sidebar", () => {
     expect(src).toContain("切换到浅色模式");
     expect(src).toContain("切换到深色模式");
   });
+
+  it("should expose unread messages without announcing the decorative dot", () => {
+    expect(src).toContain("有未读消息");
+    expect(src).toContain('aria-hidden="true"');
+  });
 });
 
 describe("component a11y audit: PostCard", () => {

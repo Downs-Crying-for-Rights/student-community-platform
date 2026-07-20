@@ -52,6 +52,8 @@ export type SidebarAccessFlags = NavigationAccessFlags;
 export interface SidebarProps {
   /** Optional access flags; props override values fetched from the user profile. */
   accessFlags?: SidebarAccessFlags;
+  /** Number of unread notifications represented by the Messages item. */
+  unreadCount?: number;
 }
 
 const NAV_ICONS: Record<NavigationIconName, LucideIcon> = {
@@ -80,7 +82,7 @@ const NAV_ICONS: Record<NavigationIconName, LucideIcon> = {
   bot: Bot,
 };
 
-export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
+export function Sidebar({ accessFlags: propAccessFlags, unreadCount = 0 }: SidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
@@ -128,12 +130,13 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
 
   function renderNavItem(item: NavigationItem) {
     const active = isActive(item.href, pathname);
+    const hasUnread = item.href === "/messages" && unreadCount > 0;
     const Icon = NAV_ICONS[item.icon];
     return (
       <a
         key={item.href}
         href={item.href}
-        aria-label={item.label}
+        aria-label={hasUnread ? `${item.label}，有未读消息` : item.label}
         aria-current={active ? "page" : undefined}
         className={cn(
           "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
@@ -143,7 +146,15 @@ export function Sidebar({ accessFlags: propAccessFlags }: SidebarProps) {
             : "text-muted-foreground hover:bg-accent hover:text-foreground",
         )}
       >
-        <Icon className="h-5 w-5 shrink-0" />
+        <span className="relative shrink-0">
+          <Icon className="h-5 w-5" />
+          {hasUnread && (
+            <span
+              aria-hidden="true"
+              className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background"
+            />
+          )}
+        </span>
         <span>{item.label}</span>
       </a>
     );
