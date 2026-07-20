@@ -8,5 +8,7 @@ vi.mock("@/lib/telemetry", async (importOriginal) => {
   return {
     ...actual,
     trackServerTelemetryLater: vi.fn(),
+    recordCompletedRequest: vi.fn(),
+    withTelemetry: vi.fn((handler) => handler),
   };
 });

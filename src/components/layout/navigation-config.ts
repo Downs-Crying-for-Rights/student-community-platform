@@ -93,6 +93,7 @@ export const adminMenuGroups: readonly AdminMenuGroup[] = [
   ] },
   { id: "access", label: "用户准入", icon: "users", children: [
     { href: "/admin/users", label: "用户管理", icon: "users", minRole: "ADMIN" },
+    { href: "/admin/account-deletions", label: "注销审核", icon: "user", minRole: "ADMIN" },
     { href: "/admin/invites", label: "邀请码", icon: "ticket", minRole: "ADMIN" },
     { href: "/admin/applications", label: "准入审核", icon: "shield-check", minRole: "ADMIN" },
     { href: "/admin/identity-verifications", label: "身份认证审核", icon: "shield-check", minRole: "ADMIN" },

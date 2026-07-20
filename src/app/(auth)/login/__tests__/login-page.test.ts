@@ -224,8 +224,12 @@ describe("登录协议与品牌", () => {
 
     expect(source).toContain('id="login-agreement"');
     expect(source).toContain("!loginAgreementAccepted");
-    expect(source).toContain('openLoginPolicy("user-agreement")');
-    expect(source).toContain('openLoginPolicy("privacy-policy")');
+    expect(source).toContain("REGISTRATION_POLICY_KEYS.map");
+    expect(source).toContain("allKeys.find((item) => item.key === key)?.title");
+    expect(source).toContain('fetch(`/api/site-content/${policyId}`)');
+    expect(source).toContain("setAgreementTitle(data.title");
+    expect(source).toContain("void openLoginPolicy(key as LoginPolicyId)");
+    expect(source).not.toContain("setAgreementContent(policy.content)");
     expect(source).not.toContain('href="/help/policies?document=user-agreement"');
     expect(source).not.toContain('href="/help/policies?document=privacy-policy"');
   });

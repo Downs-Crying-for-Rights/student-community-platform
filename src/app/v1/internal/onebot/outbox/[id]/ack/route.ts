@@ -7,6 +7,7 @@ import {
   getQQOutboxFailureDisposition,
 } from "@/lib/qq-outbox";
 import prisma from "@/lib/prisma";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,10 +32,10 @@ const ackSchema = z.discriminatedUnion("success", [
     .strict(),
 ]);
 
-export async function POST(
+const post = async (
   request: Request,
   context: { params: Promise<{ id: string }> },
-) {
+) => {
   const authorization = authorizeQQInternalRequest(request);
   if (!authorization.ok) {
     return NextResponse.json(
@@ -90,4 +91,6 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/v1/internal/onebot/outbox/[id]/ack" });

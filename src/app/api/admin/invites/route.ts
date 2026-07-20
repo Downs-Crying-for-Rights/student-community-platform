@@ -13,6 +13,7 @@ const querySchema = paginationSchema.extend({
 const createSchema = z.object({
   count: z.coerce.number().int().min(1).max(10).default(1),
   expiresInDays: z.coerce.number().int().min(1).max(365).default(7),
+  dcrContributionAccess: z.boolean().default(false),
 });
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
@@ -49,6 +50,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           code: true,
           isUsed: true,
           isRevoked: true,
+          dcrContributionAccess: true,
           expiresAt: true,
           createdAt: true,
           usedAt: true,
@@ -86,7 +88,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { count, expiresInDays } = parsed.data;
+    const { count, expiresInDays, dcrContributionAccess } = parsed.data;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + expiresInDays);
 
@@ -99,8 +101,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
           code,
           expiresAt,
           creatorId: req.user.id,
+          dcrContributionAccess,
         },
-        select: { id: true, code: true, expiresAt: true },
+        select: { id: true, code: true, expiresAt: true, dcrContributionAccess: true },
       });
       codes.push(invite);
     }
@@ -110,7 +113,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       AuditAction.INVITE_CREATE,
       AuditTargetType.INVITE_CODE,
       codes.map((c) => c.id).join(","),
-      { count, expiresInDays },
+      { count, expiresInDays, dcrContributionAccess },
     );
 
     return NextResponse.json({ invites: codes }, { status: 201 });

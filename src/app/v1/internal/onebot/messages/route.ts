@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isValidInternalBearer, qqBotMessageSchema } from "@/lib/qq-bot-contract";
 import { processQQBotMessage } from "@/lib/qq-bot-service";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ function enabled(value: string | undefined): boolean {
   return value === "1" || value === "true";
 }
 
-export async function POST(request: Request): Promise<NextResponse> {
+const post = async (request: Request): Promise<NextResponse> => {
   if (!isValidInternalBearer(request.headers.get("authorization"), process.env.INTERNAL_API_TOKEN)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -39,4 +40,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "Temporary failure" }, { status: 500 });
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/v1/internal/onebot/messages" });

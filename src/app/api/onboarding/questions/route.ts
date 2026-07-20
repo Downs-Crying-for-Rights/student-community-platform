@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { withTelemetry } from "@/lib/telemetry";
 
 /**
  * GET /api/onboarding/questions
  * 返回后台启用的平台新手指引题目。无启用题目时由前端使用内置兜底题。
  */
-export async function GET() {
+const get = async () => {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -42,4 +43,6 @@ export async function GET() {
       { status: 500 },
     );
   }
-}
+};
+
+export const GET = withTelemetry(get, { route: "/api/onboarding/questions" });

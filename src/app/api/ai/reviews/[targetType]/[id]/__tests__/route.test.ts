@@ -38,6 +38,7 @@ vi.mock("@/lib/audit", () => ({
   logAudit: (...args: unknown[]) => mockAudit(...args),
 }));
 vi.mock("@/lib/telemetry", () => ({
+  recordCompletedRequest: vi.fn(),
   sanitizeTelemetryDetail: (value: unknown) => String(value),
   trackServerTelemetryLater: vi.fn(),
 }));

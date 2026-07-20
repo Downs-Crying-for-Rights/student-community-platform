@@ -173,6 +173,16 @@ export default function DCREntryPage() {
             </div>
 
             <div className="mt-5 rounded-2xl border bg-background p-5">
+              {progress.admission.capabilities.canCreateDcrPost && !progress.admission.accessGranted && (
+                <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-900 dark:bg-blue-950/20">
+                  <p className="font-medium">邀请码投稿权限已启用</p>
+                  <p className="mt-1 text-sm text-muted-foreground">你可以发布 DCR 帖子和提交委托，但互助任务、循环和完整工作台仍需完成正式准入。</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button asChild><Link href="/create?zone=DCR">发布 DCR 帖子</Link></Button>
+                    <Button asChild variant="outline"><Link href="/dcr/delegate">填写委托表</Link></Button>
+                  </div>
+                </div>
+              )}
               {progress.admission.blockers.length > 0 ? (
                 <div className="space-y-4">
                   {progress.admission.blockers.map((blocker) => (

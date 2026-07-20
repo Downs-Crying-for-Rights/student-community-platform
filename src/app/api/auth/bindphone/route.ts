@@ -4,8 +4,9 @@ import { bindPhoneSchema } from "@/lib/validators";
 import { verifyCode } from "@/lib/sms/verification";
 import { prisma } from "@/lib/prisma";
 import { logAudit, AuditTargetType } from "@/lib/audit";
+import { withTelemetry } from "@/lib/telemetry";
 
-export async function POST(request: NextRequest) {
+const post = async (request: NextRequest) => {
   try {
     // 1. 验证已登录状态
     const token = await getToken({ req: request });
@@ -71,4 +72,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/auth/bindphone" });

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSmsVerificationEnabled } from "@/lib/system-config";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+const get = async () => {
   try {
     const enabled = await getSmsVerificationEnabled();
     return NextResponse.json(
@@ -17,4 +18,6 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } },
     );
   }
-}
+};
+
+export const GET = withTelemetry(get, { route: "/api/sms/config" });

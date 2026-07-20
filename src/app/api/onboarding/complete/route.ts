@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { withTelemetry } from "@/lib/telemetry";
 
-export async function POST() {
+const post = async () => {
   try {
     const session = await getServerSession(authOptions);
 
@@ -36,4 +37,6 @@ export async function POST() {
       { status: 500 },
     );
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/onboarding/complete" });

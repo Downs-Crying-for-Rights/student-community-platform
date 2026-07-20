@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
 import { sendAdminActionMail } from "@/lib/mail";
+import { canSubmitDcrDelegation } from "@/lib/dcr-capabilities";
 import { reconcileRejectedDcrApplications } from "@/lib/dcr-application-reconciliation";
 
 // ==================== Schemas ====================
@@ -65,21 +66,22 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     // Verify user exists
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, dcrAccess: true, phone: true, quizPassed: true },
+      select: { id: true, role: true, dcrAccess: true, dcrContributionAccess: true, phone: true, quizPassed: true },
     });
 
     if (!user) {
       return NextResponse.json({ error: "用户不存在" }, { status: 404 });
     }
 
-    if (!user.dcrAccess && !user.phone) {
+    const hasDelegationCapability = canSubmitDcrDelegation(user);
+    if (!hasDelegationCapability && !user.phone) {
       return NextResponse.json(
         { error: "提交 DCR 委托前请先完成手机号验证", next: "/bindphone?callbackUrl=/dcr/delegate" },
         { status: 403 },
       );
     }
 
-    if (!user.dcrAccess && !user.quizPassed) {
+    if (!hasDelegationCapability && !user.quizPassed) {
       return NextResponse.json(
         { error: "提交 DCR 委托前请先完成入频考核", next: "/dcr/quiz" },
         { status: 403 },
@@ -150,7 +152,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         }));
       }
 
-      const admissionDecision = evaluateDcrAdmission({
+      const admissionDecision = hasDelegationCapability ? { allowed: true as const } : evaluateDcrAdmission({
         stage: "SUBMIT_CASE",
         user: {
           id: user.id,
@@ -201,7 +203,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         },
       });
 
-      if (!user.dcrAccess) {
+      if (!user.dcrAccess && !user.dcrContributionAccess) {
         const createApplicationDecision = evaluateDcrAdmission({
           stage: "CREATE_APPLICATION",
           user: {

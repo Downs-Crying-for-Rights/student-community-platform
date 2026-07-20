@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { phoneSchema } from "@/lib/validators";
 import { sendVerificationCode } from "@/lib/sms/verification";
 import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
+import { withTelemetry } from "@/lib/telemetry";
 
 function requestIp(request: NextRequest) {
   return request.headers.get("x-forwarded-for")?.split(",")[0].trim()
@@ -15,7 +16,7 @@ function phoneKey(phone: string) {
   return createHash("sha256").update(phone).digest("hex");
 }
 
-export async function POST(request: NextRequest) {
+const post = async (request: NextRequest) => {
   try {
     const parsed = phoneSchema.safeParse((await request.json()).phone);
     if (!parsed.success) {
@@ -46,4 +47,6 @@ export async function POST(request: NextRequest) {
     console.error("POST /api/auth/password/reset/send error:", error);
     return NextResponse.json({ error: "验证码发送失败，请稍后再试" }, { status: 500 });
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/auth/password/reset/send" });

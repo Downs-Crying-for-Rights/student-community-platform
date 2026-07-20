@@ -10,6 +10,7 @@ import { generateAnonymousId, truncateText } from "@/lib/utils";
 import { z } from "zod";
 import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
 import { sendAdminActionMail } from "@/lib/mail";
+import { canCreateDcrPost } from "@/lib/dcr-capabilities";
 
 // Query params schema for GET
 const listQuerySchema = paginationSchema.extend({
@@ -224,6 +225,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         psychAccess: true,
         dcrAccess: true,
         dcrPledgeSigned: true,
+        dcrContributionAccess: true,
         role: true,
       },
     });
@@ -274,7 +276,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     // Check zone access
     const userAttrs: ABACUserAttributes = user;
-    const zoneCheck = board.zone === BoardZone.PSYCHOLOGY && hasMinimumRole(req.user.role, "MODERATOR")
+    const zoneCheck = board.zone === BoardZone.DCR && canCreateDcrPost(user)
+      ? { allowed: true }
+      : board.zone === BoardZone.PSYCHOLOGY && hasMinimumRole(req.user.role, "MODERATOR")
       ? { allowed: true }
       : canAccessZone(userAttrs, board.zone);
     if (!zoneCheck.allowed) {

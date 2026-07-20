@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest, hasMinimumRole } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { SYSTEM_ANNOUNCEMENT_USER_ID } from "@/lib/announcement";
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   try {
@@ -11,8 +12,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
     const url = new URL(req.url);
     const threadId = url.searchParams.get("threadId");
+    const reviewableWhere = {
+      isSystemReadOnly: false,
+      participant1Id: { not: SYSTEM_ANNOUNCEMENT_USER_ID },
+      participant2Id: { not: SYSTEM_ANNOUNCEMENT_USER_ID },
+    };
     const threads = await prisma.dMThread.findMany({
-      where: threadId ? { id: threadId } : undefined,
+      where: threadId ? { id: threadId, ...reviewableWhere } : reviewableWhere,
       include: {
         participant1: { select: { id: true, nickname: true } },
         participant2: { select: { id: true, nickname: true } },

@@ -3,12 +3,13 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { nicknameSchema } from "@/lib/validators";
+import { withTelemetry } from "@/lib/telemetry";
 
 /**
  * POST /api/auth/username
  * Set the nickname for the current user. Requires auth.
  */
-export async function POST(req: Request) {
+const post = async (req: Request) => {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -45,4 +46,6 @@ export async function POST(req: Request) {
     console.error("POST /api/auth/username error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/auth/username" });

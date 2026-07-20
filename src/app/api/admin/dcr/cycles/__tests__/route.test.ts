@@ -38,13 +38,13 @@ describe("GET /api/admin/dcr/cycles", () => {
     }]);
   });
 
-  it("returns disputed cycle links as an explicit admin queue", async () => {
+  it("returns disputed and rejected cycle links as an explicit admin queue", async () => {
     const response = await GET(new NextRequest("http://localhost/api/admin/dcr/cycles"), { params: {} });
     const data = await response.json();
 
     expect(response.status).toBe(200);
     expect(mocks.linkFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { status: "DISPUTED" },
+      where: { status: { in: ["DISPUTED", "REJECTED"] } },
     }));
     expect(data.disputedLinks[0]).toMatchObject({
       id: "link-ab",

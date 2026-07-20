@@ -4,11 +4,12 @@ import { NextResponse } from "next/server";
 import { claimQQRegistrationRateLimit, getQQRegistrationStatus } from "@/lib/qq-registration";
 import { rateLimitKeyForIP } from "@/lib/rate-limiter";
 import { qqRegistrationStatusSchema } from "@/lib/validators";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
+const post = async (request: Request) => {
   const parsed = qqRegistrationStatusSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ status: "EXPIRED" }, { headers: { "Cache-Control": "no-store" } });
   try {
@@ -22,4 +23,6 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Temporary failure" }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
-}
+};
+
+export const POST = withTelemetry(post, { route: "/api/auth/register/qq/status" });

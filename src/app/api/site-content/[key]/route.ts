@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { COMMUNITY_GUIDELINES_KEY, getCommunityGuidelines } from "@/lib/community-guidelines";
+import { withTelemetry } from "@/lib/telemetry";
 
-export async function GET(
+const get = async (
   _req: Request,
   context: { params: Record<string, string> }
-) {
+) => {
   const { key } = context.params;
   if (key === COMMUNITY_GUIDELINES_KEY) {
     return NextResponse.json(await getCommunityGuidelines());
@@ -18,4 +19,6 @@ export async function GET(
     return NextResponse.json({ title: "用户协议", content: "", updatedAt: null });
   }
   return NextResponse.json(item);
-}
+};
+
+export const GET = withTelemetry(get, { route: "/api/site-content/[key]" });

@@ -7,6 +7,12 @@ import { logAudit, AuditTargetType } from "@/lib/audit";
 import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
 import { sendAdminActionMail } from "@/lib/mail";
 
+async function canManageOwnContributionPost(userId: string, post: { authorId: string; board: { zone: string } }) {
+  if (post.board.zone !== "DCR" || post.authorId !== userId) return false;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { dcrContributionAccess: true } });
+  return user?.dcrContributionAccess === true;
+}
+
 /**
  * GET /api/posts/[id]
  * Get post detail by ID. Public endpoint (no login required).
@@ -53,7 +59,8 @@ export const GET = withOptionalAuth(async (
     const isAuthor = post.authorId === userId;
     const isModerator = hasMinimumRole(req.user.role, "MODERATOR");
 
-    const access = await checkPostAccess(req.user, post);
+    const contributionAccess = await canManageOwnContributionPost(userId, post);
+    const access = contributionAccess ? { allowed: true as const } : await checkPostAccess(req.user, post);
     if (!access.allowed) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }
@@ -129,7 +136,8 @@ export const PATCH = withAuth(async (
       return NextResponse.json({ error: "只能编辑自己的帖子" }, { status: 403 });
     }
 
-    const access = await checkPostAccess(req.user, existing);
+    const contributionAccess = await canManageOwnContributionPost(req.user.id, existing);
+    const access = contributionAccess ? { allowed: true as const } : await checkPostAccess(req.user, existing);
     if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
 
     if (existing.status === "DELETED") {
@@ -275,7 +283,8 @@ export const DELETE = withAuth(async (
     const isModerator = hasMinimumRole(req.user.role, "MODERATOR");
 
     if (existing.board.zone === "PSYCHOLOGY") {
-      const access = await checkPostAccess(req.user, existing);
+      const contributionAccess = await canManageOwnContributionPost(req.user.id, existing);
+      const access = contributionAccess ? { allowed: true as const } : await checkPostAccess(req.user, existing);
       if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
     }
 

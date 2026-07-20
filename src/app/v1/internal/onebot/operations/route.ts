@@ -7,6 +7,7 @@ import {
   QQ_BOT_OPERATION_ACTIONS,
   recordQQBotOperationResult,
 } from "@/lib/qq-bot-operations";
+import { withTelemetry } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,13 +35,13 @@ function authorize(request: Request) {
   return result.ok ? null : NextResponse.json({ error: "Unauthorized" }, { status: result.status });
 }
 
-export async function GET(request: Request) {
+const get = async (request: Request) => {
   const denied = authorize(request);
   if (denied) return denied;
   return NextResponse.json({ command: await claimQQBotOperation() }, { headers: { "Cache-Control": "no-store" } });
-}
+};
 
-export async function POST(request: Request) {
+const post = async (request: Request) => {
   const denied = authorize(request);
   if (denied) return denied;
   const parsed = resultSchema.safeParse(await request.json().catch(() => null));
@@ -49,4 +50,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Stale operation lease" }, { status: 409 });
   }
   return new NextResponse(null, { status: 204 });
-}
+};
+
+export const GET = withTelemetry(get, { route: "/v1/internal/onebot/operations" });
+export const POST = withTelemetry(post, { route: "/v1/internal/onebot/operations" });
