@@ -70,7 +70,8 @@ describe("独立文档链接", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../policies/page.tsx"), "utf8");
 
     expect(source).toContain('searchParams.get("document")');
-    expect(source).toContain("standaloneDocument ? [standaloneDocument] : POLICY_DOCUMENTS");
+    expect(source).toContain("standaloneDocument ? [standaloneDocument] : documents");
+    expect(source).toContain('fetch("/api/site-content/community_guidelines"');
     expect(source).toContain("!standaloneDocument && <TabsList");
   });
 });

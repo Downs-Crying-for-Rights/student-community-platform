@@ -210,7 +210,7 @@ describe("注册方式分流", () => {
   it("注册页不展示私信和群聊的使用时授权协议", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
 
-    expect(source).toContain('["dm_consent", "chat_monitoring_consent"]');
+    expect(source).toContain('["dm_consent", "chat_monitoring_consent", "community_guidelines"]');
     expect(source).toContain("!USAGE_CONSENT_KEYS.has(item.key)");
   });
 });

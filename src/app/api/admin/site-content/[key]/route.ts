@@ -4,8 +4,10 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
 import { DM_CONSENT_KEY } from "@/lib/dm-consent";
 import { CHAT_MONITORING_CONSENT_KEY } from "@/lib/chat-monitoring-consent";
+import { COMMUNITY_GUIDELINES_KEY } from "@/lib/community-guidelines";
 
 const VERSIONED_SYSTEM_CONTENT_KEYS = new Set([DM_CONSENT_KEY, CHAT_MONITORING_CONSENT_KEY]);
+const REQUIRED_SYSTEM_CONTENT_KEYS = new Set([...VERSIONED_SYSTEM_CONTENT_KEYS, COMMUNITY_GUIDELINES_KEY]);
 
 const updateSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -27,8 +29,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context: { params:
  */
 export const DELETE = withAuth(async (req: AuthenticatedRequest, context: { params: Record<string, string> }) => {
   const { key } = context.params;
-  if (VERSIONED_SYSTEM_CONTENT_KEYS.has(key)) {
-    return NextResponse.json({ error: "该巡查须知为系统必需内容，不能删除" }, { status: 400 });
+  if (REQUIRED_SYSTEM_CONTENT_KEYS.has(key)) {
+    return NextResponse.json({ error: "该文档为系统必需内容，不能删除" }, { status: 400 });
   }
   await prisma.siteContent.deleteMany({ where: { key } });
   return NextResponse.json({ success: true });

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { FileText, Users, Shield, AlertTriangle } from "lucide-react";
+import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 
 /* ========== Document Data & Pure Helpers ========== */
 
@@ -184,9 +185,24 @@ const ICON_MAP = {
 export default function PoliciesPage() {
   const searchParams = useSearchParams();
   const requestedDocument = searchParams.get("document");
-  const standaloneDocument = POLICY_DOCUMENTS.find((document) => document.id === requestedDocument);
-  const visibleDocuments = standaloneDocument ? [standaloneDocument] : POLICY_DOCUMENTS;
+  const [documents, setDocuments] = useState(POLICY_DOCUMENTS);
+  const standaloneDocument = documents.find((document) => document.id === requestedDocument);
+  const visibleDocuments = standaloneDocument ? [standaloneDocument] : documents;
   const [activeTab, setActiveTab] = useState(standaloneDocument?.id ?? POLICY_DOCUMENTS[0].id);
+
+  useEffect(() => {
+    fetch("/api/site-content/community_guidelines", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!data.content) return;
+        setDocuments((current) => current.map((document) => (
+          document.id === "community-guidelines"
+            ? { ...document, title: data.title || document.title, content: data.content }
+            : document
+        )));
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -219,42 +235,7 @@ export default function PoliciesPage() {
           {visibleDocuments.map((doc) => (
             <TabsContent key={doc.id} value={doc.id}>
               <div className="rounded-2xl border bg-card p-6 shadow-sm">
-                <article
-                  className="prose prose-sm dark:prose-invert max-w-none"
-                  role="article"
-                  aria-label={doc.title}
-                >
-                  {doc.content.split("\n").map((line, i) => {
-                    const trimmed = line.trim();
-                    if (!trimmed) return null;
-                    if (trimmed.startsWith("# ")) {
-                      return (
-                        <h2 key={i} className="mb-4 text-xl font-bold text-foreground">
-                          {trimmed.slice(2)}
-                        </h2>
-                      );
-                    }
-                    if (trimmed.startsWith("## ")) {
-                      return (
-                        <h3 key={i} className="mb-3 mt-6 text-lg font-semibold text-foreground">
-                          {trimmed.slice(3)}
-                        </h3>
-                      );
-                    }
-                    if (/^\d+\.\s/.test(trimmed)) {
-                      return (
-                        <p key={i} className="mb-2 pl-4 text-muted-foreground leading-relaxed">
-                          {trimmed}
-                        </p>
-                      );
-                    }
-                    return (
-                      <p key={i} className="mb-2 text-muted-foreground leading-relaxed">
-                        {trimmed}
-                      </p>
-                    );
-                  })}
-                </article>
+                <SafeMarkdown content={doc.content} className="prose prose-sm dark:prose-invert max-w-none" />
               </div>
             </TabsContent>
           ))}

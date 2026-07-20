@@ -41,7 +41,7 @@ import { verificationCodeSchema } from "@/lib/validators";
 type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
 export type LoginTab = "email" | "password" | "sms";
 
-const USAGE_CONSENT_KEYS = new Set(["dm_consent", "chat_monitoring_consent"]);
+const USAGE_CONSENT_KEYS = new Set(["dm_consent", "chat_monitoring_consent", "community_guidelines"]);
 
 /** All tabs available on the login page */
 export const LOGIN_TABS: LoginTab[] = ["email", "password", "sms"];
