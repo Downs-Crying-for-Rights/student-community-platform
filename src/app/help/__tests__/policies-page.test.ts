@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * 合规文档页面逻辑测试
@@ -60,6 +62,16 @@ describe("文档 ID 验证", () => {
     expect(isValidDocumentId("invalid")).toBe(false);
     expect(isValidDocumentId("")).toBe(false);
     expect(isValidDocumentId("user_agreement")).toBe(false);
+  });
+});
+
+describe("独立文档链接", () => {
+  it("支持通过 document 参数只展示指定隐私政策", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../policies/page.tsx"), "utf8");
+
+    expect(source).toContain('searchParams.get("document")');
+    expect(source).toContain("standaloneDocument ? [standaloneDocument] : POLICY_DOCUMENTS");
+    expect(source).toContain("!standaloneDocument && <TabsList");
   });
 });
 

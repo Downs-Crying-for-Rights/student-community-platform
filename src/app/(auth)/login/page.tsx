@@ -91,7 +91,7 @@ export default function LoginPage() {
         <div className="flex min-h-screen items-center justify-center px-4">
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
-              <CardTitle className="text-2xl">登录学生交流社区</CardTitle>
+              <CardTitle className="text-2xl">登录学互会</CardTitle>
               <CardDescription>加载中...</CardDescription>
             </CardHeader>
           </Card>
@@ -115,6 +115,7 @@ function LoginContent() {
 
   // Active tab
   const [activeTab, setActiveTab] = useState<LoginTab>("email");
+  const [loginAgreementAccepted, setLoginAgreementAccepted] = useState(false);
 
   // Email tab state
   const [email, setEmail] = useState("");
@@ -232,6 +233,7 @@ function LoginContent() {
   // ===== Email magic link =====
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!loginAgreementAccepted) return;
     if (!email.trim()) return;
 
     setLoading(true);
@@ -261,6 +263,7 @@ function LoginContent() {
   // ===== Password login =====
   async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!loginAgreementAccepted) return;
     setPwErrors({});
     setErrorMessage("");
 
@@ -304,6 +307,7 @@ function LoginContent() {
 
   // ===== SMS login =====
   async function handleSendCode() {
+    if (!loginAgreementAccepted) return;
     setSmsErrors({});
 
     const result = phoneSchema.safeParse(smsPhone.trim());
@@ -354,6 +358,7 @@ function LoginContent() {
 
   async function handleSmsSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!loginAgreementAccepted) return;
     setSmsErrors({});
     setErrorMessage("");
 
@@ -479,6 +484,7 @@ function LoginContent() {
 
   // ===== QQ login =====
   function handleQQLogin() {
+    if (!loginAgreementAccepted) return;
     signIn("qq");
   }
 
@@ -715,7 +721,7 @@ function LoginContent() {
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">注册学生交流社区</CardTitle>
+            <CardTitle className="text-2xl">注册学互会</CardTitle>
             <CardDescription>创建账户，开始探索</CardDescription>
           </CardHeader>
 
@@ -925,7 +931,7 @@ function LoginContent() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">登录学生交流社区</CardTitle>
+          <CardTitle className="text-2xl">登录学互会</CardTitle>
           <CardDescription>选择您喜欢的方式登录</CardDescription>
         </CardHeader>
 
@@ -990,7 +996,7 @@ function LoginContent() {
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={loading || !email.trim()}
+                  disabled={loading || !email.trim() || !loginAgreementAccepted}
                 >
                   {loading ? (
                     <span className="flex items-center">
@@ -1057,7 +1063,7 @@ function LoginContent() {
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={loading}
+                  disabled={loading || !loginAgreementAccepted}
                 >
                   {loading ? (
                     <span className="flex items-center">
@@ -1107,7 +1113,7 @@ function LoginContent() {
                       type="button"
                       variant="outline"
                       onClick={handleSendCode}
-                      disabled={loading || countdown > 0 || !smsPhone.trim()}
+                      disabled={loading || countdown > 0 || !smsPhone.trim() || !loginAgreementAccepted}
                       className="shrink-0 whitespace-nowrap"
                       aria-label={countdown > 0 ? `${countdown} 秒后可重新发送` : "发送验证码"}
                     >
@@ -1147,7 +1153,7 @@ function LoginContent() {
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={loading}
+                  disabled={loading || !loginAgreementAccepted}
                 >
                   {loading ? (
                     <span className="flex items-center">
@@ -1164,6 +1170,22 @@ function LoginContent() {
               </form>
             </TabsContent>
           </Tabs>
+
+          <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3">
+            <input
+              id="login-agreement"
+              type="checkbox"
+              checked={loginAgreementAccepted}
+              onChange={(event) => setLoginAgreementAccepted(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+            />
+            <label htmlFor="login-agreement" className="text-xs leading-relaxed text-muted-foreground">
+              我已阅读并同意
+              <a href="/help/policies?document=user-agreement" target="_blank" rel="noreferrer" className="mx-1 text-primary underline hover:text-primary/80">《用户协议》</a>
+              和
+              <a href="/help/policies?document=privacy-policy" target="_blank" rel="noreferrer" className="ml-1 text-primary underline hover:text-primary/80">《隐私政策》</a>
+            </label>
+          </div>
 
           {/* Divider */}
           <div className="relative">
@@ -1183,6 +1205,7 @@ function LoginContent() {
             variant="outline"
             className="w-full"
             onClick={handleQQLogin}
+            disabled={!loginAgreementAccepted}
             aria-label="使用 QQ 账号登录"
           >
             <svg

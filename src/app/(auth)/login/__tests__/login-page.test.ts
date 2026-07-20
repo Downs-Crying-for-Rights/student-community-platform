@@ -215,6 +215,25 @@ describe("注册方式分流", () => {
   });
 });
 
+describe("登录协议与品牌", () => {
+  it("所有登录方式共享协议勾选并提供独立隐私政策链接", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+
+    expect(source).toContain('id="login-agreement"');
+    expect(source).toContain("!loginAgreementAccepted");
+    expect(source).toContain('href="/help/policies?document=user-agreement"');
+    expect(source).toContain('href="/help/policies?document=privacy-policy"');
+  });
+
+  it("登录和注册使用正式站名学互会", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+
+    expect(source).toContain("登录学互会");
+    expect(source).toContain("注册学互会");
+    expect(source).not.toContain("登录学生交流社区");
+  });
+});
+
 describe("忘记密码", () => {
   it("密码登录页提供手机号验证码重置入口", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");

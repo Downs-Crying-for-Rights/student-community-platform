@@ -60,7 +60,7 @@ function PlatformIntroStep() {
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
           <BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" />
         </div>
-        <h3 className="text-lg font-semibold">欢迎来到学生交流社区</h3>
+        <h3 className="text-lg font-semibold">欢迎来到学互会</h3>
       </div>
       <p className="text-muted-foreground leading-relaxed">
         这是一个面向学生群体的多层级社区平台，旨在为同学们提供安全、友好的交流空间。

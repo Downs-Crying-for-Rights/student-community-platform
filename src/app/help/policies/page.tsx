@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { FileText, Users, Shield, AlertTriangle } from "lucide-react";
 
@@ -181,21 +182,25 @@ const ICON_MAP = {
 /* ========== Page Component ========== */
 
 export default function PoliciesPage() {
-  const [activeTab, setActiveTab] = useState(POLICY_DOCUMENTS[0].id);
+  const searchParams = useSearchParams();
+  const requestedDocument = searchParams.get("document");
+  const standaloneDocument = POLICY_DOCUMENTS.find((document) => document.id === requestedDocument);
+  const visibleDocuments = standaloneDocument ? [standaloneDocument] : POLICY_DOCUMENTS;
+  const [activeTab, setActiveTab] = useState(standaloneDocument?.id ?? POLICY_DOCUMENTS[0].id);
 
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-foreground">合规文档</h1>
+          <h1 className="text-2xl font-bold text-foreground">{standaloneDocument?.title ?? "合规文档"}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            请仔细阅读以下文档，了解平台的使用规则和您的权利
+            {standaloneDocument ? "以下为该文档的完整内容" : "请仔细阅读以下文档，了解平台的使用规则和您的权利"}
           </p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6 grid w-full grid-cols-4">
-            {POLICY_DOCUMENTS.map((doc) => {
+          {!standaloneDocument && <TabsList className="mb-6 grid w-full grid-cols-4">
+            {visibleDocuments.map((doc) => {
               const Icon = ICON_MAP[doc.icon];
               return (
                 <TabsTrigger
@@ -209,9 +214,9 @@ export default function PoliciesPage() {
                 </TabsTrigger>
               );
             })}
-          </TabsList>
+          </TabsList>}
 
-          {POLICY_DOCUMENTS.map((doc) => (
+          {visibleDocuments.map((doc) => (
             <TabsContent key={doc.id} value={doc.id}>
               <div className="rounded-2xl border bg-card p-6 shadow-sm">
                 <article

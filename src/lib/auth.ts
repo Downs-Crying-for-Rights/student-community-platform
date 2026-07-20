@@ -55,11 +55,11 @@ export const authOptions: NextAuthOptions = {
         await transport.sendMail({
           to: email,
           from: provider.from,
-          subject: "登录学生交流社区",
-          text: `点击以下链接登录学生交流社区：\n\n${url}\n\n此链接将在 15 分钟后过期。`,
+          subject: "登录学互会",
+          text: `点击以下链接登录学互会：\n\n${url}\n\n此链接将在 15 分钟后过期。`,
           html: `
             <div style="max-width: 480px; margin: 0 auto; font-family: sans-serif;">
-              <h2 style="color: #1a1a1a;">登录学生交流社区</h2>
+              <h2 style="color: #1a1a1a;">登录学互会</h2>
               <p>点击下方按钮登录您的账户：</p>
               <a href="${escapedUrl}" style="display: inline-block; padding: 12px 24px; background: #1a1a1a; color: #fff; text-decoration: none; border-radius: 8px; margin: 16px 0;">
                 登录
