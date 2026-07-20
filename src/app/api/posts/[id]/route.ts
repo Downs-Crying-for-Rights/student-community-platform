@@ -44,7 +44,9 @@ export const GET = withOptionalAuth(async (
         return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
       }
       const { isShadowBanned: _, ...authorData } = post.author;
-      return NextResponse.json({ post: { ...post, author: authorData } });
+      return NextResponse.json({
+        post: { ...post, author: authorData, isLiked: false, isBookmarked: false },
+      });
     }
 
     const userId = req.user.id;

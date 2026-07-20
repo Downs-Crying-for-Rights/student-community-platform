@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { getPostInteractionState } from "../[id]/page";
 
 // Mock next/navigation
 const mockPush = vi.fn();
@@ -123,6 +124,17 @@ describe("PostDetailPage API interaction logic", () => {
   it("should parse unbookmark API response correctly", () => {
     const unbookmarkResponse = { bookmarked: false };
     expect(unbookmarkResponse.bookmarked).toBe(false);
+  });
+
+  it("should restore liked and bookmarked state from a detail response", () => {
+    expect(getPostInteractionState({ isLiked: true, isBookmarked: true })).toEqual({
+      liked: true,
+      bookmarked: true,
+    });
+    expect(getPostInteractionState({ isLiked: false, isBookmarked: false })).toEqual({
+      liked: false,
+      bookmarked: false,
+    });
   });
 
   it("should handle post with no images", () => {

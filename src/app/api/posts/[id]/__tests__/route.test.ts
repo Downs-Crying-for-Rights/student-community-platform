@@ -11,6 +11,8 @@ const mockPostTagCreateMany = vi.fn();
 const mockRevisionCreate = vi.fn();
 const mockRevisionUpdateMany = vi.fn();
 const mockTagCount = vi.fn();
+const mockLikeFindUnique = vi.fn();
+const mockBookmarkFindUnique = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -34,6 +36,8 @@ vi.mock("@/lib/prisma", () => ({
       updateMany: (...args: unknown[]) => mockRevisionUpdateMany(...args),
     },
     tag: { count: (...args: unknown[]) => mockTagCount(...args) },
+    like: { findUnique: (...args: unknown[]) => mockLikeFindUnique(...args) },
+    bookmark: { findUnique: (...args: unknown[]) => mockBookmarkFindUnique(...args) },
     $transaction: (callback: (tx: unknown) => unknown) => callback({
       postRevision: {
         create: (...args: unknown[]) => mockRevisionCreate(...args),
@@ -99,6 +103,8 @@ describe("GET /api/posts/[id]", () => {
     mockTagCount.mockResolvedValue(0);
     mockRevisionUpdateMany.mockResolvedValue({ count: 0 });
     mockRevisionCreate.mockResolvedValue({ id: "revision1", status: "PENDING" });
+    mockLikeFindUnique.mockResolvedValue(null);
+    mockBookmarkFindUnique.mockResolvedValue(null);
   });
 
   it("未登录用户应可查看公开且已发布的帖子", async () => {
@@ -121,6 +127,10 @@ describe("GET /api/posts/[id]", () => {
     expect(res.status).toBe(200);
     expect(data.post.id).toBe("p1");
     expect(data.post.author.isShadowBanned).toBeUndefined();
+    expect(data.post.isLiked).toBe(false);
+    expect(data.post.isBookmarked).toBe(false);
+    expect(mockLikeFindUnique).not.toHaveBeenCalled();
+    expect(mockBookmarkFindUnique).not.toHaveBeenCalled();
   });
 
   it("未登录用户不可查看非公开区帖子", async () => {
@@ -169,6 +179,34 @@ describe("GET /api/posts/[id]", () => {
     expect(data.post.id).toBe("p1");
     // isShadowBanned should be stripped from response
     expect(data.post.author.isShadowBanned).toBeUndefined();
+  });
+
+  it("应返回当前用户的点赞和收藏状态", async () => {
+    setSession("user2", "USER");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      title: "测试帖子",
+      status: "PUBLISHED",
+      authorId: "user1",
+      author: { id: "user1", nickname: "用户1", avatar: null, isShadowBanned: false },
+      board: { id: "b1", name: "娱乐", zone: "PUBLIC" },
+      tags: [],
+    });
+    mockLikeFindUnique.mockResolvedValue({ userId: "user2", postId: "p1" });
+    mockBookmarkFindUnique.mockResolvedValue({ userId: "user2", postId: "p1" });
+
+    const { GET } = await import("../../[id]/route");
+    const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.post).toMatchObject({ isLiked: true, isBookmarked: true });
+    expect(mockLikeFindUnique).toHaveBeenCalledWith({
+      where: { userId_postId: { userId: "user2", postId: "p1" } },
+    });
+    expect(mockBookmarkFindUnique).toHaveBeenCalledWith({
+      where: { userId_postId: { userId: "user2", postId: "p1" } },
+    });
   });
 
   it("应返回 404 当帖子已删除且非版主", async () => {

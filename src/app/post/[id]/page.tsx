@@ -37,7 +37,7 @@ interface PostTag {
   tag: { id: string; name: string };
 }
 
-interface PostData {
+export interface PostData {
   id: string;
   title: string;
   content: string;
@@ -53,6 +53,12 @@ interface PostData {
   tags: PostTag[];
   case_: { id: string; category: string; status: string; requestStatus: string } | null;
   isAuthor?: boolean;
+  isLiked: boolean;
+  isBookmarked: boolean;
+}
+
+export function getPostInteractionState(post: Pick<PostData, "isLiked" | "isBookmarked">) {
+  return { liked: post.isLiked, bookmarked: post.isBookmarked };
 }
 
 function PostDetailSkeleton() {
@@ -114,8 +120,9 @@ export default function PostDetailPage() {
         const data = await res.json();
         setPost(data.post);
         setLikeCount(data.post.likeCount);
-        setLiked(data.post.isLiked ?? false);
-        setBookmarked(data.post.isBookmarked ?? false);
+        const interaction = getPostInteractionState(data.post);
+        setLiked(interaction.liked);
+        setBookmarked(interaction.bookmarked);
       } catch {
         setError("网络错误，请稍后重试");
       } finally {
@@ -370,6 +377,7 @@ export default function PostDetailPage() {
                   liked && "text-red-500"
                 )}
                 aria-label={liked ? "取消点赞" : "点赞"}
+                aria-pressed={liked}
               >
                 <Heart
                   className={cn("h-5 w-5", liked && "fill-current")}
@@ -387,6 +395,7 @@ export default function PostDetailPage() {
                   bookmarked && "text-yellow-500"
                 )}
                 aria-label={bookmarked ? "取消收藏" : "收藏"}
+                aria-pressed={bookmarked}
               >
                 <Bookmark
                   className={cn("h-5 w-5", bookmarked && "fill-current")}
