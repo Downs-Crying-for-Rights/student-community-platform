@@ -51,6 +51,7 @@ export type QQBotOperationAction = "RESTART_WORKER" | "RESTART_NAPCAT" | "REFRES
 
 export interface QQBotOperationCommand {
   id: string;
+  leaseToken: string;
   action: QQBotOperationAction;
   requestedAt: string;
 }
@@ -67,6 +68,7 @@ export interface QQBotLoginState {
 
 export interface QQBotOperationResult {
   commandId: string;
+  leaseToken: string;
   action: QQBotOperationAction;
   status: "SUCCEEDED" | "FAILED";
   updatedAt: string;

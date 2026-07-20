@@ -4,7 +4,9 @@ import redis from "@/lib/redis";
 
 const COMMAND_KEY = "qq-bot:operations:command";
 const RESULT_KEY = "qq-bot:operations:result";
-const COMMAND_TTL_SECONDS = 120;
+const LEASE_KEY = "qq-bot:operations:lease";
+const COMMAND_TTL_SECONDS = 300;
+const LEASE_TTL_SECONDS = 180;
 const RESULT_TTL_SECONDS = 300;
 
 export const QQ_BOT_OPERATION_ACTIONS = ["RESTART_WORKER", "RESTART_NAPCAT", "REFRESH_LOGIN"] as const;
@@ -12,12 +14,14 @@ export type QQBotOperationAction = (typeof QQ_BOT_OPERATION_ACTIONS)[number];
 
 export interface QQBotOperationCommand {
   id: string;
+  leaseToken?: string;
   action: QQBotOperationAction;
   requestedAt: string;
 }
 
 export interface QQBotOperationResult {
   commandId: string;
+  leaseToken?: string;
   action: QQBotOperationAction;
   status: "RUNNING" | "SUCCEEDED" | "FAILED";
   updatedAt: string;
@@ -60,16 +64,48 @@ export async function enqueueQQBotOperation(action: QQBotOperationAction): Promi
 }
 
 export async function claimQQBotOperation(): Promise<QQBotOperationCommand | null> {
-  const raw = await redis.getdel(COMMAND_KEY);
+  const leaseToken = randomUUID();
+  const raw = await redis.eval(
+    `local command = redis.call("GET", KEYS[1])
+     if not command then return nil end
+     if not redis.call("SET", KEYS[2], ARGV[1], "EX", ARGV[2], "NX") then return nil end
+     local ttl = redis.call("TTL", KEYS[1])
+     if ttl < tonumber(ARGV[2]) then redis.call("EXPIRE", KEYS[1], ARGV[2]) end
+     return command`,
+    2,
+    COMMAND_KEY,
+    LEASE_KEY,
+    leaseToken,
+    String(LEASE_TTL_SECONDS),
+  ) as string | null;
   if (!raw) return null;
   const value = JSON.parse(raw) as Partial<QQBotOperationCommand>;
   if (typeof value.id !== "string" || typeof value.requestedAt !== "string" ||
     !QQ_BOT_OPERATION_ACTIONS.includes(value.action as QQBotOperationAction)) return null;
-  return value as QQBotOperationCommand;
+  return { ...value, leaseToken } as QQBotOperationCommand;
 }
 
-export async function recordQQBotOperationResult(result: QQBotOperationResult): Promise<void> {
-  await redis.set(RESULT_KEY, JSON.stringify(result), "EX", RESULT_TTL_SECONDS);
+export async function recordQQBotOperationResult(result: QQBotOperationResult): Promise<boolean> {
+  if (!result.leaseToken) return false;
+  const recorded = await redis.eval(
+    `local command = redis.call("GET", KEYS[1])
+     if not command or redis.call("GET", KEYS[2]) ~= ARGV[1] then return 0 end
+     local parsed = cjson.decode(command)
+     if parsed.id ~= ARGV[2] or parsed.action ~= ARGV[3] then return 0 end
+     redis.call("SET", KEYS[3], ARGV[4], "EX", ARGV[5])
+     redis.call("DEL", KEYS[1], KEYS[2])
+     return 1`,
+    3,
+    COMMAND_KEY,
+    LEASE_KEY,
+    RESULT_KEY,
+    result.leaseToken,
+    result.commandId,
+    result.action,
+    JSON.stringify(result),
+    String(RESULT_TTL_SECONDS),
+  );
+  return recorded === 1;
 }
 
 export async function getQQBotOperationResult(): Promise<QQBotOperationResult | null> {

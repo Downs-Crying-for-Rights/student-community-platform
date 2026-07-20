@@ -7,6 +7,7 @@ RELEASE_DIR="$APP_DIR/releases/$RELEASE_SHA"
 SHARED_DIR="$APP_DIR/shared"
 CURRENT_LINK="$APP_DIR/current"
 PROJECT_NAME="forum-dcr2026"
+BOT_DIR="${BOT_DIR:-/opt/forum-dcr2026-bot}"
 HEALTH_URL="https://forum.dcr2026.com/"
 DEPLOYMENT_URL="https://forum.dcr2026.com/DEPLOYMENT"
 PREVIOUS_RELEASE=""
@@ -133,6 +134,42 @@ fi
 
 ln -sfn "$RELEASE_DIR" "$CURRENT_LINK.new"
 mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
+
+if [[ -f "$BOT_DIR/docker-compose.yml" ]]; then
+  if ! (cd "$BOT_DIR" && docker compose up -d --build --no-deps worker); then
+    echo "QQ bot Worker deployment failed" >&2
+    if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" ]]; then
+      ln -sfn "$PREVIOUS_RELEASE" "$CURRENT_LINK.new"
+      mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
+      rollback_failed=false
+      (cd "$PREVIOUS_RELEASE" && APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans) || rollback_failed=true
+      (cd "$BOT_DIR" && docker compose up -d --build --no-deps worker) || rollback_failed=true
+      if [[ "$rollback_failed" == true ]]; then echo "QQ bot rollback failed" >&2; fi
+    fi
+    exit 1
+  fi
+  worker_live=false
+  for _ in {1..12}; do
+    if docker exec forum-dcr2026-qq-worker wget -q -O /dev/null http://127.0.0.1:8081/livez; then
+      worker_live=true
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$worker_live" != true ]]; then
+    echo "QQ bot Worker liveness check failed" >&2
+    docker logs --tail=100 forum-dcr2026-qq-worker >&2 || true
+    if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" ]]; then
+      ln -sfn "$PREVIOUS_RELEASE" "$CURRENT_LINK.new"
+      mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
+      rollback_failed=false
+      (cd "$PREVIOUS_RELEASE" && APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans) || rollback_failed=true
+      (cd "$BOT_DIR" && docker compose up -d --build --no-deps worker) || rollback_failed=true
+      if [[ "$rollback_failed" == true ]]; then echo "QQ bot rollback failed" >&2; fi
+    fi
+    exit 1
+  fi
+fi
 
 chmod +x "$CURRENT_LINK/scripts/collect-production-logs.sh"
 cat > /etc/systemd/system/forum-dcr2026-log-collector.service <<EOF

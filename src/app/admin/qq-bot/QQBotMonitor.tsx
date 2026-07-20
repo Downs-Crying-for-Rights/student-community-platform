@@ -161,7 +161,26 @@ export function QQBotMonitor() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "提交修复操作失败");
       setError("");
-      window.setTimeout(() => void load(), 1_500);
+      const commandId = body.command?.id as string | undefined;
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+        const params = new URLSearchParams({ hours, kind, page: String(page), pageSize: "50" });
+        if (status && kind !== "INBOX") params.set("status", status);
+        const statusResponse = await fetch(`/api/admin/qq-bot?${params}`, { cache: "no-store" });
+        const statusBody = await statusResponse.json();
+        if (!statusResponse.ok) continue;
+        setData(statusBody);
+        const operation = statusBody.operation;
+        if (operation?.commandId !== commandId || operation.status === "RUNNING") continue;
+        if (operation.status === "FAILED") throw new Error(operation.message || "修复操作失败");
+        if (action === "REFRESH_LOGIN" && operation.hasLoginCredentials) {
+          const credentialsResponse = await fetch("/api/admin/qq-bot/credentials", { cache: "no-store" });
+          const credentialsBody = await credentialsResponse.json();
+          if (credentialsResponse.ok) setCredentials(credentialsBody.login);
+        }
+        return;
+      }
+      throw new Error("Worker 操作超时，请检查机器人状态");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "提交修复操作失败");
     } finally {
@@ -183,6 +202,7 @@ export function QQBotMonitor() {
   };
   const worker = data?.worker;
   const summary = data?.summary;
+  const operationRunning = data?.operation?.status === "RUNNING";
   const workerLabel = worker?.status === "ONLINE" ? "完全在线" : worker?.status === "DISABLED" ? "已停用" :
     worker?.status === "ACCOUNT_OFFLINE" ? "QQ 账号已掉线" : worker?.status === "ONEBOT_OFFLINE" ? "OneBot 已断开" : "Worker 失联";
   const cards = [
@@ -243,9 +263,9 @@ export function QQBotMonitor() {
           {data?.operation && <span className={cn("rounded-full px-3 py-1 text-xs font-medium", data.operation.status === "SUCCEEDED" ? "bg-emerald-100 text-emerald-800" : data.operation.status === "FAILED" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800")}>{data.operation.message}</span>}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" disabled={Boolean(operationLoading)} onClick={() => void runOperation("RESTART_WORKER", "重启 Worker")}><RotateCcw className="mr-2 h-4 w-4" />重启 Worker</Button>
-          <Button variant="outline" disabled={Boolean(operationLoading)} onClick={() => void runOperation("RESTART_NAPCAT", "重启 NapCat 并重新登录")}><Power className="mr-2 h-4 w-4" />重启 NapCat</Button>
-          <Button disabled={Boolean(operationLoading)} onClick={() => void runOperation("REFRESH_LOGIN", "刷新 QQ 登录凭证")}><KeyRound className="mr-2 h-4 w-4" />刷新登录凭证</Button>
+          <Button variant="outline" disabled={Boolean(operationLoading) || operationRunning} onClick={() => void runOperation("RESTART_WORKER", "重启 Worker")}><RotateCcw className="mr-2 h-4 w-4" />重启 Worker</Button>
+          <Button variant="outline" disabled={Boolean(operationLoading) || operationRunning} onClick={() => void runOperation("RESTART_NAPCAT", "重启 NapCat 并重新登录")}><Power className="mr-2 h-4 w-4" />重启 NapCat</Button>
+          <Button disabled={Boolean(operationLoading) || operationRunning} onClick={() => void runOperation("REFRESH_LOGIN", "刷新 QQ 登录凭证")}><KeyRound className="mr-2 h-4 w-4" />刷新登录凭证</Button>
           {data?.operation?.hasLoginCredentials && <Button variant="secondary" disabled={Boolean(operationLoading)} onClick={() => void revealCredentials()}>查看登录凭证</Button>}
         </div>
         {credentials && <div className="grid gap-4 rounded-lg border bg-muted/20 p-4 md:grid-cols-[auto_1fr]">

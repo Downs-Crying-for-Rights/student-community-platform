@@ -21,6 +21,7 @@ describe("internal QQ bot operations", () => {
     process.env.INTERNAL_API_TOKEN = "internal-secret";
     process.env.QQ_BOT_ENABLED = "true";
     process.env.QQ_BOT_EXPECTED_SELF_ID = "3917673573";
+    mocks.record.mockResolvedValue(true);
   });
 
   it("rejects an invalid internal token without claiming commands", async () => {
@@ -30,13 +31,14 @@ describe("internal QQ bot operations", () => {
   });
 
   it("claims one operation and accepts a constrained result", async () => {
-    const command = { id: "f9c74a69-3b0f-4a13-b961-166aae661234", action: "REFRESH_LOGIN", requestedAt: "2026-07-19T12:00:00.000Z" };
+    const command = { id: "f9c74a69-3b0f-4a13-b961-166aae661234", leaseToken: "f8a0a6ca-40e5-41c7-a829-055cf8eaa632", action: "REFRESH_LOGIN", requestedAt: "2026-07-19T12:00:00.000Z" };
     mocks.claim.mockResolvedValue(command);
     const { GET, POST } = await import("./route");
     expect(await (await GET(request("GET"))).json()).toEqual({ command });
 
     const result = {
       commandId: command.id,
+      leaseToken: command.leaseToken,
       action: command.action,
       status: "SUCCEEDED",
       updatedAt: "2026-07-19T12:00:01.000Z",
@@ -54,6 +56,7 @@ describe("internal QQ bot operations", () => {
     const { POST } = await import("./route");
     const response = await POST(request("POST", {
       commandId: "f9c74a69-3b0f-4a13-b961-166aae661234",
+      leaseToken: "f8a0a6ca-40e5-41c7-a829-055cf8eaa632",
       action: "RUN_SHELL",
       status: "SUCCEEDED",
       updatedAt: "2026-07-19T12:00:01.000Z",

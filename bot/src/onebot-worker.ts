@@ -34,6 +34,7 @@ export class OneBotWorker {
   private outboxTimer: NodeJS.Timeout | null = null;
   private reconnectFailureTimer: NodeJS.Timeout | null = null;
   private outboxFailures = 0;
+  private outboxPollRunning = false;
   private accountOnline = false;
   private accountStatusCheckedAt = 0;
   private reconnectAttemptedAt = 0;
@@ -47,6 +48,7 @@ export class OneBotWorker {
 
   start(): void {
     this.stopped = false;
+    this.scheduleOutboxPoll(0);
     this.connect();
   }
 
@@ -109,11 +111,12 @@ export class OneBotWorker {
     socket.on("close", (code) => {
       this.verified = false;
       this.accountOnline = false;
-      if (this.outboxTimer) clearTimeout(this.outboxTimer);
-      this.outboxTimer = null;
       this.rejectPendingActions("CONNECTION_LOST");
       if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
       logger.warn("onebot_disconnected", { code });
+      if (this.outboxTimer) clearTimeout(this.outboxTimer);
+      this.outboxTimer = null;
+      this.scheduleOutboxPoll(0);
       this.scheduleReconnect();
     });
   }
@@ -154,6 +157,8 @@ export class OneBotWorker {
       }
       this.verified = true;
       this.outboxFailures = 0;
+      if (this.outboxTimer) clearTimeout(this.outboxTimer);
+      this.outboxTimer = null;
       this.scheduleOutboxPoll(0);
       logger.info("onebot_identity_verified");
       return;
@@ -236,7 +241,7 @@ export class OneBotWorker {
   }
 
   private scheduleOutboxPoll(delay: number): void {
-    if (this.stopped || !this.verified || this.outboxTimer) return;
+    if (this.stopped || this.outboxTimer) return;
     this.outboxTimer = setTimeout(() => {
       this.outboxTimer = null;
       void this.pollOutbox();
@@ -244,21 +249,25 @@ export class OneBotWorker {
   }
 
   private async pollOutbox(): Promise<void> {
-    if (!this.isTransportReady()) return;
+    if (this.outboxPollRunning || this.stopped) return;
+    this.outboxPollRunning = true;
     try {
       const checkedAt = new Date();
-      this.accountOnline = await this.probeAccountStatus();
+      let oneBotConnected = this.isTransportReady();
+      this.accountOnline = oneBotConnected && await this.probeAccountStatus();
+      oneBotConnected = this.isTransportReady();
+      if (!oneBotConnected) this.accountOnline = false;
       this.accountStatusCheckedAt = checkedAt.getTime();
       if (this.accountOnline) {
         this.reconnectAttemptedAt = 0;
         if (this.reconnectFailureTimer) clearTimeout(this.reconnectFailureTimer);
         this.reconnectFailureTimer = null;
       }
-      const shouldRestart = !this.accountOnline &&
+      const shouldRestart = oneBotConnected && !this.accountOnline &&
         checkedAt.getTime() - this.reconnectAttemptedAt >= ACCOUNT_RESTART_COOLDOWN_MS;
       if (shouldRestart) this.reconnectAttemptedAt = checkedAt.getTime();
       const items = await this.app.claimOutbox(this.config.expectedSelfId, {
-        oneBotConnected: true,
+        oneBotConnected,
         accountOnline: this.accountOnline,
         checkedAt: checkedAt.toISOString(),
         ...(this.reconnectAttemptedAt > 0
@@ -269,7 +278,7 @@ export class OneBotWorker {
           : {}),
       });
       this.outboxFailures = 0;
-      if (!this.accountOnline) {
+      if (oneBotConnected && !this.accountOnline) {
         logger.warn("qq_account_offline", { reconnectRequested: shouldRestart });
         if (shouldRestart) {
           this.scheduleReconnectFailureReport();
@@ -286,6 +295,8 @@ export class OneBotWorker {
         this.config.outboxPollMs * 2 ** Math.min(this.outboxFailures++, 10),
       );
       this.scheduleOutboxPoll(delay);
+    } finally {
+      this.outboxPollRunning = false;
     }
   }
 

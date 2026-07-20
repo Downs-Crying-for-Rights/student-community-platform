@@ -25,6 +25,12 @@ docker compose -p "$PROJECT_NAME" logs --no-color --timestamps --follow --tail=3
   >>"$LOG_DIR/services.log" 2>&1 &
 children+=("$!")
 
+if docker inspect forum-dcr2026-qq-worker >/dev/null 2>&1; then
+  docker logs --timestamps --follow --tail=300 forum-dcr2026-qq-worker \
+    >>"$LOG_DIR/services.log" 2>&1 &
+  children+=("$!")
+fi
+
 tail_source() {
   local source="$1"
   local destination="$2"

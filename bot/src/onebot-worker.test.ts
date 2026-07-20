@@ -60,9 +60,11 @@ describe("OneBotWorker outbox", () => {
     let claimCount = 0;
     const app: AppApi = {
       processMessage: vi.fn().mockResolvedValue(messageResponse),
-      claimOutbox: vi.fn().mockImplementation(async () => {
+      claimOutbox: vi.fn().mockImplementation(async (_selfId, status) => {
         claimCount += 1;
-        return claimCount === 1 ? [{ id: "private-outbox-id", userId: "7", content: "私密通知" }] : [];
+        return status.oneBotConnected && status.accountOnline && claimCount >= 2
+          ? [{ id: "private-outbox-id", userId: "7", content: "私密通知" }]
+          : [];
       }),
       ackOutbox: vi.fn().mockResolvedValue(undefined),
     };
@@ -91,7 +93,7 @@ describe("OneBotWorker outbox", () => {
     try {
       worker.start();
       await waitFor(() => expect(connection).toBeDefined());
-      expect(app.claimOutbox).not.toHaveBeenCalled();
+      expect(app.claimOutbox).toHaveBeenCalledWith("42", expect.objectContaining({ oneBotConnected: false, accountOnline: false }));
       expect(authorization).toBe("Bearer onebot-secret");
 
       await waitFor(() => expect(loginRequest).toBeDefined());

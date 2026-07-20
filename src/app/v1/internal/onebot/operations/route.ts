@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 const resultSchema = z.object({
   commandId: z.string().uuid(),
+  leaseToken: z.string().uuid(),
   action: z.enum(QQ_BOT_OPERATION_ACTIONS),
   status: z.enum(["SUCCEEDED", "FAILED"]),
   updatedAt: z.string().datetime({ offset: true }),
@@ -44,6 +45,8 @@ export async function POST(request: Request) {
   if (denied) return denied;
   const parsed = resultSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid result" }, { status: 400 });
-  await recordQQBotOperationResult(parsed.data);
+  if (!await recordQQBotOperationResult(parsed.data)) {
+    return NextResponse.json({ error: "Stale operation lease" }, { status: 409 });
+  }
   return new NextResponse(null, { status: 204 });
 }

@@ -17,6 +17,15 @@ interface LoginStatus {
   loginError?: string;
 }
 
+class NapCatRequestError extends Error {
+  constructor(message: string, readonly authorizationFailure = false) {
+    super(message);
+  }
+}
+
+const LOGIN_REFRESH_TIMEOUT_MS = 30_000;
+const LOGIN_REFRESH_POLL_MS = 1_000;
+
 function extractUrls(value: string): string[] {
   return value.match(/https?:\/\/[^\s，。]+/g) ?? [];
 }
@@ -73,15 +82,61 @@ export class QQBotOperationRunner {
       }
 
       const initial = await this.getLoginStatus();
-      if (!initial.isLogin) {
-        await this.napcat("/api/QQLogin/RefreshQRcode", {});
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
+      if (initial.isLogin) {
+        await this.report(command, "SUCCEEDED", "QQ 当前已登录", initial);
+        return;
       }
-      const login = await this.getLoginStatus();
-      await this.report(command, "SUCCEEDED", login.isLogin ? "QQ 当前已登录" : "登录凭证已刷新，有效期约 5 分钟", login);
+      if (initial.isOffline) {
+        await this.napcat("/api/QQLogin/RestartNapCat", {});
+        await this.waitForNapCatRecovery();
+      }
+
+      const recovered = await this.getLoginStatus();
+      if (!recovered.isLogin) {
+        await this.napcat("/api/QQLogin/RefreshQRcode", {});
+      }
+      const login = await this.waitForLoginCredential(recovered);
+      await this.report(command, "SUCCEEDED", login.isLogin ? "QQ 当前已登录" : "登录凭据已刷新，请尽快完成验证", login);
     } catch (error) {
       await this.report(command, "FAILED", error instanceof Error ? error.message : "修复操作失败");
     }
+  }
+
+  private hasLoginCredential(login: QQBotLoginState): boolean {
+    return Boolean(login.qrcode || login.captchaUrl || login.deviceVerificationUrl);
+  }
+
+  private async waitForNapCatRecovery(): Promise<void> {
+    const deadline = Date.now() + LOGIN_REFRESH_TIMEOUT_MS;
+    let consecutiveReadyChecks = 0;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, LOGIN_REFRESH_POLL_MS));
+      try {
+        const login = await this.getLoginStatus();
+        consecutiveReadyChecks = login.isOffline ? 0 : consecutiveReadyChecks + 1;
+        if (consecutiveReadyChecks >= 2) return;
+      } catch {
+        consecutiveReadyChecks = 0;
+        // NapCat briefly disconnects while restarting.
+      }
+    }
+    throw new Error("NapCat 重启超时");
+  }
+
+  private async waitForLoginCredential(previous: QQBotLoginState): Promise<QQBotLoginState> {
+    const deadline = Date.now() + LOGIN_REFRESH_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const login = await this.getLoginStatus();
+      if (login.isLogin || (this.hasLoginCredential(login) && !this.sameLoginCredential(login, previous))) return login;
+      await new Promise((resolve) => setTimeout(resolve, LOGIN_REFRESH_POLL_MS));
+    }
+    throw new Error("登录凭据生成超时");
+  }
+
+  private sameLoginCredential(left: QQBotLoginState, right: QQBotLoginState): boolean {
+    return left.qrcode === right.qrcode &&
+      left.captchaUrl === right.captchaUrl &&
+      left.deviceVerificationUrl === right.deviceVerificationUrl;
   }
 
   private async getLoginStatus(): Promise<QQBotLoginState> {
@@ -100,18 +155,23 @@ export class QQBotOperationRunner {
   }
 
   private async napcat<T>(path: string, body: unknown): Promise<T> {
-    if (!this.credential) {
-      const hash = createHash("sha256").update(`${this.napcatToken}.napcat`).digest("hex");
-      const login = await this.napcatRequest<{ Credential?: string }>("/api/auth/login", { hash }, "");
-      if (!login.Credential) throw new Error("NapCat WebUI 鉴权失败");
-      this.credential = login.Credential;
-    }
+    await this.authenticateNapCat();
     try {
       return await this.napcatRequest<T>(path, body, this.credential);
     } catch (error) {
+      if (!(error instanceof NapCatRequestError) || !error.authorizationFailure) throw error;
       this.credential = "";
-      throw error;
+      await this.authenticateNapCat();
+      return this.napcatRequest<T>(path, body, this.credential);
     }
+  }
+
+  private async authenticateNapCat(): Promise<void> {
+    if (this.credential) return;
+    const hash = createHash("sha256").update(`${this.napcatToken}.napcat`).digest("hex");
+    const login = await this.napcatRequest<{ Credential?: string; require2FA?: boolean }>("/api/auth/login", { hash }, "");
+    if (login.require2FA || !login.Credential) throw new Error("NapCat WebUI 鉴权失败");
+    this.credential = login.Credential;
   }
 
   private async napcatRequest<T>(path: string, body: unknown, credential: string): Promise<T> {
@@ -125,7 +185,7 @@ export class QQBotOperationRunner {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) throw new Error("NapCat WebUI 无响应");
+    if (!response.ok) throw new NapCatRequestError("NapCat WebUI 无响应", response.status === 401 || response.status === 403);
     const parsed = await response.json() as NapCatResponse<T>;
     if (parsed.code !== 0) throw new Error(parsed.message || "NapCat 操作失败");
     return parsed.data as T;
@@ -134,6 +194,7 @@ export class QQBotOperationRunner {
   private async report(command: QQBotOperationCommand, status: QQBotOperationResult["status"], message: string, login?: QQBotLoginState): Promise<void> {
     await this.app.reportOperation({
       commandId: command.id,
+      leaseToken: command.leaseToken,
       action: command.action,
       status,
       updatedAt: new Date().toISOString(),

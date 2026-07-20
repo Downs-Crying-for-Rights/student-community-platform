@@ -125,7 +125,7 @@ export class AppClient implements AppApi {
     if (command === null) return null;
     if (!command || typeof command !== "object") throw new AppApiError("contract");
     const item = command as Partial<QQBotOperationCommand>;
-    if (typeof item.id !== "string" || typeof item.requestedAt !== "string" ||
+    if (typeof item.id !== "string" || typeof item.leaseToken !== "string" || typeof item.requestedAt !== "string" ||
       !["RESTART_WORKER", "RESTART_NAPCAT", "REFRESH_LOGIN"].includes(item.action ?? "")) {
       throw new AppApiError("contract");
     }
