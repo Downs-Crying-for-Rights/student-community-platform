@@ -7,8 +7,8 @@ import { adminNavItems } from "@/components/layout/navigation-config";
 describe("admin changelog", () => {
   it("shows newest releases first with structured changes", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(4);
-    expect(CHANGELOG[0].version).toBe("0.3.0");
-    expect(CHANGELOG[0].changes).toContain("新增全站强制弹窗公告和公告确认记录。");
+    expect(CHANGELOG[0].version).toBe("0.3.4");
+    expect(CHANGELOG[0].changes).toContain("新增 QQ 官方机器人独立管理子菜单和腾讯鉴权检测。");
   });
 
   it("is available from the admin navigation and displays deployed version", () => {

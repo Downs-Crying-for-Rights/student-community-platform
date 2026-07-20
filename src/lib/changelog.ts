@@ -7,6 +7,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: "0.3.4",
+    date: "2026-07-20",
+    title: "QQ 官方机器人接入",
+    changes: [
+      "新增 QQ 官方机器人独立管理子菜单和腾讯鉴权检测。",
+      "新增 HTTPS Webhook 回调验证、Ed25519 事件验签和事件去重。",
+      "支持 QQ 单聊及群聊 @ 消息的基础安全回复。",
+      "官方机器人凭据仅通过服务器环境变量注入，不向浏览器或日志暴露。",
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-07-20",
     title: "公告与内容运营",

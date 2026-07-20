@@ -66,7 +66,7 @@ printf '%s\n' "$RELEASE_SHA" > public/DEPLOYMENT
 docker compose -p "$PROJECT_NAME" config --quiet
 APP_RELEASE="$RELEASE_SHA" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
 
-docker compose -p "$PROJECT_NAME" exec -T web sh -ec '
+if ! docker compose -p "$PROJECT_NAME" exec -T web sh -ec '
   test -n "$OSS_REGION"
   test -n "$OSS_BUCKET"
   test -n "$OSS_ACCESS_KEY_ID"
@@ -81,7 +81,27 @@ docker compose -p "$PROJECT_NAME" exec -T web sh -ec '
     test "$DEEPSEEK_DEFAULT_MODEL" = "deepseek-v4-flash"
     test "$DEEPSEEK_COMPLEX_MODEL" = "deepseek-v4-flash"
   fi
-'
+  case "$QQ_OFFICIAL_BOT_ENABLED" in
+    true|1)
+      test "$NEXTAUTH_URL" = "https://forum.dcr2026.com" || test "$NEXTAUTH_URL" = "https://forum.dcr2026.com/"
+      case "$QQ_OFFICIAL_BOT_APP_ID" in *[!0-9]*|"") exit 1 ;; esac
+      test "${#QQ_OFFICIAL_BOT_APP_ID}" -ge 5
+      test "${#QQ_OFFICIAL_BOT_APP_ID}" -le 20
+      test "${#QQ_OFFICIAL_BOT_CLIENT_SECRET}" -ge 8
+      ;;
+    false|0|"") ;;
+    *) exit 1 ;;
+  esac
+'; then
+  echo "Post-start configuration validation failed" >&2
+  docker compose -p "$PROJECT_NAME" logs --tail=100 web >&2 || true
+  if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" ]]; then
+    echo "Rolling back to $PREVIOUS_RELEASE" >&2
+    cd "$PREVIOUS_RELEASE"
+    APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
+  fi
+  exit 1
+fi
 
 healthy=false
 for attempt in {1..24}; do
