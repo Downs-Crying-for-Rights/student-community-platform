@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search, X } from "lucide-react";
+import { Activity, CalendarDays, KeyRound, Search, ShieldCheck, UserRound, X } from "lucide-react";
 
 interface UserItem {
   id: string;
@@ -85,6 +85,146 @@ const ACTIVITY_DOMAINS = [
   ["invites", "邀请"], ["announcements", "公告"], ["qq", "QQ 元数据"], ["qq-private", "QQ 原始交互", true],
   ["audit", "审计", true], ["diagnostics", "系统/遥测", true], ["ai", "AI 诊断", true],
 ] as const;
+
+type DataRecord = Record<string, unknown>;
+
+const FIELD_LABELS: Record<string, string> = {
+  id: "记录 ID", userId: "用户 ID", authorId: "作者 ID", operatorId: "操作人 ID", requesterId: "求助人 ID", helperId: "互助人 ID",
+  applicantId: "申请人 ID", reviewerId: "审核人 ID", senderId: "发送人 ID", receiverId: "接收人 ID", targetId: "目标 ID",
+  postId: "帖子 ID", commentId: "评论 ID", caseId: "工单 ID", taskId: "任务 ID", roomId: "群聊 ID", threadId: "会话 ID", sessionId: "会话 ID",
+  nickname: "昵称", username: "用户名", email: "邮箱", phone: "手机号", bio: "个人简介", value: "内容",
+  title: "标题", name: "名称", content: "内容", summary: "摘要", description: "说明", details: "详情", reason: "原因", reviewNote: "审核备注",
+  status: "状态", action: "操作", type: "类型", role: "角色", category: "分类", method: "方式", visibility: "可见范围", level: "级别",
+  provider: "认证服务", providerAccountId: "服务账号", scope: "授权范围", token_type: "令牌类型", feature: "功能", model: "模型",
+  route: "路由", duration: "耗时", release: "版本", source: "来源", message: "消息", recommendation: "建议", confidence: "置信度",
+  createdAt: "创建时间", updatedAt: "更新时间", reviewedAt: "审核时间", completedAt: "完成时间", closedAt: "关闭时间", expiresAt: "过期时间",
+  deliveredAt: "送达时间", processedAt: "处理时间", joinedAt: "加入时间", revokedAt: "撤销时间", publishedAt: "发布时间", expires: "会话到期时间",
+  isRead: "已读", isDeleted: "已删除", isAnonymous: "匿名", isPinned: "置顶", isPublished: "已发布", isUsed: "已使用", isRevoked: "已撤销",
+  isSystemMessage: "系统消息", isEvidence: "证据消息", forcePopup: "强制弹窗", requesterConfirmed: "求助人已确认", helperConfirmed: "互助人已确认",
+  applicantConfirmed: "申请人已确认", attemptCount: "尝试次数", revision: "修订版本", likeCount: "点赞数", commentCount: "评论数",
+  evidenceSize: "材料大小", evidenceMime: "材料格式", fileName: "文件名", fileSize: "文件大小", riskLevel: "风险等级",
+  targetType: "目标类型", targetUserId: "目标用户", targetPostId: "目标帖子", targetCommentId: "目标评论", resolution: "处理结论",
+  oldStatus: "原状态", newStatus: "新状态", rejectionReason: "拒绝原因", closureReason: "关闭原因", expectedHelpType: "期望帮助",
+  _count: "数量", board: "板块", room: "群聊", post: "帖子", links: "互助关系", matchRequests: "匹配请求", receipts: "阅读记录", deliveries: "投递记录",
+  caseTimeline: "工单时间线", taskTimeline: "任务时间线", cases: "DCR 工单", tasks: "互助任务", grants: "授权记录", drafts: "委托草稿",
+  conversation: "QQ 会话", identity: "QQ 身份", inbox: "接收消息", outbox: "发送消息", systemLogs: "系统日志", telemetry: "请求遥测",
+  moderation: "审核操作", configuration: "配置变更", pendingRegistration: "待完成 QQ 注册",
+};
+
+const COUNT_LABELS: Record<string, string> = {
+  posts: "帖子", comments: "评论", likes: "点赞", bookmarks: "收藏", postRevisionsEdited: "编辑修订", postRevisionsReviewed: "审核修订",
+  reportsFiled: "发起举报", reportsReceived: "收到举报", reportsResolved: "处理举报", punishmentsReceived: "受到处罚", punishmentsIssued: "执行处罚",
+  casesSubmitted: "提交工单", casesHandled: "处理工单", tasksRequested: "互助任务", helpSessions: "互助会话", helpClaims: "互助认领",
+  helpMessages: "互助消息", evidenceItems: "证据", taskTimeline: "任务动态", initiatedCycles: "发起循环", linksAsFrom: "提供帮助", linksAsTo: "接受帮助",
+  dmThreadsAsP1: "私信会话 A", dmThreadsAsP2: "私信会话 B", dmMessagesSent: "私信消息", chatRooms: "创建群聊", chatMemberships: "加入群聊",
+  chatMessages: "群聊消息", chatJoinRequests: "入群申请", chatRoomBans: "群聊封禁", notifications: "通知", announcementReceipts: "公告阅读",
+  accounts: "认证账号", sessions: "登录会话", identityVerificationApplications: "身份核验", invitesCreated: "创建邀请", auditLogs: "审计记录",
+  systemLogs: "系统日志", telemetryEvents: "遥测事件", moderationActions: "审核操作", configUpdates: "配置更新", aiReviewsRequested: "AI 审核",
+};
+
+const COUNT_GROUPS = [
+  { title: "社区参与", keys: ["posts", "comments", "likes", "bookmarks", "postRevisionsEdited", "postRevisionsReviewed"] },
+  { title: "治理与安全", keys: ["reportsFiled", "reportsReceived", "reportsResolved", "punishmentsReceived", "punishmentsIssued", "moderationActions"] },
+  { title: "DCR 互助", keys: ["casesSubmitted", "casesHandled", "tasksRequested", "helpSessions", "helpClaims", "helpMessages", "evidenceItems", "initiatedCycles"] },
+  { title: "沟通互动", keys: ["dmMessagesSent", "chatMessages", "chatRooms", "chatMemberships", "notifications", "announcementReceipts"] },
+  { title: "账户与系统", keys: ["accounts", "sessions", "identityVerificationApplications", "invitesCreated", "auditLogs", "systemLogs", "telemetryEvents", "aiReviewsRequested"] },
+] as const;
+
+const isRecord = (value: unknown): value is DataRecord => !!value && typeof value === "object" && !Array.isArray(value);
+const fieldLabel = (key: string) => FIELD_LABELS[key] ?? key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase());
+const formatDate = (value: unknown) => typeof value === "string" && !Number.isNaN(Date.parse(value)) ? new Date(value).toLocaleString("zh-CN") : null;
+const displayScalar = (key: string, value: unknown) => {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "boolean") return value ? "是" : "否";
+  if (typeof value === "number") return key === "duration" ? `${Math.round(value)} ms` : value.toLocaleString("zh-CN");
+  return formatDate(value) ?? String(value);
+};
+
+function StatusPill({ active, children }: { active?: boolean; children: React.ReactNode }) {
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-muted/50 text-muted-foreground"}`}>{children}</span>;
+}
+
+function StructuredValue({ name, value, depth = 0 }: { name: string; value: unknown; depth?: number }) {
+  if (Array.isArray(value)) {
+    if (!value.length) return null;
+    return <div className="space-y-2"><div className="text-xs font-medium text-muted-foreground">{fieldLabel(name)}</div><div className="space-y-2">{value.slice(0, 12).map((item, index) => isRecord(item) ? <div key={index} className="rounded-md border bg-background p-2"><RecordFields record={item} depth={depth + 1} /></div> : <StatusPill key={index}>{displayScalar(name, item)}</StatusPill>)}</div></div>;
+  }
+  if (isRecord(value)) return <div className="space-y-2"><div className="text-xs font-medium text-muted-foreground">{fieldLabel(name)}</div><div className="rounded-md border bg-background p-2"><RecordFields record={value} depth={depth + 1} /></div></div>;
+  return <div className="min-w-0"><div className="text-[11px] text-muted-foreground">{fieldLabel(name)}</div><div className="break-words text-sm">{displayScalar(name, value)}</div></div>;
+}
+
+function RecordFields({ record, depth = 0, omit = [] }: { record: DataRecord; depth?: number; omit?: string[] }) {
+  const entries = Object.entries(record).filter(([key, value]) => !omit.includes(key) && value !== null && value !== undefined && value !== "");
+  if (!entries.length) return <span className="text-xs text-muted-foreground">无更多信息</span>;
+  return <div className={depth > 1 ? "space-y-2" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3"}>{entries.map(([key, value]) => <StructuredValue key={key} name={key} value={value} depth={depth} />)}</div>;
+}
+
+function ActivityCard({ item, domain }: { item: unknown; domain: string }) {
+  if (!isRecord(item)) return <div className="rounded-lg border p-3 text-sm">{String(item)}</div>;
+  const title = [item.title, item.name, item.action, item.feature, item.category, item.type, item.purpose].find((value) => typeof value === "string") as string | undefined;
+  const bodyKey = ["content", "summary", "message", "reason", "reviewNote", "description", "recommendation"].find((key) => typeof item[key] === "string" && item[key]);
+  const time = item.createdAt ?? item.updatedAt ?? item.reviewedAt ?? item.expiresAt;
+  const statusEntries = ["status", "action", "role", "level", "visibility", "method"].filter((key) => item[key] !== undefined);
+  const omitted = ["title", "name", "createdAt", "updatedAt", "reviewedAt", "expiresAt", ...statusEntries, ...(bodyKey ? [bodyKey] : [])];
+  return <article className="relative rounded-xl border bg-background p-4 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="min-w-0"><p className="font-medium">{title || ACTIVITY_DOMAINS.find(([key]) => key === domain)?.[1] || "活动记录"}</p>{typeof item.id === "string" && <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">{item.id}</p>}</div>
+      {time !== undefined && <time className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><CalendarDays className="h-3.5 w-3.5" />{displayScalar("createdAt", time)}</time>}
+    </div>
+    {!!statusEntries.length && <div className="mt-3 flex flex-wrap gap-1.5">{statusEntries.map((key) => <StatusPill key={key}>{fieldLabel(key)}：{displayScalar(key, item[key])}</StatusPill>)}</div>}
+    {bodyKey && <p className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-muted/40 p-3 text-sm leading-6">{String(item[bodyKey])}</p>}
+    <div className="mt-3"><RecordFields record={item} omit={omitted} /></div>
+  </article>;
+}
+
+function ActivityItems({ items, domain }: { items: unknown[]; domain: string }) {
+  return <div className="space-y-3">{items.map((item, index) => {
+    if (isRecord(item) && typeof item.group === "string" && Array.isArray(item.items)) {
+      return <section key={`${item.group}-${index}`} className="space-y-2"><h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{fieldLabel(item.group)}</h4>{item.items.map((entry, childIndex) => <ActivityCard key={isRecord(entry) && typeof entry.id === "string" ? entry.id : childIndex} item={entry} domain={domain} />)}</section>;
+    }
+    return <ActivityCard key={isRecord(item) && typeof item.id === "string" ? item.id : index} item={item} domain={domain} />;
+  })}</div>;
+}
+
+function SummaryDashboard({ summary }: { summary: UserSummary }) {
+  const user = summary.user as DataRecord;
+  const accountCards = [
+    { label: "账号状态", value: user.deactivatedAt ? "已停用" : user.isBanned ? "已封禁" : "正常", good: !user.deactivatedAt && !user.isBanned },
+    { label: "角色", value: ROLE_LABELS[String(user.role)] || String(user.role ?? "-"), good: true },
+    { label: "资料完整", value: user.profileCompletionRequired ? "待补充" : "已完成", good: !user.profileCompletionRequired },
+    { label: "违规次数", value: Number(user.violationCount ?? 0).toLocaleString("zh-CN"), good: Number(user.violationCount ?? 0) === 0 },
+  ];
+  const capabilities = [
+    ["psychAccess", "心理交流区"], ["dcrAccess", "DCR 准入"], ["dcrContributionAccess", "DCR 贡献"],
+    ["dcrHelperAccess", "互助工作台"], ["dcrPledgeSigned", "DCR 守则"], ["quizPassed", "DCR 考核"],
+    ["onboardingDone", "新手引导"], ["realVerifiedAt", "实名核验"], ["studentVerifiedAt", "学生核验"],
+  ] as const;
+  const countGroups = COUNT_GROUPS.map((group) => ({
+    ...group,
+    rows: group.keys.map((key) => ({ key, value: summary.counts[key] ?? 0 })).filter((row) => row.value > 0),
+  })).filter((group) => group.rows.length > 0);
+  const maxCount = Math.max(1, ...countGroups.flatMap((group) => group.rows.map((row) => row.value)));
+  const accounts = Array.isArray(user.accounts) ? user.accounts : [];
+  const sessions = Array.isArray(user.sessions) ? user.sessions : [];
+  const verifications = Array.isArray(user.identityVerificationApplications) ? user.identityVerificationApplications : [];
+  const deletion = isRecord(user.accountDeletionRequest) ? user.accountDeletionRequest : null;
+
+  return <div className="space-y-5">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{accountCards.map((card) => <div key={card.label} className="rounded-xl border bg-muted/20 p-4"><p className="text-xs text-muted-foreground">{card.label}</p><p className={`mt-1 text-lg font-semibold ${card.good ? "text-emerald-700" : "text-amber-700"}`}>{card.value}</p></div>)}</div>
+    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+      <section className="rounded-xl border p-4"><div className="mb-3 flex items-center gap-2"><UserRound className="h-4 w-4 text-primary" /><h4 className="font-medium">账户资料</h4></div><div className="grid gap-3 sm:grid-cols-2"><StructuredValue name="nickname" value={user.nickname} /><StructuredValue name="username" value={user.username} /><StructuredValue name="email" value={user.email} /><StructuredValue name="phone" value={user.phone} /><StructuredValue name="createdAt" value={user.createdAt} /><StructuredValue name="updatedAt" value={user.updatedAt} /></div>{typeof user.bio === "string" && user.bio && <p className="mt-3 rounded-lg bg-muted/40 p-3 text-sm leading-6">{user.bio}</p>}</section>
+      <section className="rounded-xl border p-4"><div className="mb-3 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /><h4 className="font-medium">权限与核验</h4></div><div className="flex flex-wrap gap-2">{capabilities.map(([key, label]) => <StatusPill key={key} active={!!user[key]}>{label} · {user[key] ? "有效" : "未完成"}</StatusPill>)}</div><div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2"><span>邮箱验证：{displayScalar("emailVerified", user.emailVerified)}</span><span>私信同意版本：{displayScalar("dmConsentVersion", user.dmConsentVersion)}</span><span>安全版本：{displayScalar("securityVersion", user.securityVersion)}</span><span>匿名模式：{displayScalar("isAnonymous", user.isAnonymous)}</span></div></section>
+    </div>
+    <section className="rounded-xl border p-4"><div className="mb-4 flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /><div><h4 className="font-medium">行为分布</h4><p className="text-xs text-muted-foreground">仅展示有记录的数据类型，条形长度按当前用户最高计数缩放。</p></div></div>{countGroups.length ? <div className="grid gap-5 lg:grid-cols-2">{countGroups.map((group) => <div key={group.title}><h5 className="mb-2 text-xs font-semibold text-muted-foreground">{group.title}</h5><div className="space-y-2">{group.rows.map((row) => <div key={row.key} className="grid grid-cols-[88px_minmax(0,1fr)_44px] items-center gap-2 text-xs"><span>{COUNT_LABELS[row.key] ?? row.key}</span><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary/70" style={{ width: `${Math.max(5, row.value / maxCount * 100)}%` }} /></div><strong className="text-right tabular-nums">{row.value}</strong></div>)}</div></div>)}</div> : <p className="text-sm text-muted-foreground">暂无行为记录</p>}</section>
+    <section className="rounded-xl border p-4"><div className="mb-3 flex items-center gap-2"><KeyRound className="h-4 w-4 text-primary" /><div><h4 className="font-medium">认证与账户安全</h4><p className="text-xs text-muted-foreground">不展示令牌、哈希或身份材料。</p></div></div><div className="grid gap-3 md:grid-cols-2">
+      <div className="rounded-lg bg-muted/30 p-3"><h5 className="text-sm font-medium">认证提供方 · {accounts.length}</h5><div className="mt-2 space-y-2">{accounts.length ? accounts.map((account, index) => <RecordFields key={isRecord(account) && typeof account.id === "string" ? account.id : index} record={isRecord(account) ? account : { value: account }} omit={["id", "userId"]} />) : <p className="text-xs text-muted-foreground">暂无第三方认证</p>}</div></div>
+      <div className="rounded-lg bg-muted/30 p-3"><h5 className="text-sm font-medium">登录会话 · {summary.counts.sessions ?? sessions.length}</h5><div className="mt-2 space-y-2">{sessions.length ? sessions.map((session, index) => <div key={isRecord(session) && typeof session.id === "string" ? session.id : index} className="flex items-center justify-between rounded border bg-background px-3 py-2 text-xs"><span>会话 {index + 1}</span><span className="text-muted-foreground">到期：{isRecord(session) ? displayScalar("expiresAt", session.expires) : "-"}</span></div>) : <p className="text-xs text-muted-foreground">暂无有效会话</p>}</div></div>
+      <div className="rounded-lg bg-muted/30 p-3 md:col-span-2"><h5 className="text-sm font-medium">身份核验 · {verifications.length}</h5><div className="mt-2 grid gap-2 md:grid-cols-2">{verifications.length ? verifications.map((verification, index) => <div key={isRecord(verification) && typeof verification.id === "string" ? verification.id : index} className="rounded border bg-background p-3"><RecordFields record={isRecord(verification) ? verification : { value: verification }} omit={["id", "applicantId", "reviewerId"]} /></div>) : <p className="text-xs text-muted-foreground">暂无核验申请</p>}</div></div>
+      {!!(user.qqIdentity || user.pendingQQRegistration) && <div className="rounded-lg bg-muted/30 p-3"><h5 className="text-sm font-medium">QQ 绑定</h5><div className="mt-2"><RecordFields record={{ identity: user.qqIdentity, pendingRegistration: user.pendingQQRegistration }} /></div></div>}
+      {deletion && <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3"><h5 className="text-sm font-medium text-amber-900">账号注销申请</h5><div className="mt-2"><RecordFields record={deletion} omit={["id", "reviewerId"]} /></div></div>}
+    </div></section>
+  </div>;
+}
 
 export default function AdminUsersPage() {
   const { data: session } = useSession();
@@ -565,17 +705,9 @@ export default function AdminUsersPage() {
             {isSuperAdmin && <div className="space-y-4 rounded-lg border bg-background/95 p-4">
               <div>
                 <h3 className="font-semibold">完整账户摘要</h3>
-                <p className="mt-1 text-xs text-muted-foreground">安全字段、认证提供方、会话元数据、身份核验元数据与各域计数。密钥、令牌、哈希和原始身份材料永不返回。</p>
+                <p className="mt-1 text-xs text-muted-foreground">按账户状态、准入能力、认证安全与行为分布呈现。密钥、令牌、哈希和原始身份材料永不返回。</p>
               </div>
-              {summaryLoading ? <p className="text-sm text-muted-foreground">加载摘要中...</p> : summary ? <>
-                <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-                  {Object.entries(summary.user).filter(([key]) => !["accounts", "sessions", "identityVerificationApplications", "qqIdentity", "pendingQQRegistration", "accountDeletionRequest"].includes(key)).map(([key, value]) => (
-                    <div key={key} className="min-w-0 rounded-md bg-muted/40 px-3 py-2"><span className="text-xs text-muted-foreground">{key}</span><div className="break-all">{value === null ? "-" : typeof value === "object" ? JSON.stringify(value) : String(value)}</div></div>
-                  ))}
-                </div>
-                <details className="rounded-md border p-3"><summary className="cursor-pointer text-sm font-medium">认证、核验、QQ 与注销元数据</summary><pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify({ accounts: summary.user.accounts, sessions: summary.user.sessions, identityVerificationApplications: summary.user.identityVerificationApplications, qqIdentity: summary.user.qqIdentity, pendingQQRegistration: summary.user.pendingQQRegistration, accountDeletionRequest: summary.user.accountDeletionRequest }, null, 2)}</pre></details>
-                <div className="flex flex-wrap gap-2">{Object.entries(summary.counts).map(([key, value]) => <span key={key} className="rounded-full border px-2.5 py-1 text-xs"><strong>{key}</strong> {value}</span>)}</div>
-              </> : <p className="text-sm text-destructive">摘要不可用</p>}
+              {summaryLoading ? <p className="text-sm text-muted-foreground">加载摘要中...</p> : summary ? <SummaryDashboard summary={summary} /> : <p className="text-sm text-destructive">摘要不可用</p>}
             </div>}
 
             {isSuperAdmin && <div className="space-y-4 rounded-lg border bg-background/95 p-4">
@@ -585,7 +717,7 @@ export default function AdminUsersPage() {
               </div>
               {activityLoading ? <p className="text-sm text-muted-foreground">加载数据域中...</p> : activity ? <>
                 <div className="flex items-center justify-between text-xs text-muted-foreground"><span>共 {activity.total} 条</span><span>{activity.page} / {Math.max(1, activity.totalPages)}</span></div>
-                {activity.items.length === 0 ? <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">此域暂无记录</p> : <div className="space-y-2">{activity.items.map((item, index) => <pre key={`${activityDomain}-${index}`} className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md border bg-muted/30 p-3 text-xs">{JSON.stringify(item, null, 2)}</pre>)}</div>}
+                {activity.items.length === 0 ? <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">此域暂无记录</p> : <ActivityItems items={activity.items} domain={activityDomain} />}
                 <div className="flex justify-end gap-2"><Button size="sm" variant="outline" disabled={activityPage <= 1} onClick={() => setActivityPage((value) => value - 1)}>上一页</Button><Button size="sm" variant="outline" disabled={activityPage >= activity.totalPages} onClick={() => setActivityPage((value) => value + 1)}>下一页</Button></div>
               </> : <p className="text-sm text-muted-foreground">选择可访问的数据域。</p>}
             </div>}
