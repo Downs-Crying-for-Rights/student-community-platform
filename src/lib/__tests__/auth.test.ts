@@ -223,7 +223,7 @@ describe("NextAuth 配置", () => {
       return provider.authorize as (credentials: any) => Promise<any>;
     };
 
-    it("正确密码应返回用户对象", async () => {
+    it("应忽略 NextAuth 附加字段并允许原有邮箱密码登录", async () => {
       const authorize = getPasswordAuthorize();
       mockFindFirst.mockResolvedValueOnce({
         id: "user-1",
@@ -236,8 +236,12 @@ describe("NextAuth 配置", () => {
       vi.mocked(bcrypt.compare).mockResolvedValueOnce(true as never);
 
       const result = await authorize({
-        email: "test@example.com",
+        identifier: "test@example.com",
         password: "validPassword123",
+        redirect: "false",
+        callbackUrl: "/",
+        csrfToken: "test-csrf-token",
+        json: "true",
       });
 
       expect(result).toEqual({
@@ -247,9 +251,46 @@ describe("NextAuth 配置", () => {
         role: "USER",
         phone: "13800138000",
       });
+      expect(mockFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          OR: [
+            { email: "test@example.com" },
+            { username: "test@example.com" },
+            { phone: "test@example.com" },
+          ],
+        },
+      }));
     });
 
-    it("错误密码应抛出 '邮箱或密码错误'", async () => {
+    it("手机号和密码应查询对应账户", async () => {
+      const authorize = getPasswordAuthorize();
+      mockFindFirst.mockResolvedValueOnce({
+        id: "user-1",
+        email: "test@example.com",
+        nickname: "测试用户",
+        role: "USER",
+        phone: "13800138000",
+        passwordHash: "$2b$10$hashedpassword",
+        isBanned: false,
+      });
+      vi.mocked(bcrypt.compare).mockResolvedValueOnce(true as never);
+
+      await expect(authorize({
+        identifier: "13800138000",
+        password: "validPassword123",
+      })).resolves.toMatchObject({ id: "user-1", phone: "13800138000" });
+      expect(mockFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          OR: [
+            { email: "13800138000" },
+            { username: "13800138000" },
+            { phone: "13800138000" },
+          ],
+        },
+      }));
+    });
+
+    it("错误密码应抛出统一错误", async () => {
       const authorize = getPasswordAuthorize();
       mockFindFirst.mockResolvedValueOnce({
         id: "user-1",
@@ -263,19 +304,19 @@ describe("NextAuth 配置", () => {
 
       await expect(
         authorize({ email: "test@example.com", password: "wrongPassword" })
-      ).rejects.toThrow("邮箱或密码错误");
+      ).rejects.toThrow("账号或密码错误");
     });
 
-    it("不存在的邮箱应抛出 '邮箱或密码错误'", async () => {
+    it("不存在的账号应抛出统一错误", async () => {
       const authorize = getPasswordAuthorize();
       mockFindFirst.mockResolvedValueOnce(null);
 
       await expect(
         authorize({ email: "nonexistent@example.com", password: "anyPassword" })
-      ).rejects.toThrow("邮箱或密码错误");
+      ).rejects.toThrow("账号或密码错误");
     });
 
-    it("用户无 passwordHash 应抛出 '邮箱或密码错误'", async () => {
+    it("用户无 passwordHash 应抛出统一错误", async () => {
       const authorize = getPasswordAuthorize();
       mockFindFirst.mockResolvedValueOnce({
         id: "user-1",
@@ -288,7 +329,7 @@ describe("NextAuth 配置", () => {
 
       await expect(
         authorize({ email: "test@example.com", password: "anyPassword" })
-      ).rejects.toThrow("邮箱或密码错误");
+      ).rejects.toThrow("账号或密码错误");
     });
   });
 

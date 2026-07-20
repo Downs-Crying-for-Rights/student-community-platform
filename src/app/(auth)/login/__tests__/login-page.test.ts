@@ -212,6 +212,13 @@ describe("注册方式分流", () => {
 });
 
 describe("登录协议与品牌", () => {
+  it("密码登录提示支持邮箱、用户名或手机号", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+
+    expect(source).toContain("邮箱、用户名或手机号");
+    expect(source).toContain('identifier: pwEmail.trim()');
+  });
+
   it("所有登录方式共享协议勾选并在弹窗中阅读协议", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
 

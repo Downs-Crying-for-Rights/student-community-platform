@@ -67,12 +67,12 @@ export const authOptions: NextAuthOptions = {
       id: "credentials-password",
       name: "Password",
       credentials: {
-        identifier: { label: "邮箱或用户名", type: "text" },
+        identifier: { label: "邮箱、用户名或手机号", type: "text" },
         password: { label: "密码", type: "password" },
       },
       async authorize(credentials) {
         const parsed = loginPasswordSchema.safeParse(credentials);
-        if (!parsed.success) throw new Error("邮箱或密码错误");
+        if (!parsed.success) throw new Error("账号或密码错误");
         const { identifier, password } = parsed.data;
         const normalized = identifier.toLowerCase();
         const user = await prisma.user.findFirst({
@@ -80,12 +80,13 @@ export const authOptions: NextAuthOptions = {
             { email: identifier },
             ...(normalized === identifier ? [] : [{ email: normalized }]),
             { username: normalized },
+            { phone: identifier },
           ] },
           select: { id: true, email: true, nickname: true, role: true, phone: true, passwordHash: true, isBanned: true },
         });
-        if (!user || !user.passwordHash || user.isBanned) throw new Error("邮箱或密码错误");
+        if (!user || !user.passwordHash || user.isBanned) throw new Error("账号或密码错误");
         const isValid = await bcrypt.compare(password, user.passwordHash);
-        if (!isValid) throw new Error("邮箱或密码错误");
+        if (!isValid) throw new Error("账号或密码错误");
         return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
       },
     }),

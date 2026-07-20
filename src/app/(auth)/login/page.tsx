@@ -255,7 +255,7 @@ function LoginContent() {
       case "Configuration":
         return "服务器配置错误，请联系管理员。";
       case "CredentialsSignin":
-        return "邮箱或密码错误";
+        return "账号或密码错误";
       case "EmailCreateAccount":
       case "OAuthCreateAccount":
         return "该账号尚未注册，请先使用手机号验证码完成注册。";
@@ -343,7 +343,7 @@ function LoginContent() {
       });
 
       if (res?.error) {
-        setErrorMessage("邮箱/用户名或密码错误");
+        setErrorMessage("账号或密码错误");
       } else if (res?.url) {
         router.push(res.url);
         router.refresh();
@@ -1127,11 +1127,11 @@ function LoginContent() {
             <TabsContent value="password">
               <form onSubmit={handlePasswordSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="pw-email">邮箱或 QQ 注册用户名</Label>
+                  <Label htmlFor="pw-email">邮箱、用户名或手机号</Label>
                   <Input
                     id="pw-email"
                     type="text"
-                    placeholder="邮箱地址或 QQ 注册用户名"
+                    placeholder="邮箱地址、用户名或手机号"
                     value={pwEmail}
                     onChange={(e) => {
                       setPwEmail(e.target.value);
