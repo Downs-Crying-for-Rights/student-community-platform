@@ -102,6 +102,7 @@ export default function ChatRoomPage() {
       const data = await res.json();
       setRoom(data.room);
       setIsMember(data.room.members.some((m: Member) => m.id === userId));
+      setRequestStatus(data.room.joinRequest?.status ?? null);
       setMuted(isMuted(roomId));
     } catch { /* ignore */ }
   }, [roomId, userId, router]);
@@ -291,7 +292,7 @@ export default function ChatRoomPage() {
             {muted ? <BellOff className="h-4 w-4 text-muted-foreground" /> : <Bell className="h-4 w-4" />}
           </Button>
         )}
-        {!isMember && room?.type === "PUBLIC" && (
+        {!isMember && requestStatus !== "PENDING" && room?.type === "PUBLIC" && (
           <Button size="sm" onClick={handleJoin} disabled={joining}>
             <LogIn className="mr-1 h-4 w-4" />{joining ? "..." : room?.joinMode === "APPROVAL" ? "申请加入" : "加入"}
           </Button>
@@ -320,9 +321,18 @@ export default function ChatRoomPage() {
           </div>
         ) : !isMember ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
-            <Lock className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">{room?.type === "PRIVATE" ? "私密群聊" : "加入群聊以查看和发送消息"}</p>
-            {room?.type === "PUBLIC" && <Button onClick={handleJoin} disabled={joining}><LogIn className="mr-1 h-4 w-4" />{joining ? "..." : "加入群聊"}</Button>}
+            {requestStatus === "PENDING" ? (
+              <>
+                <Lock className="h-10 w-10 text-amber-500/60" />
+                <p className="text-sm text-amber-600 font-medium">已发送加入申请，等待管理员审核</p>
+              </>
+            ) : (
+              <>
+                <Lock className="h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">{room?.type === "PRIVATE" ? "私密群聊" : "加入群聊以查看和发送消息"}</p>
+                {room?.type === "PUBLIC" && <Button onClick={handleJoin} disabled={joining}><LogIn className="mr-1 h-4 w-4" />{joining ? "..." : "加入群聊"}</Button>}
+              </>
+            )}
           </div>
         ) : messages.length === 0 ? (
           <p className="flex items-center justify-center h-full text-sm text-muted-foreground">暂无消息，发送第一条消息吧</p>

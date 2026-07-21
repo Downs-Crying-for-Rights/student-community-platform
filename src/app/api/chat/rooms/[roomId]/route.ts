@@ -25,6 +25,10 @@ export const GET = withAuth(async (
           },
           orderBy: { joinedAt: "asc" },
         },
+        joinRequests: {
+          where: { userId },
+          select: { id: true, status: true },
+        },
         _count: { select: { members: true } },
       },
     });
@@ -57,6 +61,7 @@ export const GET = withAuth(async (
         })),
         memberCount: room._count.members,
         updatedAt: room.updatedAt,
+        joinRequest: room.joinRequests[0] ?? null,
       },
     });
   } catch (error) {
