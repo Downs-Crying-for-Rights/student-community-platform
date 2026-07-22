@@ -17,6 +17,7 @@ import {
   sensitiveEvidenceKey,
 } from "@/lib/identity-verification";
 import { deleteSensitiveObject, uploadSensitiveObject } from "@/lib/oss";
+import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const [user, application] = await Promise.all([
+  const [user, application, revocationRequest] = await Promise.all([
     prisma.user.findUnique({
       where: { id: req.user.id },
       select: { realVerifiedAt: true, studentVerifiedAt: true },
@@ -34,8 +35,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       where: { applicantId: req.user.id },
       orderBy: { createdAt: "desc" },
       select: {
-        id: true, method: true, status: true, reviewNote: true, createdAt: true, reviewedAt: true,
+        id: true, method: true, status: true, reviewNote: true, createdAt: true, reviewedAt: true, cancelledAt: true,
       },
+    }),
+    prisma.identityVerificationRevocationRequest.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { requestedAt: "desc" },
+      select: { id: true, scope: true, status: true, reason: true, reviewNote: true, requestedAt: true, reviewedAt: true },
     }),
   ]);
   return NextResponse.json({
@@ -44,8 +50,50 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       studentVerified: Boolean(user?.studentVerifiedAt),
     },
     application,
+    revocationRequest,
   }, { headers: { "Cache-Control": "private, no-store" } });
 });
+
+export const DELETE = withAuth(async (req: AuthenticatedRequest) => {
+  const application = await prisma.identityVerificationApplication.findFirst({
+    where: { applicantId: req.user.id, status: "PENDING" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, evidenceKey: true, method: true },
+  });
+  if (!application) return NextResponse.json({ error: "没有可撤回的待审核申请" }, { status: 404 });
+
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.identityVerificationApplication.updateMany({
+      where: { id: application.id, applicantId: req.user.id, status: "PENDING" },
+      data: {
+        status: "CANCELLED", cancelledAt: new Date(), pendingApplicantId: null,
+        evidenceDeleteAfter: application.evidenceKey ? new Date() : null,
+        identityCiphertext: null, identityIv: null, identityAuthTag: null,
+        identityKeyVersion: null, identityLookupHash: null,
+      },
+    });
+    if (changed.count !== 1) return false;
+    await logAudit(req.user.id, AuditAction.IDENTITY_APPLICATION_CANCEL, AuditTargetType.IDENTITY_APPLICATION, application.id, {
+      method: application.method,
+    }, undefined, tx);
+    return true;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  if (!cancelled) return NextResponse.json({ error: "申请已被处理，无法撤回" }, { status: 409 });
+
+  if (application.evidenceKey) {
+    try {
+      await deleteSensitiveObject(application.evidenceKey);
+      await prisma.identityVerificationApplication.updateMany({
+        where: { id: application.id, status: "CANCELLED", evidenceKey: application.evidenceKey },
+        data: { evidenceKey: null, evidenceMime: null, evidenceSize: null, evidenceDeleteAfter: null },
+      });
+    } catch (error) {
+      // Keep the private object key scheduled for the cleanup job, while CANCELLED denies all reads.
+      console.error("Cancelled identity evidence cleanup failed", error);
+    }
+  }
+  return NextResponse.json({ status: "CANCELLED" }, { headers: { "Cache-Control": "private, no-store" } });
+}, undefined, { captureAllTelemetry: true });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const limited = await enforceRateLimit(`identity-verification:${req.user.id}`, 5, 60 * 60_000);

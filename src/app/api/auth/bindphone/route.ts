@@ -18,6 +18,13 @@ const post = async (request: NextRequest) => {
     }
 
     const userId = token.id as string;
+    const account = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { deactivatedAt: true, isBanned: true },
+    });
+    if (!account || account.deactivatedAt || account.isBanned) {
+      return NextResponse.json({ error: "账号不可用" }, { status: 403 });
+    }
 
     // 2. 解析并验证请求体
     const body = await request.json();

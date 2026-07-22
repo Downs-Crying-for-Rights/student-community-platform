@@ -61,6 +61,7 @@ export default function AdminContentPage() {
   const [postsSearchInput, setPostsSearchInput] = useState("");
   const [postsLoading, setPostsLoading] = useState(false);
   const [postsActionError, setPostsActionError] = useState("");
+  const [postsActionNotice, setPostsActionNotice] = useState("");
 
   // Comments state
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -71,6 +72,8 @@ export default function AdminContentPage() {
   const [commentsSearch, setCommentsSearch] = useState("");
   const [commentsSearchInput, setCommentsSearchInput] = useState("");
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsActionError, setCommentsActionError] = useState("");
+  const [commentsActionNotice, setCommentsActionNotice] = useState("");
 
   // ==================== Fetch Posts ====================
 
@@ -129,26 +132,44 @@ export default function AdminContentPage() {
     if (!reason?.trim()) return;
 
     setPostsActionError("");
-    const res = await fetch(`/api/admin/posts/${postId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, reason: reason.trim() }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setPostsActionError(data.error || "帖子状态更新失败");
-      return;
+    setPostsActionNotice("");
+    try {
+      const res = await fetch(`/api/admin/posts/${postId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, reason: reason.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPostsActionError(data.error || "帖子状态更新失败");
+        return;
+      }
+      await fetchPosts();
+      setPostsActionNotice(status === "DELETED" ? "帖子已删除，作者已收到通知" : "帖子状态已更新");
+    } catch {
+      setPostsActionError("网络错误，帖子状态更新失败");
     }
-    await fetchPosts();
   };
 
   const handleCommentToggle = async (commentId: string, isDeleted: boolean) => {
-    const res = await fetch(`/api/admin/comments/${commentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isDeleted }),
-    });
-    if (res.ok) fetchComments();
+    setCommentsActionError("");
+    setCommentsActionNotice("");
+    try {
+      const res = await fetch(`/api/admin/comments/${commentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isDeleted }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCommentsActionError(data.error || "评论状态更新失败");
+        return;
+      }
+      await fetchComments();
+      setCommentsActionNotice(isDeleted ? "评论已删除，作者已收到通知" : "评论已恢复，作者已收到通知");
+    } catch {
+      setCommentsActionError("网络错误，评论状态更新失败");
+    }
   };
 
   const handlePostPinToggle = async (post: PostItem) => {
@@ -233,6 +254,7 @@ export default function AdminContentPage() {
                   {postsActionError}
                 </div>
               )}
+              {postsActionNotice && <div className="border-b bg-green-50 p-3 text-sm text-green-700" role="status">{postsActionNotice}</div>}
               {postsLoading ? (
                 <div className="p-8 text-center text-muted-foreground">加载中...</div>
               ) : (
@@ -352,6 +374,8 @@ export default function AdminContentPage() {
 
           <Card>
             <CardContent className="p-0">
+              {commentsActionError && <div className="border-b bg-red-50 p-3 text-sm text-red-700" role="alert">{commentsActionError}</div>}
+              {commentsActionNotice && <div className="border-b bg-green-50 p-3 text-sm text-green-700" role="status">{commentsActionNotice}</div>}
               {commentsLoading ? (
                 <div className="p-8 text-center text-muted-foreground">加载中...</div>
               ) : (

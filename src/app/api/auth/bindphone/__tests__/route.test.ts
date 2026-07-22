@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 const mockGetToken = vi.fn();
 const mockVerifyCode = vi.fn();
 const mockFindFirst = vi.fn();
+const mockFindUnique = vi.fn();
 const mockUpdate = vi.fn();
 const mockLogAudit = vi.fn();
 const mockTx = {
@@ -25,6 +26,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: {
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
+      findUnique: (...args: unknown[]) => mockFindUnique(...args),
       update: (...args: unknown[]) => mockUpdate(...args),
     },
     $transaction: (...args: unknown[]) => mockTransaction(...args as [(tx: typeof mockTx) => unknown]),
@@ -49,6 +51,7 @@ function createRequest(body: Record<string, unknown>): NextRequest {
 describe("POST /api/auth/bindphone", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindUnique.mockResolvedValue({ deactivatedAt: null, isBanned: false });
   });
 
   // ========== 未登录拒绝 ==========
@@ -76,6 +79,17 @@ describe("POST /api/auth/bindphone", () => {
       expect(res.status).toBe(401);
       expect(data.error).toBe("未登录，请先登录");
     });
+  });
+
+  it("已注销账号不能通过旧 token 重新绑定手机号", async () => {
+    mockGetToken.mockResolvedValue({ id: "user-1" });
+    mockFindUnique.mockResolvedValue({ deactivatedAt: new Date(), isBanned: true });
+
+    const res = await POST(createRequest({ phone: "13800138000", code: "888888" }));
+
+    expect(res.status).toBe(403);
+    expect(mockVerifyCode).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   // ========== 输入验证失败 ==========

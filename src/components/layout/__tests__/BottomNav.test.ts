@@ -19,11 +19,12 @@ describe("BottomNav navigation contract", () => {
     expect(bottomPrimaryNavItems.find((item) => item.href === "/create")?.raised).toBe(true);
   });
 
-  it("keeps 我的、群聊、DCR、心理、审核 in More", () => {
+  it("keeps 我的、群聊、DCR、客服、心理、审核 in More", () => {
     expect(bottomMoreNavItems.map((item) => [item.label, item.href])).toEqual([
       ["我的", "/u/me"],
       ["群聊", "/messages?tab=chat"],
       ["DCR 互助", "/dcr"],
+      ["客服工单", "/support"],
       ["心理区", "/psych"],
       ["审核", "/admin/moderation"],
     ]);
@@ -37,6 +38,7 @@ describe("BottomNav navigation contract", () => {
       "/u/me",
       "/messages?tab=chat",
       "/dcr",
+      "/support",
     ]);
 
     expect(
@@ -47,6 +49,7 @@ describe("BottomNav navigation contract", () => {
       "/u/me",
       "/messages?tab=chat",
       "/dcr",
+      "/support",
       "/psych",
       "/admin/moderation",
     ]);

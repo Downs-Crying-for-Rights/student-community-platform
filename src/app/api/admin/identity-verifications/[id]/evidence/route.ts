@@ -11,9 +11,9 @@ export const dynamic = "force-dynamic";
 export const GET = withAuth(async (req: AuthenticatedRequest, context: { params: Record<string, string> }) => {
   const application = await prisma.identityVerificationApplication.findUnique({
     where: { id: context.params.id },
-    select: { id: true, evidenceKey: true, evidenceMime: true },
+    select: { id: true, status: true, evidenceKey: true, evidenceMime: true },
   });
-  if (!application?.evidenceKey || !application.evidenceKey.startsWith(`identity-verification/${application.id}/`)) {
+  if (!application || application.status === "CANCELLED" || !application.evidenceKey || !application.evidenceKey.startsWith(`identity-verification/${application.id}/`)) {
     return NextResponse.json({ error: "认证材料不存在" }, { status: 404 });
   }
   const object = await getPrivateOSSObject(application.evidenceKey);

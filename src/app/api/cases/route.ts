@@ -44,6 +44,7 @@ const listQuerySchema = paginationSchema.extend({
   // 按委托表审核状态筛选
   requestStatus: z.enum(["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"]).optional(),
   handlerId: z.string().optional(),
+  scope: z.enum(["claimable"]).optional(),
 });
 
 /**
@@ -322,6 +323,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       status: searchParams.get("status") ?? undefined,
       requestStatus: searchParams.get("requestStatus") ?? undefined,
       handlerId: searchParams.get("handlerId") ?? undefined,
+      scope: searchParams.get("scope") ?? undefined,
     });
 
     if (!parsed.success) {
@@ -331,7 +333,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       );
     }
 
-    const { page, pageSize, status, requestStatus, handlerId } = parsed.data;
+    const { page, pageSize, status, requestStatus, handlerId, scope } = parsed.data;
     const skip = (page - 1) * pageSize;
 
     // Build where clause based on role
@@ -343,7 +345,17 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     }
 
     // If handlerId is specified, filter by handler
-    if (handlerId) {
+    if (scope === "claimable") {
+      if (!(isAdminLevel || userRole === "DCR_HELPER" || hasHelperAccess)) {
+        return NextResponse.json({ error: "无权查看待接委托" }, { status: 403 });
+      }
+      where.AND = [
+        { requestStatus: "APPROVED" },
+        { status: "OPENED" },
+        { submitterId: { not: userId } },
+        { handlers: { none: { userId } } },
+      ];
+    } else if (handlerId) {
       if (!isAdminLevel && handlerId !== userId) {
         return NextResponse.json({ error: "无权查看其他用户处理的委托" }, { status: 403 });
       }
@@ -400,13 +412,15 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       }
     }
 
-    const [cases, total] = await Promise.all([
-      prisma.case.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: pageSize,
-        select: {
+    const caseSelect = scope === "claimable"
+      ? {
+          id: true,
+          category: true,
+          status: true,
+          requestStatus: true,
+          createdAt: true,
+        }
+      : {
           id: true,
           category: true,
           formData: true,
@@ -421,7 +435,15 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           updatedAt: true,
           submitter: { select: { id: true, nickname: true } },
           handler: { select: { id: true, nickname: true } },
-        },
+        };
+
+    const [cases, total] = await Promise.all([
+      prisma.case.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize,
+        select: caseSelect,
       }),
       prisma.case.count({ where }),
     ]);

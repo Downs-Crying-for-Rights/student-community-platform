@@ -283,7 +283,9 @@ describe("component a11y audit: PostCard", () => {
   });
 
   it("should have alt text on author avatar", () => {
-    expect(src).toContain("alt={`${displayName} 头像`}");
+    expect(src).toContain("<UserAvatar");
+    const avatarSource = fs.readFileSync(path.resolve(process.cwd(), "src/components/shared/UserAvatar.tsx"), "utf8");
+    expect(avatarSource).toContain('alt={`${name || "用户"} 头像`}');
   });
 
   it("should have focus-visible ring styles", () => {

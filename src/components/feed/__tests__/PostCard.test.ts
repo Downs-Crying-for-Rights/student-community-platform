@@ -9,6 +9,8 @@ import { describe, it, expect } from "vitest";
  * - 非匿名帖子显示作者昵称和头像
  * - 封面图选取（images 数组第一张）
  * - 标签最多展示 3 个
+ * - 首页紧凑图片帖使用完整摘要，由文字量决定卡片高度
+ * - 首页紧凑无图帖使用较矮的桌面占位区
  *
  * Validates: Requirements 27.2, 23.1
  */
@@ -37,6 +39,10 @@ function getDisplayName(
 function getTruncatedSummary(summary: string | null): string | null {
   if (!summary) return null;
   return summary.length > 60 ? summary.slice(0, 60) + "…" : summary;
+}
+
+function getDisplayedSummary(summary: string | null, hasImage: boolean, compact: boolean): string | null {
+  return compact && hasImage ? summary : getTruncatedSummary(summary);
 }
 
 function getCoverImage(images: string[]): string | null {
@@ -95,6 +101,17 @@ describe("PostCard 组件逻辑", () => {
     it("超过 60 字符截取并添加省略号", () => {
       const text = "a".repeat(61);
       expect(getTruncatedSummary(text)).toBe("a".repeat(60) + "…");
+    });
+
+    it("首页紧凑图片帖保留完整摘要以自适应高度", () => {
+      const text = "图片帖正文".repeat(30);
+      expect(getDisplayedSummary(text, true, true)).toBe(text);
+    });
+
+    it("无图帖和非紧凑卡片仍限制摘要长度", () => {
+      const text = "a".repeat(80);
+      expect(getDisplayedSummary(text, false, true)).toBe("a".repeat(60) + "…");
+      expect(getDisplayedSummary(text, true, false)).toBe("a".repeat(60) + "…");
     });
   });
 

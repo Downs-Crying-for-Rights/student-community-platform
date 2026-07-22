@@ -15,6 +15,7 @@ import { ReportDialog } from "@/components/shared/ReportDialog";
 import { useDMConsent } from "@/components/dm/DMConsentDialog";
 import { IdentityBadges } from "@/components/shared/IdentityBadges";
 import { UserAvatar } from "@/components/shared/UserAvatar";
+import { IdentityCertificationCard } from "@/components/profile/IdentityCertificationCard";
 
 /* ---------- Types ---------- */
 
@@ -304,6 +305,8 @@ export default function ProfilePage() {
         ) : (
           <EmptyState title="用户不存在" description="该用户可能已被删除" />
         )}
+
+        {user && isOwnProfile && <IdentityCertificationCard compact />}
 
         {/* Tabs */}
         {user && (

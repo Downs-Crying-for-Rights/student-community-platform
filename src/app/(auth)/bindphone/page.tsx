@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import {
 import { Smartphone, AlertCircle } from "lucide-react";
 import { phoneSchema, verificationCodeSchema } from "@/lib/validators";
 import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required";
+import { getSafeCallbackUrl } from "@/lib/safe-callback-url";
 
 export default function BindPhonePage() {
   return (
@@ -59,7 +60,7 @@ function BindPhoneContent() {
   // 普通绑定入口保持原行为；显式换绑模式允许已有手机号的用户继续操作。
   useEffect(() => {
     if ((session?.user as any)?.phone && !isChangeMode) {
-      const callbackUrl = searchParams.get("callbackUrl") || "/";
+      const callbackUrl = getSafeCallbackUrl(searchParams.get("callbackUrl"));
       router.replace(callbackUrl);
     }
   }, [session, router, searchParams, isChangeMode]);
@@ -180,7 +181,7 @@ function BindPhoneContent() {
       await update();
 
       // Redirect to original target page or home
-      const callbackUrl = searchParams.get("callbackUrl") || "/";
+      const callbackUrl = getSafeCallbackUrl(searchParams.get("callbackUrl"));
       router.push(callbackUrl);
       router.refresh();
     } catch {
@@ -299,6 +300,15 @@ function BindPhoneContent() {
                   绑定手机号
                 </span>
               )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              disabled={loading}
+              onClick={() => signOut({ callbackUrl: "/login" })}
+            >
+              退出登录
             </Button>
           </form>
         </CardContent>

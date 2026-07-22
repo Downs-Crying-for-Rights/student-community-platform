@@ -24,7 +24,7 @@ import { POST } from "../route";
 describe("POST /api/dcr/cycles/[id]/links/[linkId]/dm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-b", role: "USER" } } as never);
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-b", role: "USER", phone: "13800000000" } } as never);
     mocks.requireConsent.mockResolvedValue(null);
     mocks.linkFindFirst.mockResolvedValue({
       id: "link-ab",

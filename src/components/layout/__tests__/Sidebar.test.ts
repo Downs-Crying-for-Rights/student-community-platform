@@ -20,7 +20,7 @@ describe("Sidebar navigation contract", () => {
     expect(source).toContain("bg-destructive");
   });
 
-  it("uses the shared six-item core navigation", () => {
+  it("uses the shared core navigation", () => {
     expect(sidebarCoreNavItems.map((item) => [item.label, item.href])).toEqual([
       ["首页", "/"],
       ["发现", "/discover"],
@@ -28,6 +28,7 @@ describe("Sidebar navigation contract", () => {
       ["群聊", "/messages?tab=chat"],
       ["发布", "/create"],
       ["个人主页", "/u/me"],
+      ["客服工单", "/support"],
     ]);
   });
 

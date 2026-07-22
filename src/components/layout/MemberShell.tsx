@@ -25,6 +25,7 @@ const MEMBER_ROOTS = [
   "/psych",
   "/apply",
   "/moderation",
+  "/support",
 ];
 
 function isMemberPath(pathname: string): boolean {

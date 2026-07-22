@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { recordCompletedRequest } from "@/lib/telemetry";
+import { isCommunicationWrite, punishmentRouteAllowsBanned } from "@/lib/punishment-policy";
 
 // ==================== Action & Resource Types ====================
 
@@ -167,6 +168,16 @@ export interface AuthenticatedRequest extends NextRequest {
   user: { id: string; role: Role };
 }
 
+export const PHONE_REQUIRED_RESPONSE = {
+  error: "请先绑定手机号",
+  code: "PHONE_REQUIRED",
+  next: "/bindphone",
+} as const;
+
+function phoneRequiredResponse(): NextResponse {
+  return NextResponse.json(PHONE_REQUIRED_RESPONSE, { status: 403 });
+}
+
 type AuthenticatedHandler = (
   req: AuthenticatedRequest,
   context: { params: Record<string, string> },
@@ -204,10 +215,19 @@ export function withAuth(
       userId = sessionUser?.id;
       if (!userId) {
         response = NextResponse.json({ error: "未登录" }, { status: 401 });
-      } else if (sessionUser?.isBanned) {
-        response = NextResponse.json({ error: "账号已被封禁" }, { status: 403 });
       } else {
         const pathname = new URL(req.url).pathname;
+        if (sessionUser?.isBanned && !punishmentRouteAllowsBanned(pathname)) {
+          response = NextResponse.json({ error: "账号已被封禁", code: "ACCOUNT_BANNED" }, { status: 403 });
+        } else if (sessionUser?.isMuted && isCommunicationWrite(req.method, pathname)) {
+          response = NextResponse.json({
+            error: "账号当前处于禁言状态",
+            code: "ACCOUNT_MUTED",
+            muteUntil: sessionUser?.muteUntil ?? null,
+          }, { status: 403 });
+        } else if (sessionUser?.phone === null) {
+          response = phoneRequiredResponse();
+        } else {
         const profileCompletionAllowed = pathname.startsWith("/api/users/")
           || pathname === "/api/upload"
           || /^\/api\/announcements\/[^/]+\/dismiss$/.test(pathname);
@@ -224,6 +244,7 @@ export function withAuth(
           authenticatedReq.user = { id: userId, role: userRole };
           response = await handler(authenticatedReq, context);
         }
+      }
       }
       response.headers.set("X-Request-Id", requestId);
       recordCompletedRequest(req, response, startedAt, {
@@ -262,9 +283,17 @@ export function withOptionalAuth(handler: OptionalAuthHandler): RouteHandler {
     try {
       const session = await getServerSession(authOptions);
       const optReq = req as OptionalAuthRequest;
-      if (session?.user?.id && !session.user.isBanned) {
+      if (session?.user?.id) {
         userId = session.user.id;
-        optReq.user = { id: userId, role: (session.user.role ?? "USER") as Role };
+        if (session.user.phone === null) {
+          const response = phoneRequiredResponse();
+          response.headers.set("X-Request-Id", requestId);
+          recordCompletedRequest(req, response, startedAt, { requestId, userId, params: context.params });
+          return response;
+        }
+        if (!session.user.isBanned) {
+          optReq.user = { id: userId, role: (session.user.role ?? "USER") as Role };
+        }
       }
       const response = await handler(optReq, context);
       response.headers.set("X-Request-Id", requestId);

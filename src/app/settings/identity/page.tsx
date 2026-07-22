@@ -12,7 +12,7 @@ import { IdentityBadges } from "@/components/shared/IdentityBadges";
 
 type Method = "STUDENT_DOCUMENT" | "ID_HOLDING_PHOTO" | "SCHOOL_UNIFORM" | "REAL_NAME_ID";
 type SubmissionMethod = Exclude<Method, "REAL_NAME_ID">;
-type Application = { id: string; method: Method; status: "PENDING" | "APPROVED" | "REJECTED"; reviewNote: string | null; createdAt: string };
+type Application = { id: string; method: Method; status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED"; reviewNote: string | null; createdAt: string };
 
 const METHODS: Array<{ value: SubmissionMethod; title: string; description: string }> = [
   { value: "STUDENT_DOCUMENT", title: "学生证件合照（学生认证）", description: "清晰实拍学生证照片与信息页、加盖学校印章的学生证明、录取通知书内页、有真实姓名的成绩通知单，或学校颁发的其他带姓名和照片的证件，并与写有“仅供DCR认证”的纸条同框。" },
@@ -21,7 +21,7 @@ const METHODS: Array<{ value: SubmissionMethod; title: string; description: stri
 ];
 const METHOD_TITLES: Record<Method, string> = { ...Object.fromEntries(METHODS.map((item) => [item.value, item.title])), REAL_NAME_ID: "姓名 + 身份证号（历史方式）" } as Record<Method, string>;
 
-const STATUS_TEXT = { PENDING: "待管理员审核", APPROVED: "已通过", REJECTED: "未通过" };
+const STATUS_TEXT = { PENDING: "待管理员审核", APPROVED: "已通过", REJECTED: "未通过", CANCELLED: "已撤回" };
 
 export default function IdentitySettingsPage() {
   const [application, setApplication] = useState<Application | null>(null);

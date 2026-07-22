@@ -17,8 +17,8 @@ export const FORWARD_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   DISPUTED: [],
 };
 
-export const TERMINAL_STATES: TaskStatus[] = ['REJECTED', 'CLOSED', 'DISPUTED'];
-const ABSOLUTE_TERMINAL_STATES: TaskStatus[] = ['REJECTED', 'CLOSED', 'DISPUTED'];
+export const TERMINAL_STATES: TaskStatus[] = ['COMPLETED', 'REJECTED', 'CLOSED', 'DISPUTED'];
+const ABSOLUTE_TERMINAL_STATES: TaskStatus[] = TERMINAL_STATES;
 
 const DISPUTABLE_STATES: TaskStatus[] = ['CLAIMED', 'IN_PROGRESS', 'EVIDENCE_PENDING'];
 

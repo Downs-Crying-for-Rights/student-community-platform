@@ -485,6 +485,39 @@ describe("GET /api/cases", () => {
     const findManyCall = mockCaseFindMany.mock.calls[0][0];
     expect(findManyCall.where).toEqual({ requestStatus: "PENDING" });
   });
+
+  it("Helper 可读取已审核待接委托的脱敏摘要", async () => {
+    setSession("helper1", "DCR_HELPER");
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrHelperAccess: true });
+    mockCaseFindMany.mockResolvedValue([{ id: "case-open", category: "TUTORING", status: "OPENED", requestStatus: "APPROVED", createdAt: new Date() }]);
+    mockCaseCount.mockResolvedValue(1);
+
+    const { GET } = await import("../route");
+    const res = await GET(makeGetRequest({ scope: "claimable" }), { params: {} });
+
+    expect(res.status).toBe(200);
+    const call = mockCaseFindMany.mock.calls[0][0];
+    expect(call.where.AND).toEqual([
+      { requestStatus: "APPROVED" },
+      { status: "OPENED" },
+      { submitterId: { not: "helper1" } },
+      { handlers: { none: { userId: "helper1" } } },
+    ]);
+    expect(call.select.formData).toBeUndefined();
+    expect(call.select.pledgeText).toBeUndefined();
+    expect(call.select.extractedFields).toBeUndefined();
+  });
+
+  it("普通用户不能读取待接委托池", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrHelperAccess: false });
+
+    const { GET } = await import("../route");
+    const res = await GET(makeGetRequest({ scope: "claimable" }), { params: {} });
+
+    expect(res.status).toBe(403);
+    expect(mockCaseFindMany).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET /api/cases - 无 dcrAccess 且无 Case 的用户", () => {

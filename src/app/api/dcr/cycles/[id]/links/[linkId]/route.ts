@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import { sendAdminActionMail } from "@/lib/mail";
 import prisma from "@/lib/prisma";
+import { notifyMutualAidAdminsBestEffort } from "@/lib/mutual-aid-notifications";
 
 const linkActionSchema = z.object({
   action: z.enum(["ACCEPTED", "REJECTED", "IN_PROGRESS", "COMPLETED", "DISPUTED"]),
@@ -69,6 +70,13 @@ export const PATCH = withAuth(async (
         subject: action === "DISPUTED" ? "互助循环争议待处理" : "互助循环已断裂",
         text: `互助循环 ${cycleId} 的关系 ${linkId} 已${action === "DISPUTED" ? "发起争议" : "被拒绝"}。`,
         actionUrl: "/admin/dcr/cycles",
+      });
+    }
+    if (action === "DISPUTED") {
+      await notifyMutualAidAdminsBestEffort({
+        title: "互助循环争议待处理",
+        content: `互助循环 ${cycleId} 有参与者发起了链路争议。`,
+        link: "/admin/disputes",
       });
     }
 

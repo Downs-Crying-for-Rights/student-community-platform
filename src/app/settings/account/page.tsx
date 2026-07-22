@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, Mail, Smartphone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 
 type DeletionRequest = {
   id: string;
@@ -20,21 +23,50 @@ export default function AccountSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [method, setMethod] = useState<"email" | "phone">("phone");
+  const [code, setCode] = useState("");
+  const [countdown, setCountdown] = useState(0);
+  const [sending, setSending] = useState(false);
+  const [destination, setDestination] = useState("");
+  const [notice, setNotice] = useState({ title: "注销须知", content: "", revision: 0 });
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const [noticeAccepted, setNoticeAccepted] = useState(false);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/account/deletion-request", { cache: "no-store" });
-    const data = await response.json().catch(() => ({}));
+    const [response, noticeResponse] = await Promise.all([
+      fetch("/api/account/deletion-request", { cache: "no-store" }),
+      fetch("/api/site-content/account_deletion_notice", { cache: "no-store" }),
+    ]);
+    const [data, noticeData] = await Promise.all([response.json().catch(() => ({})), noticeResponse.json().catch(() => ({}))]);
     if (response.ok) setRequest(data.request ?? null);
+    if (noticeResponse.ok) setNotice({ title: noticeData.title || "注销须知", content: noticeData.content || "", revision: noticeData.revision || 1 });
     setLoading(false);
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = window.setTimeout(() => setCountdown((value) => value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [countdown]);
+
+  async function sendCode() {
+    setSending(true); setMessage("");
+    const response = await fetch("/api/account/deletion-verification", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ method }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) { setCountdown(60); setDestination(data.destination || ""); }
+    else setMessage(data.error || "验证码发送失败");
+    setSending(false);
+  }
 
   async function submit() {
     if (!window.confirm("确认提交账号注销申请？管理员批准后将无法恢复登录。")) return;
     setSubmitting(true); setMessage("");
     const response = await fetch("/api/account/deletion-request", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason, method, code: code.trim(), noticeAccepted, noticeRevision: notice.revision }),
     });
     const data = await response.json().catch(() => ({}));
     setMessage(response.ok ? "注销申请已提交，等待管理员审核" : data.error || "提交失败");
@@ -69,12 +101,23 @@ export default function AccountSettingsPage() {
             <div className="space-y-3">
               {request?.status === "REJECTED" && <p className="text-sm text-destructive">上次申请未通过：{request.reviewNote || "未填写原因"}</p>}
               <textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} className="min-h-28 w-full rounded-md border bg-background p-3 text-sm" placeholder="注销原因（选填，最多 500 字）" />
-              <Button variant="destructive" disabled={submitting} onClick={submit}>{submitting ? "提交中..." : "提交注销申请"}</Button>
+              <div className="space-y-3 rounded-lg border p-4">
+                <p className="text-sm font-medium">安全验证</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" variant={method === "phone" ? "default" : "outline"} onClick={() => { setMethod("phone"); setDestination(""); }}><Smartphone className="h-4 w-4" />手机号</Button>
+                  <Button type="button" variant={method === "email" ? "default" : "outline"} onClick={() => { setMethod("email"); setDestination(""); }}><Mail className="h-4 w-4" />邮箱</Button>
+                </div>
+                <div className="flex gap-2"><Input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="请输入 6 位验证码" aria-label="注销验证码" /><Button type="button" variant="outline" disabled={sending || countdown > 0} onClick={sendCode}>{countdown > 0 ? `${countdown}s` : sending ? "发送中..." : "发送验证码"}</Button></div>
+                {destination && <p className="text-xs text-muted-foreground">验证码已发送至 {destination}</p>}
+              </div>
+              <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={noticeAccepted} onChange={(event) => setNoticeAccepted(event.target.checked)} className="mt-1" /><span>我已阅读并同意<button type="button" className="mx-1 text-primary underline underline-offset-2" onClick={() => setNoticeOpen(true)}>《注销须知》</button></span></label>
+              <Button variant="destructive" disabled={submitting || code.length !== 6 || !noticeAccepted || notice.revision < 1} onClick={submit}>{submitting ? "提交中..." : "提交注销申请"}</Button>
             </div>
           )}
           {message && <p role="status" className="text-sm">{message}</p>}
         </CardContent>
       </Card>
+      <Dialog open={noticeOpen} onOpenChange={setNoticeOpen}><DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{notice.title}</DialogTitle></DialogHeader><SafeMarkdown content={notice.content || "暂无内容"} /></DialogContent></Dialog>
     </main>
   );
 }

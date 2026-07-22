@@ -216,6 +216,7 @@ describe("全局路由与导航集成", () => {
         "/u/me",
         "/messages?tab=chat",
         "/dcr",
+        "/support",
         "/psych",
         "/admin/moderation",
       ]);
@@ -233,6 +234,7 @@ describe("全局路由与导航集成", () => {
         "/messages?tab=chat",
         "/create",
         "/u/me",
+        "/support",
       ]);
     });
 

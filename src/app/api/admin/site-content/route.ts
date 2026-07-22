@@ -5,13 +5,14 @@ import { z } from "zod";
 import { getDMConsentDocument } from "@/lib/dm-consent";
 import { getChatMonitoringConsent } from "@/lib/chat-monitoring-consent";
 import { getCommunityGuidelines } from "@/lib/community-guidelines";
+import { getAccountDeletionNotice } from "@/lib/account-deletion-notice";
 
 /**
  * GET /api/admin/site-content
  * 列出所有站点内容文档的 key 和 title（ADMIN+）
  */
 export const GET = withAuth(async (_req: AuthenticatedRequest) => {
-  await Promise.all([getDMConsentDocument(), getChatMonitoringConsent(), getCommunityGuidelines()]);
+  await Promise.all([getDMConsentDocument(), getChatMonitoringConsent(), getCommunityGuidelines(), getAccountDeletionNotice()]);
   const items = await prisma.siteContent.findMany({
     select: { key: true, title: true, updatedAt: true },
     orderBy: { key: "asc" },

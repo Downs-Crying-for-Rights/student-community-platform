@@ -282,13 +282,22 @@ async function checkAutoHideThreshold(
       // Check if post is not already hidden/deleted
       const post = await prisma.post.findUnique({
         where: { id: targetPostId },
-        select: { id: true, status: true },
+        select: { id: true, status: true, authorId: true, title: true },
       });
 
       if (post && post.status !== "DELETED") {
         await prisma.post.update({
           where: { id: targetPostId },
           data: { status: "DELETED" },
+        });
+        await prisma.notification.createMany({
+          data: [{
+            userId: post.authorId,
+            type: "SYSTEM",
+            title: "帖子已被自动隐藏",
+            content: `你的帖子「${post.title}」因收到多次举报，已暂时隐藏并进入平台审核。`,
+            link: "/messages",
+          }],
         });
 
         await notifyModerators(
@@ -307,13 +316,26 @@ async function checkAutoHideThreshold(
     if (reportCount >= AUTO_HIDE_THRESHOLD) {
       const comment = await prisma.comment.findUnique({
         where: { id: targetCommentId },
-        select: { id: true, isDeleted: true },
+        select: { id: true, isDeleted: true, authorId: true, postId: true },
       });
 
       if (comment && !comment.isDeleted) {
         await prisma.comment.update({
           where: { id: targetCommentId },
           data: { isDeleted: true },
+        });
+        await prisma.post.update({
+          where: { id: comment.postId },
+          data: { commentCount: { decrement: 1 } },
+        });
+        await prisma.notification.createMany({
+          data: [{
+            userId: comment.authorId,
+            type: "SYSTEM",
+            title: "评论已被自动隐藏",
+            content: "你的评论因收到多次举报，已暂时隐藏并进入平台审核。",
+            link: `/post/${comment.postId}`,
+          }],
         });
 
         await notifyModerators(

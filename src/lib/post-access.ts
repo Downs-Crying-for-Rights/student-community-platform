@@ -14,6 +14,7 @@ export async function checkPostAccess(
     board: { zone: BoardZone };
     authorId?: string;
     visibility?: PostVisibility;
+    caseId?: string | null;
   },
 ): Promise<PostAccessDecision> {
   const { zone } = post.board;

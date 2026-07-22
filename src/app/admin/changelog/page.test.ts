@@ -8,8 +8,8 @@ import { GIT_HISTORY, GIT_HISTORY_SOURCE_COMMIT } from "@/lib/git-history.genera
 describe("admin changelog", () => {
   it("shows newest releases first with structured changes", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(4);
-    expect(CHANGELOG[0].version).toBe("0.3.9");
-    expect(CHANGELOG[0].changes).toContain("新增管理员、真实用户和学生用户公开身份标签。");
+    expect(CHANGELOG[0].version).toBe("0.3.14");
+    expect(CHANGELOG[0].changes).toContain("修复未加入公开群聊仍能看到最新消息的问题，并增加私信到达通知。");
   });
 
   it("contains the complete reachable Git history in chronological order", () => {

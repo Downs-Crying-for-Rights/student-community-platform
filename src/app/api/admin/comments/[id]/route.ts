@@ -31,7 +31,7 @@ export const PATCH = withAuth(async (
 
     const existing = await prisma.comment.findUnique({
       where: { id },
-      select: { id: true, isDeleted: true, postId: true, content: true },
+      select: { id: true, isDeleted: true, postId: true, authorId: true, content: true },
     });
 
     if (!existing) {
@@ -49,6 +49,17 @@ export const PATCH = withAuth(async (
         ? [prisma.post.update({
             where: { id: existing.postId },
             data: { commentCount: { increment: countDelta } },
+          })]
+        : []),
+      ...(countDelta !== 0 && existing.authorId !== req.user.id
+        ? [prisma.notification.create({
+            data: {
+              userId: existing.authorId,
+              type: "SYSTEM",
+              title: isDeleted ? "评论已被删除" : "评论已恢复",
+              content: isDeleted ? "你的评论已由平台删除。" : "你的评论已由平台恢复。",
+              link: `/post/${existing.postId}`,
+            },
           })]
         : []),
     ]);

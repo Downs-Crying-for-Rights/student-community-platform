@@ -1,280 +1,77 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-// ==================== Mocks ====================
-
-const mockUserFindUnique = vi.fn();
-const mockUserUpdate = vi.fn();
-const mockPunishmentCreateMany = vi.fn();
-const mockAuditLogCreate = vi.fn();
-
-vi.mock("@/lib/prisma", () => ({
-  default: {
-    user: {
-      findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
-      update: (...args: unknown[]) => mockUserUpdate(...args),
-    },
-    $transaction: (callback: (tx: unknown) => unknown) => callback({
-      user: { update: (...args: unknown[]) => mockUserUpdate(...args) },
-      userPunishment: { createMany: (...args: unknown[]) => mockPunishmentCreateMany(...args) },
-      auditLog: { create: (...args: unknown[]) => mockAuditLogCreate(...args) },
-    }),
-  },
+const mocks = vi.hoisted(() => ({
+  findUser: vi.fn(),
+  findPunishments: vi.fn(),
+  apply: vi.fn(),
+  revoke: vi.fn(),
+  recalculate: vi.fn(),
+  audit: vi.fn(),
 }));
 
-const mockLogAudit = vi.fn();
-vi.mock("@/lib/audit", () => ({
-  logAudit: (...args: unknown[]) => mockLogAudit(...args),
-  AuditAction: {
-    USER_BAN: "USER_BAN",
-    USER_UNBAN: "USER_UNBAN",
-    SHADOW_BAN: "SHADOW_BAN",
-  },
-  AuditTargetType: {
-    USER: "USER",
-  },
+vi.mock("@/lib/prisma", () => ({ default: {
+  user: { findUnique: mocks.findUser },
+  userPunishment: { findMany: mocks.findPunishments },
+} }));
+vi.mock("@/lib/punishment-service", () => ({
+  applyPunishment: mocks.apply,
+  revokePunishment: mocks.revoke,
+  recalculatePunishmentProjection: mocks.recalculate,
 }));
-
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
-}));
+vi.mock("@/lib/audit", () => ({ logAudit: mocks.audit }));
+vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
+vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 
 import { getServerSession } from "next-auth/next";
-const mockGetServerSession = vi.mocked(getServerSession);
+import { POST } from "../[id]/ban/route";
 
-// ==================== Helpers ====================
-
-function makeRequest(body: unknown): NextRequest {
-  const requestBody = body && typeof body === "object" && !Array.isArray(body)
-    ? { reason: "测试操作原因", ...body as Record<string, unknown> }
-    : body;
-  return new NextRequest("http://localhost:3000/api/admin/users/u1/ban", {
-    method: "POST",
-    body: JSON.stringify(requestBody),
-    headers: { "Content-Type": "application/json" },
-  });
+function request(body: unknown) {
+  return new NextRequest("http://localhost/api/admin/users/u1/ban", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
 
-function setSession(id: string, role: string) {
-  mockGetServerSession.mockResolvedValue({
-    user: { id, role },
-    expires: new Date(Date.now() + 86400000).toISOString(),
-  } as never);
-}
-
-// ==================== Tests ====================
-
-describe("POST /api/admin/users/[id]/ban", () => {
+describe("legacy admin ban endpoint", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPunishmentCreateMany.mockResolvedValue({ count: 1 });
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "admin", role: "ADMIN", phone: "13800138000" }, expires: "2099-01-01" } as never);
+    mocks.findUser.mockResolvedValueOnce({ id: "u1", role: "USER" }).mockResolvedValueOnce({ id: "u1", isBanned: true, isShadowBanned: false });
+    mocks.findPunishments.mockResolvedValue([]);
   });
 
-  it("should return 401 when not authenticated", async () => {
-    mockGetServerSession.mockResolvedValue(null);
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "u1" }) as any,
-    });
-    expect(res.status).toBe(401);
+  it("delegates old ban requests to the shared service", async () => {
+    const response = await POST(request({ action: "ban", shadowBan: false, reason: "严重违规" }), { params: { id: "u1" } });
+    expect(response.status).toBe(200);
+    expect(mocks.apply).toHaveBeenCalledWith({ userId: "u1", operatorId: "admin", type: "ACCOUNT_BAN", reason: "严重违规" });
+    expect(mocks.audit).toHaveBeenCalled();
   });
 
-  it("should return 403 for non-Admin users", async () => {
-    setSession("mod1", "MODERATOR");
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "u1" }) as any,
-    });
-    expect(res.status).toBe(403);
-  });
-
-  it("should return 404 when target user not found", async () => {
-    setSession("admin1", "ADMIN");
-    mockUserFindUnique.mockResolvedValue(null);
-
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "nonexistent" }) as any,
-    });
-    const data = await res.json();
-
-    expect(res.status).toBe(404);
-    expect(data.error).toContain("不存在");
-  });
-
-  it("should return 400 when trying to ban self", async () => {
-    setSession("admin1", "ADMIN");
-    mockUserFindUnique.mockResolvedValue({ id: "admin1" });
-
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "admin1" }) as any,
-    });
-    const data = await res.json();
-
-    expect(res.status).toBe(400);
-    expect(data.error).toContain("封禁自己");
-  });
-
-  it("should return 400 for invalid action", async () => {
-    setSession("admin1", "ADMIN");
-
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(makeRequest({ action: "invalid" }), {
-      params: Promise.resolve({ id: "u1" }) as any,
-    });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("should ban user and record audit log", async () => {
-    setSession("admin1", "ADMIN");
-    mockUserFindUnique.mockResolvedValue({ id: "u1", isBanned: false, isShadowBanned: false });
-    const updatedUser = { id: "u1", email: "u1@test.com", nickname: "user1", isBanned: true, isShadowBanned: false };
-    mockUserUpdate.mockResolvedValue(updatedUser);
-    mockLogAudit.mockResolvedValue({});
-
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(makeRequest({ action: "ban" }), {
-      params: Promise.resolve({ id: "u1" }) as any,
-    });
-    const data = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(data.user.isBanned).toBe(true);
-    expect(mockUserUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "u1" },
-        data: expect.objectContaining({
-          isBanned: true,
-          securityVersion: { increment: 1 },
-        }),
+  it("revokes structured and legacy bans through the shared service", async () => {
+    mocks.findPunishments.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    const response = await POST(request({ action: "unban", shadowBan: false, reason: "复核解除" }), { params: { id: "u1" } });
+    expect(response.status).toBe(200);
+    expect(mocks.revoke).toHaveBeenCalledTimes(2);
+    expect(mocks.revoke).toHaveBeenCalledWith({ punishmentId: "p1", operatorId: "admin", reason: "复核解除" });
+    expect(mocks.findPunishments).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        type: { in: ["ACCOUNT_BAN", "TEMPORARY_BAN", "PERMANENT_BAN", "POST_SHADOW_HIDE"] },
       }),
-    );
-    expect(mockLogAudit).toHaveBeenCalledWith(
-      "admin1",
-      "USER_BAN",
-      "USER",
-      "u1",
-      { action: "ban", shadowBan: false, reason: "测试操作原因" },
-      undefined,
-      expect.anything(),
-    );
-    expect(mockPunishmentCreateMany).toHaveBeenCalledWith({ data: [{
-      userId: "u1", operatorId: "admin1", type: "ACCOUNT_BAN", action: "APPLIED", reason: "测试操作原因",
-    }] });
+    }));
   });
 
-  it("should shadow ban user and record audit log", async () => {
-    setSession("admin1", "ADMIN");
-    mockUserFindUnique.mockResolvedValue({ id: "u1", isBanned: false, isShadowBanned: false });
-    const updatedUser = { id: "u1", email: "u1@test.com", nickname: "user1", isBanned: false, isShadowBanned: true };
-    mockUserUpdate.mockResolvedValue(updatedUser);
-    mockLogAudit.mockResolvedValue({});
+  it("拒绝封禁最后一个可用的超级管理员", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "admin", role: "SUPER_ADMIN", phone: "13800138000" }, expires: "2099-01-01" } as never);
+    mocks.findUser.mockReset().mockResolvedValueOnce({ id: "u1", role: "SUPER_ADMIN" });
+    mocks.apply.mockRejectedValue(new Error("LAST_ACTIVE_SUPER_ADMIN"));
 
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(makeRequest({ action: "ban", shadowBan: true }), {
-      params: Promise.resolve({ id: "u1" }) as any,
-    });
-    const data = await res.json();
+    const response = await POST(request({ action: "ban", shadowBan: false, reason: "违规" }), { params: { id: "u1" } });
 
-    expect(res.status).toBe(200);
-    expect(data.user.isShadowBanned).toBe(true);
-    expect(mockUserUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "u1" },
-        data: { isShadowBanned: true },
-      }),
-    );
-    expect(mockLogAudit).toHaveBeenCalledWith(
-      "admin1",
-      "SHADOW_BAN",
-      "USER",
-      "u1",
-      { action: "ban", shadowBan: true, reason: "测试操作原因" },
-      undefined,
-      expect.anything(),
-    );
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("最后一个");
   });
 
-  it("should unban user and clear all ban flags", async () => {
-    setSession("admin1", "ADMIN");
-    mockUserFindUnique.mockResolvedValue({ id: "u1", isBanned: true, isShadowBanned: true });
-    const updatedUser = { id: "u1", email: "u1@test.com", nickname: "user1", isBanned: false, isShadowBanned: false };
-    mockUserUpdate.mockResolvedValue(updatedUser);
-    mockLogAudit.mockResolvedValue({});
-
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(makeRequest({ action: "unban" }), {
-      params: Promise.resolve({ id: "u1" }) as any,
-    });
-    const data = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(data.user.isBanned).toBe(false);
-    expect(data.user.isShadowBanned).toBe(false);
-    expect(mockUserUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "u1" },
-        data: expect.objectContaining({
-          isBanned: false,
-          isShadowBanned: false,
-          securityVersion: { increment: 1 },
-        }),
-      }),
-    );
-    expect(mockLogAudit).toHaveBeenCalledWith(
-      "admin1",
-      "USER_UNBAN",
-      "USER",
-      "u1",
-      { action: "unban", shadowBan: false, reason: "测试操作原因" },
-      undefined,
-      expect.anything(),
-    );
-    expect(mockPunishmentCreateMany).toHaveBeenCalledWith({ data: expect.arrayContaining([
-      expect.objectContaining({ type: "ACCOUNT_BAN", action: "REVOKED" }),
-      expect.objectContaining({ type: "POST_SHADOW_HIDE", action: "REVOKED" }),
-    ]) });
-  });
-
-  it("should support ban with reason", async () => {
-    setSession("admin1", "ADMIN");
-    mockUserFindUnique.mockResolvedValue({ id: "u1" });
-    mockUserUpdate.mockResolvedValue({ id: "u1", email: null, nickname: null, isBanned: true, isShadowBanned: false });
-    mockLogAudit.mockResolvedValue({});
-
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(
-      makeRequest({ action: "ban", reason: "repeated violations" }),
-      { params: Promise.resolve({ id: "u1" }) as any },
-    );
-
-    expect(res.status).toBe(200);
-    expect(mockLogAudit).toHaveBeenCalledWith(
-      "admin1",
-      "USER_BAN",
-      "USER",
-      "u1",
-      { action: "ban", shadowBan: false, reason: "repeated violations" },
-      undefined,
-      expect.anything(),
-    );
-  });
-
-  it("should reject a ban without a reason", async () => {
-    setSession("admin1", "ADMIN");
-
-    const { POST } = await import("../[id]/ban/route");
-    const res = await POST(makeRequest({ action: "ban", reason: undefined }), {
-      params: Promise.resolve({ id: "u1" }) as any,
-    });
-
-    expect(res.status).toBe(400);
-    expect(mockUserUpdate).not.toHaveBeenCalled();
+  it("rejects self punishment and invalid input", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "u1", role: "ADMIN", phone: "13800138000" }, expires: "2099-01-01" } as never);
+    expect((await POST(request({ action: "ban", reason: "原因" }), { params: { id: "u1" } })).status).toBe(400);
+    expect((await POST(request({ action: "invalid", reason: "原因" }), { params: { id: "u2" } })).status).toBe(400);
   });
 });

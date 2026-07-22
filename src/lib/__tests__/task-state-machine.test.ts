@@ -16,6 +16,10 @@ const ALL_STATUSES: TaskStatus[] = [
 ];
 
 describe('task-state-machine', () => {
+  it('treats COMPLETED as terminal for every transition', () => {
+    expect(canTransition('COMPLETED', 'CLOSED')).toBe(false);
+    expect(getNextStates('COMPLETED')).toEqual([]);
+  });
   describe('canTransition', () => {
     it('allows forward transitions along the happy path', () => {
       expect(canTransition('DRAFT', 'SUBMITTED')).toBe(true);

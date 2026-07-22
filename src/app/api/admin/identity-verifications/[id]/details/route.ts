@@ -11,10 +11,10 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context: { params:
   const application = await prisma.identityVerificationApplication.findUnique({
     where: { id: context.params.id },
     select: {
-      id: true, method: true, identityCiphertext: true, identityIv: true, identityAuthTag: true, identityKeyVersion: true,
+      id: true, method: true, status: true, identityCiphertext: true, identityIv: true, identityAuthTag: true, identityKeyVersion: true,
     },
   });
-  if (!application || !["REAL_NAME_ID", "ID_HOLDING_PHOTO", "SCHOOL_UNIFORM"].includes(application.method) || !application.identityCiphertext || !application.identityIv || !application.identityAuthTag || !application.identityKeyVersion) {
+  if (!application || application.status === "CANCELLED" || !["REAL_NAME_ID", "ID_HOLDING_PHOTO", "SCHOOL_UNIFORM"].includes(application.method) || !application.identityCiphertext || !application.identityIv || !application.identityAuthTag || !application.identityKeyVersion) {
     return NextResponse.json({ error: "实名信息不存在" }, { status: 404 });
   }
   const envelope = {

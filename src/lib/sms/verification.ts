@@ -3,6 +3,8 @@ import redis from "@/lib/redis";
 import { getSmsProvider } from "@/lib/sms";
 import { getSmsVerificationEnabled } from "@/lib/system-config";
 
+const ALWAYS_REQUIRED_PURPOSES = new Set(["register", "account-deletion"]);
+
 /**
  * 生成 6 位安全随机数字验证码
  * 使用 crypto.randomInt 确保密码学安全
@@ -22,7 +24,7 @@ export async function sendVerificationCode(
   phone: string,
   purpose: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (purpose !== "register" && !(await getSmsVerificationEnabled())) {
+  if (!ALWAYS_REQUIRED_PURPOSES.has(purpose) && !(await getSmsVerificationEnabled())) {
     return { success: true };
   }
 
@@ -73,7 +75,7 @@ export async function verifyCode(
   code: string | undefined,
   purpose: string
 ): Promise<boolean> {
-  if (purpose !== "register" && !(await getSmsVerificationEnabled())) {
+  if (!ALWAYS_REQUIRED_PURPOSES.has(purpose) && !(await getSmsVerificationEnabled())) {
     return true;
   }
 

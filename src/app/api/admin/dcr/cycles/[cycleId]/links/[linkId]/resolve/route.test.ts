@@ -17,7 +17,7 @@ import { getServerSession } from "next-auth/next";
 import { POST } from "./route";
 
 function request(action: string) {
-  vi.mocked(getServerSession).mockResolvedValue({ user: { id: "admin", role: "ADMIN" } } as never);
+  vi.mocked(getServerSession).mockResolvedValue({ user: { id: "admin", role: "ADMIN", phone: "13800000000" } } as never);
   return new NextRequest("http://localhost/api/admin/dcr/cycles/cycle1/links/link1/resolve", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, reason: "仲裁原因" }),
   });

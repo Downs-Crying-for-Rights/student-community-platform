@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AiReviewPanel } from "@/components/admin/AiReviewPanel";
+import { ExternalLink } from "lucide-react";
 
 interface TimelineEvent {
   id: string;
@@ -29,6 +30,17 @@ interface DisputeItem {
   requester: { id: string; nickname: string | null; email: string | null; avatar: string | null };
   helpSession: { id: string; helperId: string; requesterId: string; statusBeforeDispute: string | null; createdAt: string } | null;
   timeline: TimelineEvent[];
+}
+
+interface CycleDisputeItem {
+  id: string;
+  direction: string;
+  statusBeforeDispute: string | null;
+  breakReason: string | null;
+  updatedAt: string;
+  cycle: { id: string; mode: string; status: string; createdAt: string };
+  fromUser: { id: string; nickname: string | null };
+  toUser: { id: string; nickname: string | null };
 }
 
 type ActionType = "takedown" | "replace_helper" | "ban_user" | "dismiss" | "freeze";
@@ -58,6 +70,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function AdminDisputesPage() {
   const [disputes, setDisputes] = useState<DisputeItem[]>([]);
+  const [cycleDisputes, setCycleDisputes] = useState<CycleDisputeItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -65,6 +78,7 @@ export default function AdminDisputesPage() {
   const [actionReason, setActionReason] = useState("");
   const [banTarget, setBanTarget] = useState<"requester" | "helper">("requester");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [cycleReasons, setCycleReasons] = useState<Record<string, string>>({});
 
   const fetchDisputes = useCallback(async () => {
     setLoading(true);
@@ -77,7 +91,8 @@ export default function AdminDisputesPage() {
         return;
       }
       const data = await res.json();
-      setDisputes(data.disputes);
+      setDisputes(data.disputes ?? []);
+      setCycleDisputes(data.cycleDisputes ?? []);
     } catch {
       setError("网络错误，请检查连接后重试");
     } finally {
@@ -98,6 +113,34 @@ export default function AdminDisputesPage() {
   const handleCancelAction = () => {
     setActiveAction(null);
     setActionReason("");
+  };
+
+  const handleCycleAction = async (dispute: CycleDisputeItem, action: "resume" | "reinvite" | "close") => {
+    const reason = cycleReasons[dispute.id]?.trim();
+    if (!reason) {
+      setError("请先填写循环争议的仲裁原因");
+      return;
+    }
+    setActionLoading(dispute.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/dcr/cycles/${dispute.cycle.id}/links/${dispute.id}/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "循环争议处理失败");
+        return;
+      }
+      setCycleReasons((current) => ({ ...current, [dispute.id]: "" }));
+      await fetchDisputes();
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleSubmitAction = async () => {
@@ -151,12 +194,53 @@ export default function AdminDisputesPage() {
         </div>
       )}
 
+      {!loading && cycleDisputes.length > 0 && (
+        <section className="mb-6 space-y-3" aria-labelledby="cycle-disputes-heading">
+          <h2 id="cycle-disputes-heading" className="text-lg font-semibold">互助循环争议（{cycleDisputes.length}）</h2>
+          {cycleDisputes.map((dispute) => {
+            const isLoading = actionLoading === dispute.id;
+            return (
+              <Card key={dispute.id} className="border-amber-300">
+                <CardContent className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-medium">{dispute.cycle.mode === "THREE_PARTY" ? "三方" : "双方"}互助 · {dispute.direction}</h3>
+                        <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">争议中</span>
+                      </div>
+                      <p className="mt-2 text-sm">{dispute.fromUser.nickname || "未命名用户"} → {dispute.toUser.nickname || "未命名用户"}</p>
+                      <p className="mt-2 rounded bg-yellow-50 p-2 text-sm text-yellow-800">争议说明：{dispute.breakReason || "未填写"}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">发起时间：{new Date(dispute.updatedAt).toLocaleString("zh-CN")}</p>
+                      <input
+                        value={cycleReasons[dispute.id] ?? ""}
+                        onChange={(event) => setCycleReasons((current) => ({ ...current, [dispute.id]: event.target.value }))}
+                        className="mt-3 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        placeholder="请输入处理原因（必填）"
+                        aria-label={`循环争议处理原因 ${dispute.direction}`}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <a href={`/dcr/cycles/${dispute.cycle.id}`} target="_blank" rel="noreferrer">查看详情<ExternalLink className="ml-1 h-3.5 w-3.5" /></a>
+                      </Button>
+                      {dispute.statusBeforeDispute && <Button size="sm" disabled={isLoading} onClick={() => handleCycleAction(dispute, "resume")}>驳回并恢复</Button>}
+                      <Button size="sm" variant="secondary" disabled={isLoading} onClick={() => handleCycleAction(dispute, "reinvite")}>重新邀请</Button>
+                      <Button size="sm" variant="destructive" disabled={isLoading} onClick={() => handleCycleAction(dispute, "close")}>终止循环</Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </section>
+      )}
+
       {loading ? (
         <div className="p-8 text-center text-muted-foreground">加载中...</div>
       ) : disputes.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
-            暂无待处理争议
+            {cycleDisputes.length > 0 ? "暂无待处理任务争议" : "暂无待处理争议"}
           </CardContent>
         </Card>
       ) : (

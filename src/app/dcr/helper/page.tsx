@@ -11,6 +11,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { formatHelperCaseCount } from "@/lib/dcr-ui-helpers";
 
@@ -94,6 +95,7 @@ export default function HelperDashboardPage() {
   const [myCases, setMyCases] = useState<CaseSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
 
   // Fetch session
   useEffect(() => {
@@ -130,7 +132,7 @@ export default function HelperDashboardPage() {
     setError(null);
     try {
       const [openRes, myRes] = await Promise.all([
-        fetch("/api/cases?status=OPENED"),
+        fetch("/api/cases?scope=claimable"),
         fetch(`/api/cases?handlerId=${userId}&status=IN_PROGRESS,NEED_MORE_INFO`),
       ]);
 
@@ -161,6 +163,29 @@ export default function HelperDashboardPage() {
       setLoading(false);
     }
   }, [sessionLoaded, hasPermission, fetchCases]);
+
+  const joinCase = async (caseId: string) => {
+    if (joiningId) return;
+    setJoiningId(caseId);
+    setError(null);
+    try {
+      const response = await fetch(`/api/cases/${caseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "JOIN" }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error || "参与互助失败，请稍后重试");
+        return;
+      }
+      router.push(`/dcr/tickets/${caseId}`);
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    } finally {
+      setJoiningId(null);
+    }
+  };
 
   return (
     <div className="bg-slate-50/40 dark:bg-slate-950/10 min-h-screen">
@@ -217,7 +242,7 @@ export default function HelperDashboardPage() {
                   ) : (
                     <div className="space-y-3">
                       {openCases.map((c) => (
-                        <CaseCard key={c.id} caseItem={c} onClick={() => router.push(`/dcr/tickets/${c.id}`)} />
+                        <CaseCard key={c.id} caseItem={c} joining={joiningId === c.id} onJoin={() => void joinCase(c.id)} />
                       ))}
                     </div>
                   )}
@@ -252,19 +277,19 @@ export default function HelperDashboardPage() {
 
 /* ========== Sub-components ========== */
 
-function CaseCard({ caseItem, onClick }: { caseItem: CaseSummary; onClick: () => void }) {
+function CaseCard({ caseItem, onClick, onJoin, joining = false }: { caseItem: CaseSummary; onClick?: () => void; onJoin?: () => void; joining?: boolean }) {
   const badge = STATUS_BADGE_CONFIG[caseItem.status];
   const BadgeIcon = badge?.icon ?? Clock;
 
   return (
     <Card
-      className="cursor-pointer transition-shadow hover:shadow-md"
+      className={onClick ? "cursor-pointer transition-shadow hover:shadow-md" : undefined}
       onClick={onClick}
-      role="button"
-      tabIndex={0}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
       aria-label={`工单 ${getCategoryLabel(caseItem.category)} - ${getStatusLabel(caseItem.status)}`}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (onClick && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
           onClick();
         }
@@ -287,7 +312,14 @@ function CaseCard({ caseItem, onClick }: { caseItem: CaseSummary; onClick: () =>
             {formatDate(caseItem.createdAt)}
           </div>
         </div>
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {onJoin ? (
+          <Button disabled={joining} onClick={onJoin} size="sm">
+            {joining && <Loader2 className="h-4 w-4 animate-spin" />}
+            参与互助
+          </Button>
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        )}
       </CardContent>
     </Card>
   );

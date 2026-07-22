@@ -29,14 +29,21 @@ function DMThreadContent() {
   const endRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/dm/thread/${threadId}`);
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) {
-      setMessages(data.messages ?? []);
-      setIsSystemReadOnly(Boolean(data.isSystemReadOnly));
+    try {
+      const res = await fetch(`/api/dm/thread/${threadId}`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMessages(data.messages ?? []);
+        setIsSystemReadOnly(Boolean(data.isSystemReadOnly));
+        setError("");
+      } else {
+        setError(data.error || "私信加载失败");
+      }
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    } finally {
+      setLoading(false);
     }
-    else setError(data.error || "私信加载失败");
-    setLoading(false);
   }, [threadId]);
 
   useEffect(() => {
@@ -54,17 +61,25 @@ function DMThreadContent() {
     e.preventDefault();
     if (!content.trim() || sending) return;
     setSending(true);
-    const res = await fetch(`/api/dm/thread/${threadId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: content.trim() }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) {
-      setContent("");
-      await load();
-    } else setError(data.error || "发送失败");
-    setSending(false);
+    setError("");
+    try {
+      const res = await fetch(`/api/dm/thread/${threadId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: content.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setContent("");
+        await load();
+      } else {
+        setError(data.error || "发送失败");
+      }
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (

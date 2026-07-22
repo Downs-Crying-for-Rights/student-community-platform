@@ -98,6 +98,15 @@ describe("AdminUsersPage", () => {
     expect(source).toContain("disabled={!!restricted && !isSuperAdmin}");
     expect(source).toContain("完整分页记录请使用上方数据域浏览器");
   });
+
+  it("通过可滚动弹窗显示用户详情", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../users/page.tsx"), "utf8");
+    expect(source).toContain('from "@/components/ui/dialog"');
+    expect(source).toContain("open={Boolean(editingUser)}");
+    expect(source).toContain("if (!open) closeDetails()");
+    expect(source).toContain("max-h-[90vh] overflow-y-auto sm:max-w-6xl");
+    expect(source).not.toContain('<Card className="relative mt-6 overflow-hidden" data-testid="override-panel">');
+  });
 });
 
 describe("AdminUsersPage SUPER_ADMIN 条件渲染", () => {

@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
 import { loginPasswordSchema } from "@/lib/validators";
+import { getCurrentPunishmentStatus } from "@/lib/punishment-service";
 
 export function escapeHtmlAttribute(value: string): string {
   return value
@@ -82,11 +83,15 @@ export const authOptions: NextAuthOptions = {
             { username: normalized },
             { phone: identifier },
           ] },
-          select: { id: true, email: true, nickname: true, role: true, phone: true, passwordHash: true, isBanned: true },
+          select: { id: true, email: true, nickname: true, role: true, phone: true, passwordHash: true, isBanned: true, banUntil: true, deactivatedAt: true },
         });
-        if (!user || !user.passwordHash || user.isBanned) throw new Error("账号或密码错误");
+        if (!user || !user.passwordHash || user.deactivatedAt) throw new Error("账号或密码错误");
         const isValid = await bcrypt.compare(password, user.passwordHash);
         if (!isValid) throw new Error("账号或密码错误");
+        if (user.isBanned) {
+          const punishmentStatus = await getCurrentPunishmentStatus(user.id);
+          if (punishmentStatus?.isBanned) throw new Error("账号或密码错误");
+        }
         return { id: user.id, email: user.email, name: user.nickname, role: user.role, phone: user.phone };
       },
     }),
@@ -102,10 +107,7 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user }) {
       if (!user.id) return false;
-      const account = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { isBanned: true },
-      });
+      const account = await getCurrentPunishmentStatus(user.id);
       return Boolean(account && !account.isBanned);
     },
     async jwt({ token, user, trigger }) {
@@ -114,32 +116,47 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
-            select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true, realVerifiedAt: true, studentVerifiedAt: true },
+            select: { role: true, phone: true, nickname: true, avatar: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, banUntil: true, isMuted: true, muteUntil: true, securityVersion: true, profileCompletionRequired: true, realVerifiedAt: true, studentVerifiedAt: true, deactivatedAt: true },
         });
         token.role = dbUser?.role ?? "USER";
         token.phone = dbUser?.phone ?? null;
         token.nickname = dbUser?.nickname ?? null;
+        token.avatar = dbUser?.avatar ?? null;
         token.onboardingDone = dbUser?.onboardingDone ?? false;
         token.quizPassed = dbUser?.quizPassed ?? false;
         token.dcrAccess = dbUser?.dcrAccess ?? false;
-        token.isBanned = dbUser?.isBanned ?? false;
+         token.isBanned = Boolean(dbUser?.isBanned || dbUser?.deactivatedAt);
+        token.banUntil = dbUser?.banUntil?.toISOString() ?? null;
+        token.isMuted = dbUser?.isMuted ?? false;
+        token.muteUntil = dbUser?.muteUntil?.toISOString() ?? null;
         token.securityVersion = dbUser?.securityVersion ?? 0;
         token.profileCompletionRequired = dbUser?.profileCompletionRequired ?? false;
         token.isVerified = Boolean(dbUser?.realVerifiedAt || dbUser?.studentVerifiedAt);
       } else if (token.sub) {
         // Refresh security-sensitive claims on every server session read so revocations apply immediately.
-        const dbUser = await prisma.user.findUnique({
+        let dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
-          select: { role: true, phone: true, nickname: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, securityVersion: true, profileCompletionRequired: true, realVerifiedAt: true, studentVerifiedAt: true },
+            select: { id: true, role: true, phone: true, nickname: true, avatar: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, banUntil: true, isMuted: true, muteUntil: true, securityVersion: true, profileCompletionRequired: true, realVerifiedAt: true, studentVerifiedAt: true, deactivatedAt: true },
         });
+        if (dbUser && ((dbUser.isBanned && dbUser.banUntil && dbUser.banUntil <= new Date()) || (dbUser.isMuted && dbUser.muteUntil && dbUser.muteUntil <= new Date()))) {
+          await getCurrentPunishmentStatus(dbUser.id);
+          dbUser = await prisma.user.findUnique({
+            where: { id: token.sub },
+             select: { id: true, role: true, phone: true, nickname: true, avatar: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, banUntil: true, isMuted: true, muteUntil: true, securityVersion: true, profileCompletionRequired: true, realVerifiedAt: true, studentVerifiedAt: true, deactivatedAt: true },
+          });
+        }
         if (dbUser) {
           token.role = dbUser.role;
           token.phone = dbUser.phone;
           token.nickname = dbUser.nickname;
+          token.avatar = dbUser.avatar;
           token.onboardingDone = dbUser.onboardingDone;
           token.quizPassed = dbUser.quizPassed;
           token.dcrAccess = dbUser.dcrAccess;
-          token.isBanned = dbUser.isBanned;
+           token.isBanned = Boolean(dbUser.isBanned || dbUser.deactivatedAt);
+          token.banUntil = dbUser.banUntil?.toISOString() ?? null;
+          token.isMuted = dbUser.isMuted;
+          token.muteUntil = dbUser.muteUntil?.toISOString() ?? null;
           token.securityVersion = dbUser.securityVersion;
           token.profileCompletionRequired = dbUser.profileCompletionRequired;
           token.isVerified = Boolean(dbUser.realVerifiedAt || dbUser.studentVerifiedAt);
@@ -156,7 +173,11 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).quizPassed = token.quizPassed;
         (session.user as any).dcrAccess = token.dcrAccess;
         (session.user as any).nickname = token.nickname;
+        (session.user as any).avatar = token.avatar;
         (session.user as any).isBanned = token.isBanned;
+        (session.user as any).banUntil = token.banUntil;
+        (session.user as any).isMuted = token.isMuted;
+        (session.user as any).muteUntil = token.muteUntil;
         (session.user as any).securityVersion = token.securityVersion;
         (session.user as any).profileCompletionRequired = token.profileCompletionRequired;
         (session.user as any).isVerified = token.isVerified;

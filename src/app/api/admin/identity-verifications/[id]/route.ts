@@ -77,7 +77,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context: { param
       "SYSTEM",
       status === "APPROVED" ? "身份认证已通过" : "身份认证未通过",
       status === "APPROVED"
-        ? grantsStudentVerification(result.method) ? "你已获得真实用户和学生用户标签。" : "你已获得真实用户标签。"
+        ? grantsStudentVerification(result.method) ? "你已获得已实名和学生用户标签。" : "你已获得已实名标签。"
         : `你的身份认证未通过${reviewNote ? `，原因：${reviewNote}` : ""}。`,
       "/settings/identity",
     ).catch((error) => console.error("Identity verification notification failed", error));

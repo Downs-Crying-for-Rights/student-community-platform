@@ -184,6 +184,12 @@ describe("sendVerificationCode", () => {
     );
     expect(mockSendCode).toHaveBeenCalled();
   });
+
+  it("still sends account deletion codes when verification is disabled", async () => {
+    vi.mocked(getSmsVerificationEnabled).mockResolvedValue(false);
+    await expect(sendVerificationCode("13800138000", "account-deletion")).resolves.toEqual({ success: true });
+    expect(mockRedis.set).toHaveBeenCalledWith("sms:account-deletion:13800138000", expect.stringMatching(/^\d{6}$/), "EX", 300);
+  });
 });
 
 describe("verifyCode", () => {
@@ -204,6 +210,13 @@ describe("verifyCode", () => {
 
     await expect(verifyCode("13800138000", "123456", "register")).resolves.toBe(false);
     expect(mockRedis.get).toHaveBeenCalledWith("sms:register:13800138000");
+  });
+
+  it("does not bypass account deletion verification when verification is disabled", async () => {
+    vi.mocked(getSmsVerificationEnabled).mockResolvedValue(false);
+    mockRedis.get.mockResolvedValue(null);
+    await expect(verifyCode("13800138000", "123456", "account-deletion")).resolves.toBe(false);
+    expect(mockRedis.get).toHaveBeenCalledWith("sms:account-deletion:13800138000");
   });
 
   it("should return true for correct code and delete it", async () => {

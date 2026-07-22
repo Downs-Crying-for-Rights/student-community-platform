@@ -287,7 +287,7 @@ export default function SettingsProfilePage() {
 
         <Card className="mb-6">
           <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
-            <div><p className="font-medium">身份认证</p><p className="text-sm text-muted-foreground">申请真实用户、学生用户公开身份标签。</p></div>
+            <div><p className="font-medium">身份认证</p><p className="text-sm text-muted-foreground">申请已实名、学生用户公开身份标签。</p></div>
             <Button asChild variant="outline"><Link href="/settings/identity">进入身份认证</Link></Button>
           </CardContent>
         </Card>

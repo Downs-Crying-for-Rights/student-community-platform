@@ -6,6 +6,7 @@ import { z } from "zod";
 import { enforceRateLimit } from "@/lib/rate-limiter";
 import { logAudit } from "@/lib/audit";
 import { requireDMConsent } from "@/lib/dm-consent";
+import { createNotification } from "@/lib/notification";
 
 async function consentRequired(userId: string) {
   const consent = await requireDMConsent(userId);
@@ -154,6 +155,18 @@ export const POST = withAuth(async (
     ]);
 
     await logAudit(userId, "DM_MESSAGE_SEND", "DM_THREAD", threadId, { messageId: message.id });
+    const recipientId = thread.participant1Id === userId ? thread.participant2Id : thread.participant1Id;
+    try {
+      await createNotification(
+        recipientId,
+        "SYSTEM",
+        "收到新私信",
+        "你收到了一条新的私信消息。",
+        `/messages/dm/${threadId}`,
+      );
+    } catch (error) {
+      console.error("Failed to create DM recipient notification", error);
+    }
 
     return NextResponse.json({ message }, { status: 201 });
   } catch (error) {

@@ -9,24 +9,14 @@ const SET_USERNAME_PATHS = ["/set-username", "/api/auth/username"];
 const isSetUsernamePath = (pathname: string) =>
   SET_USERNAME_PATHS.some((p) => pathname.startsWith(p));
 
-/**
- * 白名单路径 — 不触发引导 / 昵称重定向
- */
-export const AUTH_WHITELIST = [
-  "/api/auth",
-  "/api/sms",
-  "/bindphone",
-  "/onboarding",
-  "/api/onboarding",
-  "/logout",
-  "/login",
-  "/set-username",
-];
+/** Authenticated users without a phone may only visit the binding page. */
+export const PHONE_REQUIRED_PAGE_PATHS = ["/bindphone"] as const;
 
-/** 检查路径是否在认证白名单中 */
-export function isAuthWhitelisted(pathname: string): boolean {
-  return AUTH_WHITELIST.some((prefix) => pathname.startsWith(prefix));
+export function isPhoneRequiredPageAllowed(pathname: string): boolean {
+  return PHONE_REQUIRED_PAGE_PATHS.includes(pathname as "/bindphone");
 }
+
+const PUBLIC_AUTH_PAGE_PATHS = ["/login", "/ban-appeal"] as const;
 
 /**
  * 认证中间件 — 纯 JWT 检测（无 DB 查询，兼容 Edge Runtime）
@@ -43,9 +33,23 @@ export default async function middleware(req: NextRequest) {
 
   // 未认证 → 重定向至登录页
   if (!token) {
+    if (PUBLIC_AUTH_PAGE_PATHS.includes(pathname as (typeof PUBLIC_AUTH_PAGE_PATHS)[number])) {
+      return NextResponse.next();
+    }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", `${req.nextUrl.pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // This Edge check gives immediate page redirects. API wrappers repeat the
+  // check against the server-refreshed session and remain authoritative.
+  if (!(token as any).phone && !isPhoneRequiredPageAllowed(pathname)) {
+    const bindPhoneUrl = new URL("/bindphone", req.url);
+    bindPhoneUrl.searchParams.set("callbackUrl", `${req.nextUrl.pathname}${req.nextUrl.search}`);
+    return NextResponse.redirect(bindPhoneUrl);
+  }
+  if (!(token as any).phone) {
+    return NextResponse.next();
   }
 
   // 新账号必须先在一个页面补齐昵称、头像和 QQ 号。
@@ -85,26 +89,5 @@ export default async function middleware(req: NextRequest) {
  * 匹配所有页面路由
  */
 export const config = {
-  matcher: [
-    "/",
-    "/create",
-    "/messages",
-    "/settings/:path*",
-    "/admin/:path*",
-    "/moderation",
-    "/dcr/:path*",
-    "/apply",
-    "/u/:path*",
-    "/onboarding",
-    "/bindphone",
-    "/set-username",
-    "/discover",
-    "/search",
-    "/post/:path*",
-    "/kb/:path*",
-    "/help/:path*",
-    "/chat/:path*",
-    "/psych/:path*",
-    "/qq/:path*",
-  ],
+  matcher: ["/((?!api(?:/|$)|_next(?:/|$)|.*\\..*).*)"],
 };

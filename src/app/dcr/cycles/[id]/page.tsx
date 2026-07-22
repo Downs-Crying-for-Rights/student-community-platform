@@ -50,11 +50,11 @@ const CYCLE_STATUS: Record<string, { label: string; color: string }> = {
   CLOSED: { label: "已终止", color: "text-slate-600" },
 };
 
-const LINK_META: Record<string, { label: string; fromLabel: string; toLabel: string }> = {
-  AB: { label: "A→B", fromLabel: "你(A)", toLabel: "B" },
-  BC: { label: "B→C", fromLabel: "B", toLabel: "C" },
-  CA: { label: "C→A", fromLabel: "C", toLabel: "你(A)" },
-  BA: { label: "B→A", fromLabel: "B", toLabel: "你(A)" },
+const LINK_META: Record<string, { label: string; fromRole: string; toRole: string }> = {
+  AB: { label: "A→B", fromRole: "A", toRole: "B" },
+  BC: { label: "B→C", fromRole: "B", toRole: "C" },
+  CA: { label: "C→A", fromRole: "C", toRole: "A" },
+  BA: { label: "B→A", fromRole: "B", toRole: "A" },
 };
 
 const STATUS_ICON: Record<string, typeof CheckCircle2> = {
@@ -139,6 +139,11 @@ export default function CycleDetailPage() {
   }
 
   const statusInfo = CYCLE_STATUS[cycle.status] || { label: cycle.status, color: "" };
+  const contacts = Array.from(new Map(cycle.links.flatMap((link) => {
+    if (link.fromUser.id === userId && link.toUser.id !== userId) return [[link.toUser.id, { user: link.toUser, linkId: link.id }] as const];
+    if (link.toUser.id === userId && link.fromUser.id !== userId) return [[link.fromUser.id, { user: link.fromUser, linkId: link.id }] as const];
+    return [];
+  })).values());
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -156,6 +161,26 @@ export default function CycleDetailPage() {
 
       {actionError && (
         <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-600 dark:bg-red-950/20">{actionError}</div>
+      )}
+
+      {contacts.length > 0 && (
+        <Card className="mb-6">
+          <CardHeader><CardTitle className="text-base">联系其他参与者</CardTitle></CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {contacts.map(({ user, linkId }) => (
+              <Button
+                key={user.id}
+                size="sm"
+                variant="outline"
+                disabled={Boolean(contactLoading)}
+                onClick={() => void ensureConsent(() => { void contactCounterpart(linkId); })}
+              >
+                {contactLoading === linkId ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="mr-1 h-3.5 w-3.5" />}
+                联系 {user.nickname || "未命名参与者"}
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       {/* 链路可视化 */}
@@ -176,7 +201,7 @@ export default function CycleDetailPage() {
       {/* 三段链接 */}
       <div className="space-y-3">
         {cycle.links.map((link) => {
-          const meta = LINK_META[link.direction] || { label: link.direction, fromLabel: "?", toLabel: "?" };
+          const meta = LINK_META[link.direction] || { label: link.direction, fromRole: "?", toRole: "?" };
           const Icon = STATUS_ICON[link.status] || Clock;
           const isTo = link.toUser.id === userId;
           const isFrom = link.fromUser.id === userId;
@@ -207,10 +232,10 @@ export default function CycleDetailPage() {
 
                 <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mb-2">
                   <div>
-                    <span className="font-medium">{meta.fromLabel}:</span> {link.fromUser.nickname}
+                    <span className="font-medium">{meta.fromRole}{isFrom ? "（你）" : ""}:</span> {link.fromUser.nickname}
                   </div>
                   <div>
-                    <span className="font-medium">{meta.toLabel}:</span> {link.toUser.nickname}
+                    <span className="font-medium">{meta.toRole}{isTo ? "（你）" : ""}:</span> {link.toUser.nickname}
                   </div>
                 </div>
 
@@ -246,17 +271,6 @@ export default function CycleDetailPage() {
                   {canDispute && (
                     <Button size="sm" variant="ghost" className="text-red-600" onClick={() => handleDispute(link.id)}>
                       <Flag className="mr-1 h-3.5 w-3.5" />争议
-                    </Button>
-                  )}
-                  {(isFrom || isTo) && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={Boolean(contactLoading)}
-                      onClick={() => void ensureConsent(() => { void contactCounterpart(link.id); })}
-                    >
-                      {contactLoading === link.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="mr-1 h-3.5 w-3.5" />}
-                      联系对方
                     </Button>
                   )}
                 </div>

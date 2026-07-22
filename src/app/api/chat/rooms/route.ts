@@ -39,7 +39,14 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         include: {
           createdBy: { select: { id: true, nickname: true, avatar: true } },
           _count: { select: { members: true } },
+          members: {
+            where: { userId },
+            select: { id: true },
+          },
           messages: {
+            where: {
+              room: { members: { some: { userId } } },
+            },
             orderBy: { createdAt: "desc" },
             take: 1,
             select: { id: true, content: true, createdAt: true },
@@ -60,18 +67,22 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       }),
     ]);
 
-    const result = rooms.map((r) => ({
-      id: r.id,
-      name: r.name,
-      description: r.description,
-      type: r.type,
-      status: r.status,
-      joinMode: r.joinMode,
-      createdBy: r.createdBy,
-      memberCount: r._count.members,
-      lastMessage: r.messages[0] ?? null,
-      updatedAt: r.updatedAt,
-    }));
+    const result = rooms.map((r) => {
+      const isMember = r.members.length > 0;
+      return {
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        type: r.type,
+        status: r.status,
+        joinMode: r.joinMode,
+        createdBy: r.createdBy,
+        memberCount: r._count.members,
+        isMember,
+        lastMessage: isMember ? r.messages[0] ?? null : null,
+        updatedAt: r.updatedAt,
+      };
+    });
 
     return NextResponse.json({ rooms: result, total, page, pageSize });
   } catch (error) {

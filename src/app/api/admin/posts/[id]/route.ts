@@ -40,7 +40,7 @@ export const PATCH = withAuth(async (
 
     const existing = await prisma.post.findUnique({
       where: { id },
-      select: { id: true, status: true, title: true, content: true, isPinned: true },
+      select: { id: true, status: true, title: true, content: true, isPinned: true, authorId: true },
     });
 
     if (!existing) {
@@ -85,6 +85,17 @@ export const PATCH = withAuth(async (
         board: { select: { id: true, name: true } },
         },
       });
+      if (status !== undefined && status !== existing.status && existing.authorId !== req.user.id && (status === "DELETED" || existing.status === "DELETED")) {
+        await tx.notification.create({
+          data: {
+            userId: existing.authorId,
+            type: "SYSTEM",
+            title: status === "DELETED" ? "帖子已被删除" : "帖子已恢复",
+            content: status === "DELETED" ? `你的帖子「${existing.title}」已由平台删除。原因：${reason}` : `你的帖子「${existing.title}」已由平台恢复。`,
+            link: status === "DELETED" ? "/messages" : `/post/${id}`,
+          },
+        });
+      }
       await logAudit(
         req.user.id,
         isPinned !== undefined

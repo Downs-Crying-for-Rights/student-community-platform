@@ -8,6 +8,7 @@ import { describe, it, expect } from "vitest";
  * - 嵌套 tags 结构的正确转换
  * - 分页判断（hasMore 逻辑）
  * - 排序模式切换
+ * - PC 首页使用紧凑多列瀑布流
  *
  * Validates: Requirements 27.1, 27.2, 27.3, 27.5, 27.6, 27.8
  */
@@ -80,6 +81,12 @@ function computeHasMore(page: number, pageSize: number, total: number): boolean 
 }
 
 describe("首页 Feed 逻辑", () => {
+  it("PC 首页使用 3 列、宽屏使用 4 列紧凑瀑布流", async () => {
+    const { HOME_GRID_CLASS } = await import("../page");
+    expect(HOME_GRID_CLASS).toContain("md:columns-3");
+    expect(HOME_GRID_CLASS).toContain("xl:columns-4");
+    expect(HOME_GRID_CLASS).toContain("md:gap-3");
+  });
   describe("API 数据映射", () => {
     const sampleAPIPost: APIPost = {
       id: "post-1",

@@ -1,88 +1,75 @@
-import { describe, it, expect } from "vitest";
-import { config, AUTH_WHITELIST, isAuthWhitelisted } from "../middleware";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 
-describe("认证中间件", () => {
-  describe("路由匹配规则", () => {
-    const matchers = config.matcher;
+const getToken = vi.hoisted(() => vi.fn());
+vi.mock("next-auth/jwt", () => ({ getToken }));
 
-    it("应包含所有受保护路由", () => {
-      expect(matchers).toContain("/");
-      expect(matchers).toContain("/create");
-      expect(matchers).toContain("/messages");
-      expect(matchers).toContain("/settings/:path*");
-      expect(matchers).toContain("/admin/:path*");
-      expect(matchers).toContain("/moderation");
-      expect(matchers).toContain("/dcr/:path*");
-      expect(matchers).toContain("/apply");
-      expect(matchers).toContain("/u/:path*");
-      expect(matchers).toContain("/onboarding");
-      expect(matchers).toContain("/bindphone");
-      expect(matchers).toContain("/set-username");
-      expect(matchers).toContain("/discover");
-      expect(matchers).toContain("/search");
-      expect(matchers).toContain("/chat/:path*");
-      expect(matchers).toContain("/psych/:path*");
-      expect(matchers).toContain("/post/:path*");
-      expect(matchers).toContain("/kb/:path*");
-      expect(matchers).toContain("/help/:path*");
-    });
+import middleware, {
+  config,
+  PHONE_REQUIRED_PAGE_PATHS,
+  isPhoneRequiredPageAllowed,
+} from "../middleware";
 
-    it("不应包含公开路由", () => {
-      const matcherStr = JSON.stringify(matchers);
-      // Login and API routes should NOT be in the matcher
-      expect(matcherStr).not.toContain('"/login"');
-      expect(matcherStr).not.toContain('"/api/auth');
-    });
+const request = (path: string) => new NextRequest(`https://example.test${path}`);
 
-    it("根路径应在匹配器中", () => {
-      expect(matchers).toContain("/");
-    });
+describe("authentication middleware", () => {
+  beforeEach(() => getToken.mockReset());
 
-    it("应使用通配符匹配 settings 子路由", () => {
-      expect(matchers).toContain("/settings/:path*");
-    });
-
-    it("应使用通配符匹配 admin 子路由", () => {
-      expect(matchers).toContain("/admin/:path*");
-    });
-
-    it("应使用通配符匹配 dcr 子路由", () => {
-      expect(matchers).toContain("/dcr/:path*");
-    });
+  it("matches every page while excluding APIs, internals, and static files", () => {
+    expect(config.matcher).toEqual(["/((?!api(?:/|$)|_next(?:/|$)|.*\\..*).*)"]);
   });
 
-  describe("认证白名单", () => {
-    it("应包含所有白名单路径", () => {
-      expect(AUTH_WHITELIST).toContain("/api/auth");
-      expect(AUTH_WHITELIST).toContain("/api/sms");
-      expect(AUTH_WHITELIST).toContain("/bindphone");
-      expect(AUTH_WHITELIST).toContain("/onboarding");
-      expect(AUTH_WHITELIST).toContain("/api/onboarding");
-      expect(AUTH_WHITELIST).toContain("/logout");
-      expect(AUTH_WHITELIST).toContain("/login");
-      expect(AUTH_WHITELIST).toContain("/set-username");
-    });
+  it("uses an exact phone-binding page exception", () => {
+    expect(PHONE_REQUIRED_PAGE_PATHS).toEqual(["/bindphone"]);
+    expect(isPhoneRequiredPageAllowed("/bindphone")).toBe(true);
+    expect(isPhoneRequiredPageAllowed("/bindphone/extra")).toBe(false);
+    expect(isPhoneRequiredPageAllowed("/bindphone-impersonation")).toBe(false);
+  });
 
-    it("白名单路径应被放行（前缀匹配）", () => {
-      expect(isAuthWhitelisted("/api/auth")).toBe(true);
-      expect(isAuthWhitelisted("/api/auth/callback/email")).toBe(true);
-      expect(isAuthWhitelisted("/api/sms")).toBe(true);
-      expect(isAuthWhitelisted("/api/sms/send")).toBe(true);
-      expect(isAuthWhitelisted("/bindphone")).toBe(true);
-      expect(isAuthWhitelisted("/onboarding")).toBe(true);
-      expect(isAuthWhitelisted("/api/onboarding")).toBe(true);
-      expect(isAuthWhitelisted("/api/onboarding/complete")).toBe(true);
-      expect(isAuthWhitelisted("/logout")).toBe(true);
-      expect(isAuthWhitelisted("/login")).toBe(true);
-      expect(isAuthWhitelisted("/set-username")).toBe(true);
-    });
+  it.each(["/", "/admin/users", "/future-feature", "/login"])(
+    "redirects a phone-less authenticated user from %s",
+    async (path) => {
+      getToken.mockResolvedValue({ id: "user-1", role: "SUPER_ADMIN", phone: null });
+      const response = await middleware(request(path));
+      const location = new URL(response.headers.get("location")!);
+      expect(response.status).toBe(307);
+      expect(location.pathname).toBe("/bindphone");
+      expect(location.searchParams.get("callbackUrl")).toBe(path);
+    },
+  );
 
-    it("非白名单路径不应被放行", () => {
-      expect(isAuthWhitelisted("/create")).toBe(false);
-      expect(isAuthWhitelisted("/messages")).toBe(false);
-      expect(isAuthWhitelisted("/settings/profile")).toBe(false);
-      expect(isAuthWhitelisted("/admin/users")).toBe(false);
-      expect(isAuthWhitelisted("/u/123")).toBe(false);
+  it("allows the exact binding page before profile and onboarding gates", async () => {
+    getToken.mockResolvedValue({
+      id: "user-1",
+      phone: null,
+      nickname: null,
+      profileCompletionRequired: true,
+      onboardingDone: false,
     });
+    const response = await middleware(request("/bindphone?callbackUrl=%2Fadmin"));
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("keeps anonymous login available and redirects other anonymous pages safely", async () => {
+    getToken.mockResolvedValue(null);
+    expect((await middleware(request("/login"))).headers.get("location")).toBeNull();
+    expect((await middleware(request("/ban-appeal"))).headers.get("location")).toBeNull();
+
+    const response = await middleware(request("/search?q=phone"));
+    const location = new URL(response.headers.get("location")!);
+    expect(location.pathname).toBe("/login");
+    expect(location.searchParams.get("callbackUrl")).toBe("/search?q=phone");
+  });
+
+  it("lets a phone-bound user proceed to the existing gates", async () => {
+    getToken.mockResolvedValue({
+      id: "user-1",
+      phone: "13800138000",
+      nickname: "member",
+      onboardingDone: true,
+    });
+    const response = await middleware(request("/discover"));
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("cache-control")).toContain("private");
   });
 });

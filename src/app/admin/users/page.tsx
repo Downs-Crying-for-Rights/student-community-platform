@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Activity, CalendarDays, KeyRound, Search, ShieldCheck, UserRound, X } from "lucide-react";
 
 interface UserItem {
@@ -38,11 +39,17 @@ interface AdminPostItem {
 
 interface PunishmentItem {
   id: string;
-  type: "ACCOUNT_BAN" | "POST_SHADOW_HIDE";
+  type: "WARNING" | "TEMPORARY_MUTE" | "PERMANENT_MUTE" | "TEMPORARY_BAN" | "PERMANENT_BAN" | "ACCOUNT_BAN" | "POST_SHADOW_HIDE";
   action: "APPLIED" | "REVOKED";
   reason: string;
   createdAt: string;
+  startsAt: string;
+  expiresAt: string | null;
+  acknowledgedAt: string | null;
+  revokedAt: string | null;
+  revokeReason: string | null;
   operator: { id: string; nickname: string | null };
+  revokedBy: { id: string; nickname: string | null } | null;
 }
 
 interface UserSummary {
@@ -109,6 +116,9 @@ const FIELD_LABELS: Record<string, string> = {
   caseTimeline: "工单时间线", taskTimeline: "任务时间线", cases: "DCR 工单", tasks: "互助任务", grants: "授权记录", drafts: "委托草稿",
   conversation: "QQ 会话", identity: "QQ 身份", inbox: "接收消息", outbox: "发送消息", systemLogs: "系统日志", telemetry: "请求遥测",
   moderation: "审核操作", configuration: "配置变更", pendingRegistration: "待完成 QQ 注册",
+};
+const PUNISHMENT_LABELS: Record<PunishmentItem["type"], string> = {
+  WARNING: "警告", TEMPORARY_MUTE: "临时禁言", PERMANENT_MUTE: "永久禁言", TEMPORARY_BAN: "临时封禁", PERMANENT_BAN: "永久封禁", ACCOUNT_BAN: "账号封禁（旧版）", POST_SHADOW_HIDE: "帖子影子隐藏（旧版）",
 };
 
 const COUNT_LABELS: Record<string, string> = {
@@ -254,6 +264,8 @@ export default function AdminUsersPage() {
   const [postSaving, setPostSaving] = useState(false);
   const [punishments, setPunishments] = useState<PunishmentItem[]>([]);
   const [punishmentsLoading, setPunishmentsLoading] = useState(false);
+  const [punishmentForm, setPunishmentForm] = useState({ type: "WARNING", durationMinutes: "1440", reason: "" });
+  const [punishmentSaving, setPunishmentSaving] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [summary, setSummary] = useState<UserSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -374,6 +386,38 @@ export default function AdminUsersPage() {
     }
   };
 
+  const reloadPunishments = async () => {
+    if (!editingUser) return;
+    const response = await fetch(`/api/admin/users/${editingUser.id}/punishments?pageSize=20`, { cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "加载处罚历史失败");
+    setPunishments(data.punishments ?? []);
+  };
+
+  const handleApplyPunishment = async () => {
+    if (!editingUser) return;
+    setPunishmentSaving(true); setDetailError("");
+    try {
+      const temporary = punishmentForm.type === "TEMPORARY_MUTE" || punishmentForm.type === "TEMPORARY_BAN";
+      const response = await fetch(`/api/admin/users/${editingUser.id}/punishments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: punishmentForm.type, reason: punishmentForm.reason, ...(temporary ? { durationMinutes: Number(punishmentForm.durationMinutes) } : {}) }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "执行处罚失败");
+      setPunishmentForm((form) => ({ ...form, reason: "" }));
+      await Promise.all([reloadPunishments(), fetchUsers()]);
+    } catch (error) { setDetailError(error instanceof Error ? error.message : "执行处罚失败"); }
+    finally { setPunishmentSaving(false); }
+  };
+
+  const handleRevokePunishment = async (punishmentId: string) => {
+    if (!editingUser) return;
+    const reason = window.prompt("请输入解除处罚的原因：");
+    if (!reason?.trim()) return;
+    const response = await fetch(`/api/admin/users/${editingUser.id}/punishments/${punishmentId}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: reason.trim() }) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) { setDetailError(data.error || "解除处罚失败"); return; }
+    await Promise.all([reloadPunishments(), fetchUsers()]);
+  };
+
   useEffect(() => {
     if (!editingUser || !isSuperAdmin) return;
     const privateDomain = ACTIVITY_DOMAINS.find(([key]) => key === activityDomain)?.[2];
@@ -471,6 +515,12 @@ export default function AdminUsersPage() {
 
   const handleConfirmOverride = () => {
     setShowConfirmDialog(true);
+  };
+
+  const closeDetails = () => {
+    detailRequestRef.current += 1;
+    setShowConfirmDialog(false);
+    setEditingUser(null);
   };
 
   const handleSubmitOverride = async () => {
@@ -687,14 +737,15 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      {editingUser && (
-        <Card className="relative mt-6 overflow-hidden" data-testid="override-panel">
-          <CardHeader>
-            <CardTitle className="text-base">
+      <Dialog open={Boolean(editingUser)} onOpenChange={(open) => { if (!open) closeDetails(); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-6xl" data-testid="override-panel">
+          {editingUser && <>
+          <DialogHeader>
+            <DialogTitle>
               用户详情 - {editingUser.nickname || editingUser.id}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="relative z-10 space-y-6">
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
             <div className="grid gap-3 rounded-lg border bg-background/90 p-4 text-sm sm:grid-cols-2">
               <div><span className="text-muted-foreground">手机号：</span>{editingUser.phone || "未绑定"}</div>
               <div><span className="text-muted-foreground">邮箱：</span>{editingUser.email || "未设置"}</div>
@@ -777,17 +828,26 @@ export default function AdminUsersPage() {
             </div>}
 
             <div className="space-y-3 rounded-lg border bg-background/90 p-4">
-              <div><h3 className="font-semibold">处罚历史记录</h3><p className="mt-1 text-xs text-muted-foreground">记录账号封禁、帖子影子隐藏及解除操作，最新记录在前。</p></div>
+              <div><h3 className="font-semibold">执行结构化处罚</h3><p className="mt-1 text-xs text-muted-foreground">警告和禁言要求用户确认；临时处罚必须设置时长。</p></div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="text-sm">类型<select value={punishmentForm.type} onChange={(event) => setPunishmentForm((form) => ({ ...form, type: event.target.value }))} className="mt-1 block w-full rounded-md border bg-background px-3 py-2"><option value="WARNING">警告</option><option value="TEMPORARY_MUTE">临时禁言</option><option value="PERMANENT_MUTE">永久禁言</option><option value="TEMPORARY_BAN">临时封禁</option><option value="PERMANENT_BAN">永久封禁</option></select></label>
+                {(punishmentForm.type === "TEMPORARY_MUTE" || punishmentForm.type === "TEMPORARY_BAN") && <label className="text-sm">时长（分钟）<input type="number" min={1} max={525600} value={punishmentForm.durationMinutes} onChange={(event) => setPunishmentForm((form) => ({ ...form, durationMinutes: event.target.value }))} className="mt-1 block w-full rounded-md border bg-background px-3 py-2" /></label>}
+                <label className="text-sm sm:col-span-2">原因<textarea value={punishmentForm.reason} onChange={(event) => setPunishmentForm((form) => ({ ...form, reason: event.target.value }))} maxLength={500} rows={3} className="mt-1 block w-full rounded-md border bg-background px-3 py-2" /></label>
+              </div>
+              {detailError && <p role="alert" className="text-sm text-destructive">{detailError}</p>}
+              <Button size="sm" disabled={punishmentSaving || !punishmentForm.reason.trim()} onClick={handleApplyPunishment}>{punishmentSaving ? "执行中..." : "执行处罚"}</Button>
+              <div className="border-t pt-3"><h3 className="font-semibold">处罚历史记录</h3><p className="mt-1 text-xs text-muted-foreground">包含新处罚及旧版兼容记录，最新记录在前。</p></div>
               {punishmentsLoading ? <p className="text-sm text-muted-foreground">加载中...</p> : punishments.length === 0 ? <p className="text-sm text-muted-foreground">暂无处罚记录</p> : (
                 <div className="space-y-2">
                   {punishments.map((item) => <div key={item.id} className="rounded-md border p-3 text-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.type === "ACCOUNT_BAN" ? "账号封禁" : "帖子影子隐藏"} · {item.action === "APPLIED" ? "执行处罚" : "解除处罚"}</strong><time className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString("zh-CN")}</time></div>
+                    <div className="flex flex-wrap items-center justify-between gap-2"><strong>{PUNISHMENT_LABELS[item.type]} · {item.revokedAt || item.action === "REVOKED" ? "已解除" : "已执行"}</strong><time className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString("zh-CN")}</time></div>
                     <p className="mt-1">原因：{item.reason}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">操作人：{item.operator.nickname || item.operator.id}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">操作人：{item.operator.nickname || item.operator.id} · {item.expiresAt ? `到期：${new Date(item.expiresAt).toLocaleString("zh-CN")}` : "无到期时间"}{item.acknowledgedAt ? ` · 已确认：${new Date(item.acknowledgedAt).toLocaleString("zh-CN")}` : ""}</p>
+                    {item.revokedAt ? <p className="mt-1 text-xs text-muted-foreground">解除原因：{item.revokeReason} · {item.revokedBy?.nickname || item.revokedBy?.id || "未知"}</p> : item.action === "APPLIED" && <Button className="mt-2" size="sm" variant="outline" onClick={() => handleRevokePunishment(item.id)}>解除处罚</Button>}
                   </div>)}
                 </div>
               )}
-              <Button size="sm" variant="outline" onClick={() => { detailRequestRef.current += 1; setEditingUser(null); }}>关闭详情</Button>
+              <Button size="sm" variant="outline" onClick={closeDetails}>关闭详情</Button>
             </div>
 
             <div className="space-y-3 rounded-lg border bg-background/95 p-4">
@@ -799,18 +859,15 @@ export default function AdminUsersPage() {
                 </div>)}
               </div>}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+          </>}
+        </DialogContent>
+      </Dialog>
 
-      {/* Confirmation Dialog */}
-      {showConfirmDialog && editingUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" data-testid="confirm-dialog">
-          <Card className="w-96">
-            <CardHeader>
-              <CardTitle className="text-base">确认修改</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent data-testid="confirm-dialog">
+          <DialogHeader><DialogTitle>确认修改</DialogTitle></DialogHeader>
+          {editingUser && <div className="space-y-3">
               <p className="text-sm text-muted-foreground">请确认以下修改：</p>
               <div className="text-sm space-y-1">
                 {overrideForm.violationCount !== editingUser.violationCount && (
@@ -824,10 +881,9 @@ export default function AdminUsersPage() {
                 <Button size="sm" onClick={handleSubmitOverride}>确认</Button>
                 <Button size="sm" variant="outline" onClick={() => setShowConfirmDialog(false)}>取消</Button>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+          </div>}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

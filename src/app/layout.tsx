@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Providers } from "@/components/providers/Providers";
 import { MemberShell } from "@/components/layout/MemberShell";
 import { VersionFooter } from "@/components/layout/VersionFooter";
+import { PunishmentGate } from "@/components/punishments/PunishmentGate";
 import "./globals.css";
 import "@/styles/a11y.css";
 
@@ -29,6 +30,7 @@ export default function RootLayout({
             跳转到主要内容
           </a>
           <MemberShell>{children}</MemberShell>
+          <PunishmentGate />
           <VersionFooter />
         </Providers>
       </body>

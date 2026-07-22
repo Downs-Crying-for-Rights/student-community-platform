@@ -69,6 +69,7 @@ export const sidebarCoreNavItems: readonly NavigationItem[] = [
   { href: "/messages?tab=chat", label: "群聊", icon: "messages" },
   { href: "/create", label: "发布", icon: "plus" },
   { href: "/u/me", label: "个人主页", icon: "user" },
+  { href: "/support", label: "客服工单", icon: "ticket" },
 ];
 
 /** Product zones. DCR remains visible before admission; its children live inside /dcr. */
@@ -90,6 +91,7 @@ export const adminMenuGroups: readonly AdminMenuGroup[] = [
     { href: "/admin/chat-rooms", label: "群聊巡查", icon: "messages", minRole: "ADMIN" },
     { href: "/admin/dm", label: "私信审查", icon: "message", minRole: "ADMIN" },
     { href: "/admin/disputes", label: "争议处理", icon: "scale", minRole: "ADMIN" },
+    { href: "/admin/support", label: "工单与申诉", icon: "ticket", minRole: "ADMIN" },
   ] },
   { id: "access", label: "用户准入", icon: "users", children: [
     { href: "/admin/users", label: "用户管理", icon: "users", minRole: "ADMIN" },
@@ -97,6 +99,7 @@ export const adminMenuGroups: readonly AdminMenuGroup[] = [
     { href: "/admin/invites", label: "邀请码", icon: "ticket", minRole: "ADMIN" },
     { href: "/admin/applications", label: "准入审核", icon: "shield-check", minRole: "ADMIN" },
     { href: "/admin/identity-verifications", label: "身份认证审核", icon: "shield-check", minRole: "ADMIN" },
+    { href: "/admin/identity-revocations", label: "认证撤销审核", icon: "shield-check", minRole: "ADMIN" },
   ] },
   { id: "dcr", label: "DCR 管理", icon: "clipboard-check", children: [
     { href: "/admin/dcr/reviews", label: "委托表审核", icon: "clipboard-check", minRole: "ADMIN" },
@@ -137,6 +140,7 @@ export const bottomMoreNavItems: readonly NavigationItem[] = [
   { href: "/u/me", label: "我的", icon: "user" },
   { href: "/messages?tab=chat", label: "群聊", icon: "messages" },
   { href: "/dcr", label: "DCR 互助", icon: "shield-check" },
+  { href: "/support", label: "客服工单", icon: "ticket" },
   { href: "/psych", label: "心理区", icon: "heart", requirePsychAccess: true },
   { href: "/admin/moderation", label: "审核", icon: "shield", minRole: "MODERATOR" },
 ];

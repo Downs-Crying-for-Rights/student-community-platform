@@ -333,6 +333,20 @@ function LoginContent() {
     setLoading(true);
 
     try {
+      const check = await fetch("/api/auth/punishment-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: pwEmail.trim(), password: pwPassword }),
+      });
+      const checkData = await check.json().catch(() => ({}));
+      if (!check.ok) {
+        setErrorMessage("账号或密码错误");
+        return;
+      }
+      if (checkData.banned) {
+        router.push("/ban-appeal");
+        return;
+      }
       const res = await signIn("credentials-password", {
         identifier: pwEmail.trim(),
         password: pwPassword,

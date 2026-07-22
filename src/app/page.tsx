@@ -34,6 +34,7 @@ interface PostsResponse {
 }
 
 const PAGE_SIZE = 20;
+export const HOME_GRID_CLASS = "md:columns-3 md:gap-3 md:[&>*]:mb-3 xl:columns-4";
 
 function mapAPIPostToCardProps(post: APIPost): PostCardProps {
   return {
@@ -229,7 +230,7 @@ export default function HomePage() {
             </button>
           </div>
         ) : loading ? (
-          <CardSkeleton count={6} />
+          <CardSkeleton count={8} className="md:grid-cols-3 xl:grid-cols-4 md:gap-3" />
         ) : posts.length === 0 ? (
           <EmptyState
             title="暂无帖子"
@@ -239,9 +240,9 @@ export default function HomePage() {
           />
         ) : (
           <>
-            <WaterfallGrid>
+            <WaterfallGrid className={HOME_GRID_CLASS}>
               {posts.map((post) => (
-                <PostCard key={post.id} {...post} />
+                <PostCard key={post.id} {...post} compact />
               ))}
             </WaterfallGrid>
 

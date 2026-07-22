@@ -42,7 +42,7 @@ describe("GET /api/admin/users/[id]/punishments", () => {
 
   it("按时间倒序返回用户处罚和操作人信息", async () => {
     vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: "admin1", role: "ADMIN" },
+      user: { id: "admin1", role: "ADMIN", phone: "13800138000" },
       expires: new Date(Date.now() + 86_400_000).toISOString(),
     } as never);
     mocks.userFindUnique.mockResolvedValue({ id: "user1" });
@@ -63,7 +63,7 @@ describe("GET /api/admin/users/[id]/punishments", () => {
     expect(data.punishments).toHaveLength(1);
     expect(mocks.punishmentFindMany).toHaveBeenCalledWith({
       where: { userId: "user1" },
-      include: { operator: { select: { id: true, nickname: true } } },
+      include: { operator: { select: { id: true, nickname: true } }, revokedBy: { select: { id: true, nickname: true } } },
       orderBy: { createdAt: "desc" },
       skip: 0,
       take: 20,
@@ -73,7 +73,7 @@ describe("GET /api/admin/users/[id]/punishments", () => {
 
   it("目标用户不存在时返回 404", async () => {
     vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: "admin1", role: "ADMIN" },
+      user: { id: "admin1", role: "ADMIN", phone: "13800138000" },
       expires: new Date(Date.now() + 86_400_000).toISOString(),
     } as never);
     mocks.userFindUnique.mockResolvedValue(null);

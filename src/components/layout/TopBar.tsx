@@ -143,7 +143,7 @@ export function TopBar({ unreadCount = 0 }: TopBarProps) {
                 aria-label="查看我的主页"
                 className="relative ml-1 min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
-                <UserAvatar src={session.user.image} name={session.user.name || session.user.email} size={32} isVerified={session.user.isVerified} />
+                <UserAvatar src={session.user.avatar} name={session.user.nickname || session.user.name || session.user.email} size={32} isVerified={session.user.isVerified} />
                 {unreadCount > 0 && (
                   <span
                     className="absolute bottom-2 left-2 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background"

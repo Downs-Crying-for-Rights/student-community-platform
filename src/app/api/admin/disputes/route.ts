@@ -38,7 +38,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
     const where = { status: "DISPUTED" as const };
 
-    const [disputes, total] = await Promise.all([
+    const [disputes, total, cycleDisputes] = await Promise.all([
       prisma.helpSession.findMany({
         where,
         include: {
@@ -54,6 +54,15 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         take: pageSize,
       }),
       prisma.helpSession.count({ where }),
+      prisma.mutualAidLink.findMany({
+        where: { status: "DISPUTED" },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          cycle: { select: { id: true, mode: true, status: true, createdAt: true } },
+          fromUser: { select: { id: true, nickname: true } },
+          toUser: { select: { id: true, nickname: true } },
+        },
+      }),
     ]);
 
     return NextResponse.json({
@@ -73,6 +82,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           },
         };
       }),
+      cycleDisputes,
       total,
       page,
       pageSize,

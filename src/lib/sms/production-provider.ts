@@ -45,6 +45,7 @@ export function loadAliyunSmsConfig(): AliyunSmsConfig {
       "reset-password": requiredEnv("ALIYUN_SMS_TEMPLATE_RESET_PASSWORD"),
       bindphone: requiredEnv("ALIYUN_SMS_TEMPLATE_BIND_NEW_PHONE"),
       "verify-bound-phone": requiredEnv("ALIYUN_SMS_TEMPLATE_VERIFY_BOUND_PHONE"),
+      "account-deletion": requiredEnv("ALIYUN_SMS_TEMPLATE_VERIFY_BOUND_PHONE"),
     },
     endpoint: process.env.ALIYUN_SMS_ENDPOINT?.trim() || "dypnsapi.aliyuncs.com",
     connectTimeout: timeoutEnv("ALIYUN_SMS_CONNECT_TIMEOUT_MS", 5_000),

@@ -107,7 +107,7 @@ describe("NextAuth 配置", () => {
 
       if (sessionCallback) {
         const mockSession = { user: { id: "", role: "", phone: null } } as any;
-        const mockToken = { id: "test-user-id", role: "USER", phone: "13800138000" } as any;
+        const mockToken = { id: "test-user-id", role: "USER", phone: "13800138000", nickname: "测试昵称", avatar: "/api/media?key=avatar" } as any;
 
         const result = await sessionCallback({
           session: mockSession,
@@ -120,6 +120,8 @@ describe("NextAuth 配置", () => {
         expect((result.user as any).id).toBe("test-user-id");
         expect((result.user as any).role).toBe("USER");
         expect((result.user as any).phone).toBe("13800138000");
+        expect((result.user as any).nickname).toBe("测试昵称");
+        expect((result.user as any).avatar).toBe("/api/media?key=avatar");
       }
     });
 
@@ -128,6 +130,7 @@ describe("NextAuth 配置", () => {
       expect(jwtCallback).toBeDefined();
 
       if (jwtCallback) {
+        mockFindUnique.mockResolvedValue({ role: "USER", phone: null, nickname: "测试昵称", avatar: "/avatar.webp" });
         const mockToken = {} as any;
         const mockUser = { id: "test-user-id" } as any;
 
@@ -140,6 +143,7 @@ describe("NextAuth 配置", () => {
 
         expect(result.id).toBe("test-user-id");
         expect(result.role).toBe("USER");
+        expect(result.avatar).toBe("/avatar.webp");
       }
     });
 

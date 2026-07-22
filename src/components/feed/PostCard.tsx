@@ -36,6 +36,7 @@ export interface PostCardProps {
   board: PostCardBoard;
   tags: PostCardTag[];
   isPinned?: boolean;
+  compact?: boolean;
 }
 
 export function PostCard({
@@ -50,6 +51,7 @@ export function PostCard({
   board,
   tags,
   isPinned = false,
+  compact = false,
 }: PostCardProps) {
   const router = useRouter();
   const coverImage = images.length > 0 ? images[0] : null;
@@ -58,6 +60,7 @@ export function PostCard({
     : author.nickname ?? "未命名用户";
   const truncatedSummary =
     summary && summary.length > 60 ? summary.slice(0, 60) + "…" : summary;
+  const displayedSummary = compact && coverImage ? summary : truncatedSummary;
 
   return (
     <article
@@ -82,19 +85,24 @@ export function PostCard({
               alt={`${title} 封面图`}
               fill
               className="object-cover"
-              sizes="(max-width: 768px) 100vw, 50vw"
+              sizes={compact
+                ? "(max-width: 767px) 50vw, (max-width: 1279px) 33vw, 25vw"
+                : "(max-width: 768px) 100vw, 50vw"}
             />
           </div>
         ) : (
-          <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted">
-            <span className="text-3xl text-muted-foreground" aria-hidden="true">
+          <div className={cn(
+            "flex aspect-[4/3] w-full items-center justify-center bg-muted",
+            compact && "md:h-16 md:aspect-auto",
+          )}>
+            <span className={cn("text-3xl text-muted-foreground", compact && "md:text-xl")} aria-hidden="true">
               📝
             </span>
           </div>
         )}
 
         {/* Content area */}
-        <div className="p-4">
+        <div className={cn("p-4", compact && "md:p-3")}>
           {/* Title */}
           <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
             {isPinned && <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">置顶</span>}
@@ -102,14 +110,17 @@ export function PostCard({
           </h3>
 
           {/* Summary */}
-          {truncatedSummary && (
-            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-              {truncatedSummary}
+          {displayedSummary && (
+            <p className={cn(
+              "mt-1 line-clamp-2 whitespace-pre-line break-words text-xs leading-relaxed text-muted-foreground",
+              compact && coverImage && "md:line-clamp-none",
+            )}>
+              {displayedSummary}
             </p>
           )}
 
           {/* Author row */}
-          <div className="mt-3 flex items-center gap-2">
+          <div className={cn("mt-3 flex items-center gap-2", compact && "md:mt-2")}>
             {!isAnonymous ? <Link href={`/u/${author.id}`} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} className="flex min-w-0 items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`查看 ${displayName} 的主页`}>
             <UserAvatar src={author.avatar} name={displayName} size={20} isVerified={author.isVerified} />
             <span className="truncate text-xs text-muted-foreground">

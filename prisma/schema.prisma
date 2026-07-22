@@ -31,9 +31,15 @@ enum IdentityVerificationStatus {
   PENDING
   APPROVED
   REJECTED
+  CANCELLED
 }
 
 enum UserPunishmentType {
+  WARNING
+  TEMPORARY_MUTE
+  PERMANENT_MUTE
+  TEMPORARY_BAN
+  PERMANENT_BAN
   ACCOUNT_BAN
   POST_SHADOW_HIDE
 }
@@ -41,6 +47,37 @@ enum UserPunishmentType {
 enum UserPunishmentAction {
   APPLIED
   REVOKED
+}
+
+enum IdentityRevocationScope {
+  STUDENT
+  ALL
+}
+
+enum IdentityRevocationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum SupportTicketKind {
+  GENERAL
+  PUNISHMENT_APPEAL
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_USER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketAuthorType {
+  USER
+  STAFF
+  SYSTEM
 }
 
 enum AiReviewStatus {
@@ -106,6 +143,9 @@ model User {
   qqNumber                  String?
   role                      Role      @default(USER)
   isBanned                  Boolean   @default(false)
+  banUntil                  DateTime?
+  isMuted                   Boolean   @default(false)
+  muteUntil                 DateTime?
   isShadowBanned            Boolean   @default(false)
   isAnonymous               Boolean   @default(false)
   violationCount            Int       @default(0)
@@ -162,6 +202,7 @@ model User {
   auditLogs           AuditLog[]
   punishmentsReceived UserPunishment[] @relation("PunishmentTarget")
   punishmentsIssued   UserPunishment[] @relation("PunishmentOperator")
+  punishmentsRevoked  UserPunishment[] @relation("PunishmentRevoker")
   aiReviewsRequested  AiReview[]       @relation("AiReviewRequester")
 
   // 消息
@@ -172,8 +213,8 @@ model User {
   inviteCode     InviteCode?  @relation("InviteUsedBy")
   invitesCreated InviteCode[] @relation("InviteCreator")
 
-  accountDeletionRequest  AccountDeletionRequest?  @relation("AccountDeletionSubject")
-  accountDeletionReviews  AccountDeletionRequest[] @relation("AccountDeletionReviewer")
+  accountDeletionRequest AccountDeletionRequest?  @relation("AccountDeletionSubject")
+  accountDeletionReviews AccountDeletionRequest[] @relation("AccountDeletionReviewer")
 
   // 准入申请
   accessApplications AccessApplication[]
@@ -208,8 +249,13 @@ model User {
   qqGrants                         QQGrant[]
   qqConversation                   QQConversation?
   pendingQQRegistration            PendingQQRegistration?
-  identityVerificationApplications IdentityVerificationApplication[] @relation("IdentityVerificationApplicant")
-  identityVerificationReviews      IdentityVerificationApplication[] @relation("IdentityVerificationReviewer")
+  identityVerificationApplications IdentityVerificationApplication[]       @relation("IdentityVerificationApplicant")
+  identityVerificationReviews      IdentityVerificationApplication[]       @relation("IdentityVerificationReviewer")
+  identityRevocationRequests       IdentityVerificationRevocationRequest[] @relation("IdentityRevocationSubject")
+  identityRevocationReviews        IdentityVerificationRevocationRequest[] @relation("IdentityRevocationReviewer")
+  supportTicketsRequested          SupportTicket[]                         @relation("SupportTicketRequester")
+  supportTicketsAssigned           SupportTicket[]                         @relation("SupportTicketAssignee")
+  supportTicketMessages            SupportTicketMessage[]
 }
 
 model IdentityVerificationApplication {
@@ -231,6 +277,7 @@ model IdentityVerificationApplication {
   reviewerId          String?
   createdAt           DateTime                   @default(now())
   reviewedAt          DateTime?
+  cancelledAt         DateTime?
 
   applicant User  @relation("IdentityVerificationApplicant", fields: [applicantId], references: [id], onDelete: Cascade)
   reviewer  User? @relation("IdentityVerificationReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
@@ -239,6 +286,25 @@ model IdentityVerificationApplication {
   @@index([status, createdAt])
   @@index([identityLookupHash])
   @@index([evidenceDeleteAfter])
+}
+
+model IdentityVerificationRevocationRequest {
+  id          String                   @id @default(cuid())
+  scope       IdentityRevocationScope
+  status      IdentityRevocationStatus @default(PENDING)
+  reason      String
+  reviewNote  String?
+  requestedAt DateTime                 @default(now())
+  reviewedAt  DateTime?
+  cancelledAt DateTime?
+
+  userId     String
+  user       User    @relation("IdentityRevocationSubject", fields: [userId], references: [id], onDelete: Cascade)
+  reviewerId String?
+  reviewer   User?   @relation("IdentityRevocationReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([userId, requestedAt])
+  @@index([status, requestedAt])
 }
 
 model SystemConfig {
@@ -903,34 +969,82 @@ model AuditLog {
 }
 
 model UserPunishment {
-  id        String               @id @default(cuid())
-  type      UserPunishmentType
-  action    UserPunishmentAction
-  reason    String
-  details   Json?
-  createdAt DateTime             @default(now())
+  id             String               @id @default(cuid())
+  type           UserPunishmentType
+  action         UserPunishmentAction
+  reason         String
+  details        Json?
+  createdAt      DateTime             @default(now())
+  startsAt       DateTime             @default(now())
+  expiresAt      DateTime?
+  acknowledgedAt DateTime?
+  revokedAt      DateTime?
+  revokeReason   String?
 
-  userId     String
-  user       User   @relation("PunishmentTarget", fields: [userId], references: [id], onDelete: Cascade)
-  operatorId String
-  operator   User   @relation("PunishmentOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  userId         String
+  user           User            @relation("PunishmentTarget", fields: [userId], references: [id], onDelete: Cascade)
+  operatorId     String
+  operator       User            @relation("PunishmentOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  revokedById    String?
+  revokedBy      User?           @relation("PunishmentRevoker", fields: [revokedById], references: [id], onDelete: Restrict)
+  supportTickets SupportTicket[]
 
   @@index([userId, createdAt])
   @@index([operatorId, createdAt])
   @@index([type, action])
+  @@index([userId, revokedAt, expiresAt])
+}
+
+model SupportTicket {
+  id         String              @id @default(cuid())
+  kind       SupportTicketKind   @default(GENERAL)
+  subject    String
+  status     SupportTicketStatus @default(OPEN)
+  priority   Int                 @default(0)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  resolvedAt DateTime?
+  closedAt   DateTime?
+
+  requesterId  String
+  requester    User                   @relation("SupportTicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  assignedToId String?
+  assignedTo   User?                  @relation("SupportTicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  punishmentId String?
+  punishment   UserPunishment?        @relation(fields: [punishmentId], references: [id], onDelete: Restrict)
+  messages     SupportTicketMessage[]
+
+  @@index([requesterId, updatedAt])
+  @@index([assignedToId, status, updatedAt])
+  @@index([kind, status, updatedAt])
+  @@index([punishmentId])
+}
+
+model SupportTicketMessage {
+  id         String                  @id @default(cuid())
+  content    String
+  authorType SupportTicketAuthorType
+  createdAt  DateTime                @default(now())
+
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId String?
+  author   User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
 }
 
 // ==================== 邀请码 ====================
 
 model InviteCode {
-  id        String    @id @default(cuid())
-  code      String    @unique
-  isUsed    Boolean   @default(false)
-  isRevoked Boolean   @default(false)
-  dcrContributionAccess Boolean @default(false)
-  expiresAt DateTime
-  createdAt DateTime  @default(now())
-  usedAt    DateTime?
+  id                    String    @id @default(cuid())
+  code                  String    @unique
+  isUsed                Boolean   @default(false)
+  isRevoked             Boolean   @default(false)
+  dcrContributionAccess Boolean   @default(false)
+  expiresAt             DateTime
+  createdAt             DateTime  @default(now())
+  usedAt                DateTime?
 
   creatorId String
   usedById  String? @unique

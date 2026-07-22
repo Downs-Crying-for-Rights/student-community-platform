@@ -38,6 +38,7 @@ interface ChatRoom {
   joinMode: string;
   createdBy: { id: string; nickname: string; avatar: string | null };
   memberCount: number;
+  isMember: boolean;
   lastMessage: { id: string; content: string; createdAt: string } | null;
   updatedAt: string;
 }
@@ -174,7 +175,7 @@ function getLastRead(roomId: string): string | null {
 }
 
 function getChatUnreadCount(room: ChatRoom): number {
-  if (!room.lastMessage) return 0;
+  if (!room.isMember || !room.lastMessage) return 0;
   const lastReadId = getLastRead(room.id);
   if (!lastReadId) return 1;
   return room.lastMessage.id !== lastReadId ? 1 : 0;
@@ -301,7 +302,9 @@ function ChatRoomList() {
                       {room.status === "REJECTED" && <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">审核未通过</span>}
                       {room.joinMode === "APPROVAL" && <Shield className="h-3 w-3 text-amber-500 shrink-0" />}
                     </div>
-                    {room.lastMessage ? (
+                    {!room.isMember ? (
+                      <p className="text-xs text-muted-foreground">加入群聊后查看消息</p>
+                    ) : room.lastMessage ? (
                       <p className="text-xs text-muted-foreground truncate">{room.lastMessage.content.slice(0, 60)}</p>
                     ) : (
                       <p className="text-xs text-muted-foreground">暂无消息</p>

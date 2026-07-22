@@ -21,8 +21,8 @@ describe("RBAC request completion telemetry", () => {
 
   it.each([
     [null, 401],
-    [{ user: { id: "user-1", role: "USER", isBanned: true } }, 403],
-    [{ user: { id: "user-1", role: "USER", profileCompletionRequired: true } }, 403],
+    [{ user: { id: "user-1", role: "USER", phone: "13800138000", isBanned: true } }, 403],
+    [{ user: { id: "user-1", role: "USER", phone: "13800138000", profileCompletionRequired: true } }, 403],
   ])("captures auth gate exits", async (session, status) => {
     getServerSession.mockResolvedValue(session);
     const response = await withAuth(async () => NextResponse.json({ ok: true }))(request(), { params: {} });
@@ -32,7 +32,7 @@ describe("RBAC request completion telemetry", () => {
   });
 
   it("captures role denial and handler throws", async () => {
-    getServerSession.mockResolvedValue({ user: { id: "user-1", role: "USER" } });
+    getServerSession.mockResolvedValue({ user: { id: "user-1", role: "USER", phone: "13800138000" } });
     const denied = await withAuth(async () => NextResponse.json({ ok: true }), "ADMIN")(request(), { params: {} });
     expect(denied.status).toBe(403);
     expect(completed).toHaveBeenLastCalledWith(expect.anything(), denied, expect.any(Number), expect.objectContaining({ userId: "user-1" }));
@@ -50,8 +50,40 @@ describe("RBAC request completion telemetry", () => {
     expect(completed).toHaveBeenCalledOnce();
   });
 
+  it.each(["USER", "ADMIN", "SUPER_ADMIN"])("blocks a phone-less %s before withAuth handlers", async (role) => {
+    getServerSession.mockResolvedValue({ user: { id: "user-1", role, phone: null } });
+    const handler = vi.fn(async () => NextResponse.json({ ok: true }));
+    const response = await withAuth(handler)(request(), { params: {} });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "请先绑定手机号",
+      code: "PHONE_REQUIRED",
+      next: "/bindphone",
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("blocks an authenticated phone-less user from optional-auth handlers", async () => {
+    getServerSession.mockResolvedValue({ user: { id: "user-1", role: "USER", phone: null } });
+    const handler = vi.fn(async () => NextResponse.json({ ok: true }));
+    const response = await withOptionalAuth(handler)(request(), { params: {} });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "PHONE_REQUIRED", next: "/bindphone" });
+    expect(handler).not.toHaveBeenCalled();
+    expect(completed).toHaveBeenCalledWith(expect.anything(), response, expect.any(Number), expect.objectContaining({
+      userId: "user-1",
+    }));
+  });
+
+  it("allows phone-bound users through optional-auth handlers", async () => {
+    getServerSession.mockResolvedValue({ user: { id: "user-1", role: "USER", phone: "13800138000" } });
+    const response = await withOptionalAuth(async (req) => NextResponse.json({ userId: req.user?.id }))(request(), { params: {} });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ userId: "user-1" });
+  });
+
   it("passes through disabled telemetry persistence for polling routes", async () => {
-    getServerSession.mockResolvedValue({ user: { id: "root", role: "SUPER_ADMIN" } });
+    getServerSession.mockResolvedValue({ user: { id: "root", role: "SUPER_ADMIN", phone: "13800138000" } });
     const response = await withAuth(
       async () => NextResponse.json({ ok: true }),
       "SUPER_ADMIN",
