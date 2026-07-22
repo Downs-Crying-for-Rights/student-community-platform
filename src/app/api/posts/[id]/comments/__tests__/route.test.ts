@@ -80,11 +80,14 @@ function setSession(id: string, role: string) {
 describe("GET /api/posts/[id]/comments", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("应返回 401 当用户未登录", async () => {
+  it("未登录用户可读取公开已发布帖子的评论", async () => {
     mockGetServerSession.mockResolvedValue(null);
+    mockPostFindUnique.mockResolvedValue({ id: "p1", status: "PUBLISHED", visibility: "PUBLIC", authorId: "author1" });
+    mockCommentFindMany.mockResolvedValue([]);
+    mockCommentCount.mockResolvedValue(0);
     const { GET } = await import("../../comments/route");
     const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
   });
 
   it("应返回 404 当帖子不存在", async () => {
@@ -124,7 +127,7 @@ describe("GET /api/posts/[id]/comments", () => {
 
     const { GET } = await import("../../comments/route");
     const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
     expect(mockCommentFindMany).not.toHaveBeenCalled();
   });
 
@@ -133,7 +136,7 @@ describe("GET /api/posts/[id]/comments", () => {
     mockPostFindUnique.mockResolvedValue({ id: "p1", authorId: "author1", visibility: "MODS_ONLY", board: { zone: "PUBLIC" } });
     const { GET } = await import("../../comments/route");
     const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
     expect(mockCommentFindMany).not.toHaveBeenCalled();
   });
 

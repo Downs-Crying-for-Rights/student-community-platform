@@ -623,6 +623,7 @@ model Post {
   pinnedAt     DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
+  reportAutoHidden Boolean    @default(false)
 
   authorId String
   boardId  String
@@ -688,6 +689,7 @@ model Comment {
   anonymousId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  reportAutoHidden Boolean @default(false)
 
   authorId String
   postId   String
@@ -751,6 +753,7 @@ model Report {
   resolvedById     String?
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
+  targetKey        String
 
   reporterId          String
   targetUserId        String?
@@ -782,6 +785,7 @@ model Report {
   @@index([targetChatMessageId])
   @@index([targetChatRoomId])
   @@index([resolvedById])
+  @@unique([reporterId, targetKey])
 }
 
 // ==================== DCR 工单 ====================

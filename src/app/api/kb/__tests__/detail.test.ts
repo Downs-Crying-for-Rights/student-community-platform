@@ -123,7 +123,7 @@ describe("GET /api/kb/[id]", () => {
       isPublished: true,
       visibility: "DCR_ONLY",
     });
-    mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrPledgeSigned: true });
 
     const { GET } = await import("../[id]/route");
     const res = await GET(makeGetRequest("art1"), { params: { id: "art1" } });

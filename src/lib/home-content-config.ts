@@ -18,3 +18,14 @@ export const DEFAULT_HOME_HERO: HomeHeroConfig = {
     { label: "社区规则", href: "/help/policies?document=community-guidelines" },
   ],
 };
+
+export function isHomeHeroConfig(value: unknown): value is HomeHeroConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const hero = value as Partial<HomeHeroConfig>;
+  return typeof hero.title === "string" && hero.title.trim().length > 0
+    && typeof hero.description === "string" && hero.description.trim().length > 0
+    && Array.isArray(hero.links) && hero.links.length === 3
+    && hero.links.every((link) => Boolean(link)
+      && typeof link.label === "string" && link.label.trim().length > 0
+      && typeof link.href === "string" && link.href.startsWith("/") && !link.href.startsWith("//"));
+}

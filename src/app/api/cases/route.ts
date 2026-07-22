@@ -281,6 +281,12 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         { status: error.code === "APPLICATION_ALREADY_PENDING" ? 409 : 403 },
       );
     }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json(
+        { error: "您已有待审核的 DCR 准入申请", code: "APPLICATION_ALREADY_PENDING", next: "/dcr" },
+        { status: 409 },
+      );
+    }
     console.error("POST /api/cases error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Hash } from "lucide-react";
@@ -139,11 +139,15 @@ function SearchContent() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState("");
+  const requestRef = useRef(0);
 
   const fetchResults = useCallback(
     async (type: SearchType, q: string, pageNum: number, append: boolean) => {
       if (!q.trim()) return;
+      const requestId = ++requestRef.current;
       setLoading(true);
+      setError("");
       try {
         const params = new URLSearchParams({
           q,
@@ -152,7 +156,12 @@ function SearchContent() {
           pageSize: String(PAGE_SIZE),
         });
         const res = await fetch(`/api/search?${params.toString()}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (requestId === requestRef.current) setError(data.error || "搜索失败，请稍后重试");
+          return;
+        }
+        if (requestId !== requestRef.current) return;
 
         if (type === "posts") {
           const data: SearchResponse<APIPost> = await res.json();
@@ -172,9 +181,9 @@ function SearchContent() {
           setHasMore(computeHasMore(data.page, data.pageSize, data.total));
         }
       } catch {
-        // Network error — silently ignore
+        if (requestId === requestRef.current) setError("网络错误，请检查连接后重试");
       } finally {
-        setLoading(false);
+        if (requestId === requestRef.current) setLoading(false);
       }
     },
     [],
@@ -212,7 +221,8 @@ function SearchContent() {
           </h1>
         )}
 
-        <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        {error && <div role="alert" className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"><p>{error}</p><button className="mt-2 underline" onClick={() => fetchResults(activeTab, query, 1, false)}>重试</button></div>}
           <TabsList className="mb-4" aria-label="搜索类型">
             <TabsTrigger value="posts" className="min-h-[44px] min-w-[44px]">
               帖子

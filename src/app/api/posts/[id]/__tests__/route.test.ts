@@ -306,7 +306,7 @@ describe("GET /api/posts/[id]", () => {
 
     const { GET } = await import("../../[id]/route");
     const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 });
 

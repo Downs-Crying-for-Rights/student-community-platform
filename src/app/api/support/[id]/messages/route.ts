@@ -26,16 +26,27 @@ export const POST = withAuth(async (req: AuthenticatedRequest, { params }) => {
   }
 
   const message = await prisma.$transaction(async (tx) => {
-    const created = await tx.supportTicketMessage.create({
-      data: { ticketId: ticket.id, content, authorType: "USER", authorId: req.user.id },
-    });
-    await tx.supportTicket.update({
-      where: { id: ticket.id },
+    const claimed = await tx.supportTicket.updateMany({
+      where: {
+        id: ticket.id,
+        requesterId: req.user.id,
+        status: ticket.kind === "PUNISHMENT_APPEAL"
+          ? { in: ["OPEN", "IN_PROGRESS", "WAITING_FOR_USER"] }
+          : { in: ["OPEN", "IN_PROGRESS", "WAITING_FOR_USER", "RESOLVED"] },
+      },
       data: ticket.status === "WAITING_FOR_USER" || ticket.status === "RESOLVED"
         ? { status: "IN_PROGRESS", resolvedAt: null }
         : { updatedAt: new Date() },
     });
+    if (claimed.count !== 1) throw new Error("SUPPORT_TICKET_NOT_REPLYABLE");
+    const created = await tx.supportTicketMessage.create({
+      data: { ticketId: ticket.id, content, authorType: "USER", authorId: req.user.id },
+    });
     return created;
+  }).catch((error) => {
+    if (error instanceof Error && error.message === "SUPPORT_TICKET_NOT_REPLYABLE") return null;
+    throw error;
   });
+  if (!message) return noStoreJson({ error: "工单已关闭或处理，不能回复" }, { status: 409 });
   return noStoreJson({ message }, { status: 201 });
 });

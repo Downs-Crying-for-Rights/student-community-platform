@@ -7,6 +7,7 @@ import { enforceRateLimit } from "@/lib/rate-limiter";
 import { logAudit } from "@/lib/audit";
 import { requireDMConsent } from "@/lib/dm-consent";
 import { createNotification } from "@/lib/notification";
+import { cursorWhere, encodeCompoundCursor, parseCompoundCursor } from "@/lib/compound-cursor";
 
 async function consentRequired(userId: string) {
   const consent = await requireDMConsent(userId);
@@ -50,24 +51,30 @@ export const GET = withAuth(async (
     }
 
     const url = new URL(req.url);
-    const cursor = url.searchParams.get("cursor");
-    const take = Math.min(50, parseInt(url.searchParams.get("limit") || "30", 10));
+    const cursorValue = url.searchParams.get("cursor");
+    const cursor = cursorValue ? parseCompoundCursor(cursorValue, `dm:${threadId}`, "older") : null;
+    if (cursorValue && !cursor) {
+      return NextResponse.json({ error: "无效的分页游标" }, { status: 400 });
+    }
+    const requestedTake = Number(url.searchParams.get("limit") ?? 30);
+    const take = Number.isInteger(requestedTake) ? Math.min(50, Math.max(1, requestedTake)) : 30;
 
     const messages = await prisma.dMMessage.findMany({
       where: {
         threadId,
-        ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
+        ...(cursor ? cursorWhere(cursor, "older") : {}),
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: take + 1,
     });
 
     const hasMore = messages.length > take;
-    const result = messages.slice(0, take).reverse();
+    const page = messages.slice(0, take);
+    const result = page.toReversed();
 
     return NextResponse.json({
       messages: result,
-      nextCursor: hasMore ? result[0].createdAt.toISOString() : null,
+      nextCursor: hasMore && page.length ? encodeCompoundCursor(`dm:${threadId}`, "older", page.at(-1)!) : null,
       hasMore,
       isSystemReadOnly: thread.isSystemReadOnly,
     });

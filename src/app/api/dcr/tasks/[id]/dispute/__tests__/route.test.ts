@@ -10,12 +10,14 @@ const mocks = vi.hoisted(() => ({
   logAudit: vi.fn(),
   notifyUsers: vi.fn(),
   notifyAdmins: vi.fn(),
+  sessionFindUnique: vi.fn(),
+  sessionFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
     $queryRaw: vi.fn(),
-    helpSession: { updateMany: mocks.sessionUpdateMany },
+    helpSession: { findUnique: mocks.sessionFindUnique, findMany: mocks.sessionFindMany, updateMany: mocks.sessionUpdateMany },
     mutualAidTask: { findUnique: mocks.taskFindUnique, updateMany: mocks.taskUpdate },
     taskTimelineEvent: { create: mocks.timelineCreate },
     notification: { createMany: mocks.notificationCreateMany },
@@ -69,6 +71,8 @@ describe("POST /api/dcr/tasks/[id]/dispute", () => {
     vi.clearAllMocks();
     mocks.taskFindUnique.mockResolvedValue(task());
     mocks.sessionUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.sessionFindUnique.mockResolvedValue({ helperId: "helper1", status: "IN_PROGRESS" });
+    mocks.sessionFindMany.mockResolvedValue([{ status: "DISPUTED" }, { status: "CLAIMED" }]);
     mocks.taskUpdate.mockResolvedValue({ count: 1 });
   });
 

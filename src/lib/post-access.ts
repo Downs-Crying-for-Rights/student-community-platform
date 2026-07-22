@@ -1,6 +1,7 @@
-import type { BoardZone, PostVisibility, Role } from "@prisma/client";
+import type { BoardZone, PostStatus, PostVisibility, Prisma, Role } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { hasMinimumRole, isAdminRole } from "@/lib/rbac";
+import { hasMinimumRole } from "@/lib/rbac";
+import { canUseDcrWorkspace } from "@/lib/dcr-capabilities";
 
 export type PostAccessUser = { id: string; role: Role } | undefined;
 
@@ -8,31 +9,66 @@ export type PostAccessDecision =
   | { allowed: true }
   | { allowed: false; status: 401 | 403; error: string };
 
+export function dcrMatchedParticipantWhere(userId: string): Prisma.PostWhereInput {
+  return {
+    OR: [
+      { authorId: userId },
+      { case_: { submitterId: userId } },
+      { case_: { handlerId: userId } },
+      { case_: { handlers: { some: { userId } } } },
+      { case_: { mutualAidTasks: { some: { helpSessions: { some: { OR: [{ requesterId: userId }, { helperId: userId }] } } } } } },
+    ],
+  };
+}
+
+export async function checkPostZoneAccess(
+  user: PostAccessUser,
+  zone: BoardZone,
+): Promise<PostAccessDecision> {
+  if (zone === "PUBLIC") return { allowed: true };
+  if (!user) return { allowed: false, status: 401, error: "请先登录" };
+  if (hasMinimumRole(user.role, "MODERATOR")) return { allowed: true };
+
+  const access = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { psychAccess: true, dcrAccess: true, dcrPledgeSigned: true },
+  });
+  if (zone === "PSYCHOLOGY" && !access?.psychAccess) {
+    return { allowed: false, status: 403, error: "无心理区访问权限" };
+  }
+  if (zone === "DCR" && (!access || !canUseDcrWorkspace({ ...access, role: user.role }))) {
+    return { allowed: false, status: 403, error: "无 DCR 区访问权限" };
+  }
+  return { allowed: true };
+}
+
 export async function checkPostAccess(
   user: PostAccessUser,
   post: {
+    id?: string;
     board: { zone: BoardZone };
     authorId?: string;
     visibility?: PostVisibility;
     caseId?: string | null;
+    status?: PostStatus;
+    author?: { isShadowBanned?: boolean };
+    case_?: { requestStatus?: string } | null;
   },
+  options?: { skipZoneAccess?: boolean },
 ): Promise<PostAccessDecision> {
   const { zone } = post.board;
+  if (!options?.skipZoneAccess) {
+    const zoneAccess = await checkPostZoneAccess(user, zone);
+    if (!zoneAccess.allowed) return zoneAccess;
+  }
 
-  if (zone !== "PUBLIC") {
-    if (!user) return { allowed: false, status: 401, error: "请先登录" };
-
-    const access = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { psychAccess: true, dcrAccess: true },
-    });
-
-    if (zone === "PSYCHOLOGY" && !access?.psychAccess && !hasMinimumRole(user.role, "MODERATOR")) {
-      return { allowed: false, status: 403, error: "无心理区访问权限" };
-    }
-    if (zone === "DCR" && !access?.dcrAccess && !isAdminRole(user.role)) {
-      return { allowed: false, status: 403, error: "无 DCR 区访问权限" };
-    }
+  const isModerator = Boolean(user && hasMinimumRole(user.role, "MODERATOR"));
+  const isAuthor = Boolean(user && post.authorId === user.id);
+  if (post.status && post.status !== "PUBLISHED" && !isAuthor && !isModerator) {
+    return { allowed: false, status: 403, error: "该帖子当前不可访问" };
+  }
+  if (post.author?.isShadowBanned && !isAuthor && !isModerator) {
+    return { allowed: false, status: 403, error: "该帖子当前不可访问" };
   }
 
   if (zone === "PSYCHOLOGY" && post.visibility === "MATCHED") {
@@ -40,9 +76,41 @@ export async function checkPostAccess(
   }
   if (
     post.visibility === "MODS_ONLY"
-    && (!user || (post.authorId !== user.id && !hasMinimumRole(user.role, "MODERATOR")))
+    && !isAuthor
+    && !isModerator
   ) {
     return { allowed: false, status: 403, error: "该帖子仅作者和管理人员可访问" };
+  }
+
+  if (zone === "DCR" && post.caseId && !isAuthor && !isModerator) {
+    const relatedCase = await prisma.case.findUnique({
+      where: { id: post.caseId },
+      select: {
+        requestStatus: true,
+        submitterId: true,
+        handlerId: true,
+        handlers: { where: { userId: user!.id }, select: { userId: true } },
+        mutualAidTasks: {
+          where: { helpSessions: { some: { OR: [{ requesterId: user!.id }, { helperId: user!.id }] } } },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+    if (!relatedCase || relatedCase.requestStatus !== "APPROVED") {
+      return { allowed: false, status: 403, error: "该帖子当前不可访问" };
+    }
+    if (
+      post.visibility === "MATCHED"
+      && relatedCase.submitterId !== user!.id
+      && relatedCase.handlerId !== user!.id
+      && relatedCase.handlers.length === 0
+      && relatedCase.mutualAidTasks.length === 0
+    ) {
+      return { allowed: false, status: 403, error: "无权访问该匹配帖子" };
+    }
+  } else if (zone === "DCR" && post.visibility === "MATCHED" && !isAuthor && !isModerator) {
+    return { allowed: false, status: 403, error: "无权访问该匹配帖子" };
   }
 
   return { allowed: true };

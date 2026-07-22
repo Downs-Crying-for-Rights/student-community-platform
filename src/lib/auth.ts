@@ -145,6 +145,13 @@ export const authOptions: NextAuthOptions = {
              select: { id: true, role: true, phone: true, nickname: true, avatar: true, onboardingDone: true, quizPassed: true, dcrAccess: true, isBanned: true, banUntil: true, isMuted: true, muteUntil: true, securityVersion: true, profileCompletionRequired: true, realVerifiedAt: true, studentVerifiedAt: true, deactivatedAt: true },
           });
         }
+        const issuedSecurityVersion = typeof token.securityVersion === "number" ? token.securityVersion : null;
+        if (!dbUser || dbUser.deactivatedAt || issuedSecurityVersion !== dbUser.securityVersion) {
+          token.id = "";
+          token.sub = undefined;
+          token.isBanned = true;
+          return token;
+        }
         if (dbUser) {
           token.role = dbUser.role;
           token.phone = dbUser.phone;

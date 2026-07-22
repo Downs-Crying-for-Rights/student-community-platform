@@ -14,7 +14,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest, { params }) => {
   if (params.id === req.user.id) return NextResponse.json({ error: "不能处罚自己" }, { status: 400 });
   const target = await prisma.user.findUnique({ where: { id: params.id }, select: { id: true, role: true } });
   if (!target) return NextResponse.json({ error: "用户不存在" }, { status: 404 });
-  if (target.role === "SUPER_ADMIN" && req.user.role !== "SUPER_ADMIN") return NextResponse.json({ error: "仅超级管理员可处罚超级管理员账号" }, { status: 403 });
+  if ((target.role === "ADMIN" || target.role === "SUPER_ADMIN") && req.user.role !== "SUPER_ADMIN") return NextResponse.json({ error: "仅超级管理员可管理管理员处罚" }, { status: 403 });
   const type = parsed.data.shadowBan ? "POST_SHADOW_HIDE" : "ACCOUNT_BAN";
   try {
     if (parsed.data.action === "ban") {

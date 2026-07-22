@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   claimUpdateMany: vi.fn(),
   claimCreate: vi.fn(),
   sessionFindFirst: vi.fn(),
+  queryRaw: vi.fn(),
   timelineCreate: vi.fn(),
   logAudit: vi.fn(),
   notifyUsers: vi.fn(),
@@ -20,6 +21,8 @@ vi.mock("@/lib/prisma", () => ({ default: {
   helpClaim: { findUnique: mocks.claimFindUnique },
   helpSession: { findFirst: mocks.sessionFindFirst },
   $transaction: (callback: (client: unknown) => unknown) => callback({
+    $queryRaw: mocks.queryRaw,
+    mutualAidTask: { findUnique: mocks.taskFindUnique },
     helpClaim: {
       findUnique: mocks.claimFindUnique,
       updateMany: mocks.claimUpdateMany,
@@ -53,7 +56,7 @@ describe("POST /api/dcr/tasks/[id]/claim", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getServerSession).mockResolvedValue({ user: { id: "helper", role: "USER" } } as never);
-    mocks.userFindUnique.mockResolvedValue({ dcrAccess: true });
+    mocks.userFindUnique.mockResolvedValue({ dcrAccess: true, dcrPledgeSigned: true });
     mocks.taskFindUnique.mockResolvedValue({ id: context.params.id, title: "需要帮助", requesterId: "requester", status: "CLAIMED" });
     mocks.taskFindFirst.mockResolvedValue({ id: "cm0000000000000000000002", title: "我的委托", status: "OPEN" });
     mocks.claimFindUnique.mockResolvedValue(null);

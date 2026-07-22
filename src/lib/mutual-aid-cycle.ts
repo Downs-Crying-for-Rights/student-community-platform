@@ -8,6 +8,7 @@
 import prisma from "@/lib/prisma";
 import { CycleMode, CycleStatus, LinkStatus, type Prisma } from "@prisma/client";
 import { createNotification } from "@/lib/notification";
+import { canParticipateInDcrWorkflow } from "@/lib/dcr-capabilities";
 
 /* ========== Types ========== */
 
@@ -209,19 +210,45 @@ export async function createCycle(input: CycleCreateInput) {
   // 验证参与者真实存在且已通过考核
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
-    select: { id: true, quizPassed: true, dcrAccess: true, role: true },
+    select: { id: true, dcrAccess: true, dcrPledgeSigned: true, role: true },
   });
   if (users.length !== userIds.length) throw new Error("部分参与者不存在");
 
   for (const u of users) {
-    const isAdministrator = u.role === "ADMIN" || u.role === "SUPER_ADMIN";
-    if (!isAdministrator && (!u.quizPassed || !u.dcrAccess)) {
-      throw new Error(`用户 ${u.id} 尚未通过入频考核，无法参与互助循环`);
+    if (!canParticipateInDcrWorkflow(u)) {
+      throw new Error(`用户 ${u.id} 尚未完成 DCR 准入或守则签署，无法参与互助循环`);
     }
   }
 
   // 创建循环 + 三段链接 (事务)
   const cycle = await prisma.$transaction(async (tx) => {
+    for (const participantId of [...userIds].sort()) {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-participant:${participantId}`}))`;
+    }
+    const lockedConflict = await tx.mutualAidCycle.findFirst({
+      where: {
+        status: { in: activeStatuses },
+        OR: [
+          { initiatorId: { in: userIds } },
+          { links: { some: { fromUserId: { in: userIds }, status: { notIn: ["REJECTED"] } } } },
+          { links: { some: { toUserId: { in: userIds }, status: { notIn: ["REJECTED"] } } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (lockedConflict) throw new Error("部分参与者已加入活跃的互助循环，请先完成或退出");
+
+    const lockedUsers = await tx.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, dcrAccess: true, dcrPledgeSigned: true, role: true },
+    });
+    if (lockedUsers.length !== userIds.length) throw new Error("部分参与者不存在");
+    for (const participant of lockedUsers) {
+      if (!canParticipateInDcrWorkflow(participant)) {
+        throw new Error(`用户 ${participant.id} 尚未完成 DCR 准入或守则签署，无法参与互助循环`);
+      }
+    }
+
     const c = await tx.mutualAidCycle.create({
       data: {
         initiatorId,
@@ -282,12 +309,11 @@ export async function enqueueThreePartyMatch(input: ThreePartyMatchInput) {
 
   const requester = await prisma.user.findUnique({
     where: { id: input.userId },
-    select: { id: true, quizPassed: true, dcrAccess: true, role: true },
+    select: { id: true, dcrAccess: true, dcrPledgeSigned: true, role: true },
   });
   if (!requester) throw new Error("用户不存在");
-  const requesterIsAdmin = requester.role === "ADMIN" || requester.role === "SUPER_ADMIN";
-  if (!requesterIsAdmin && (!requester.quizPassed || !requester.dcrAccess)) {
-    throw new Error("尚未通过入频考核，无法参与三方互助匹配");
+  if (!canParticipateInDcrWorkflow(requester)) {
+    throw new Error("尚未完成 DCR 准入或守则签署，无法参与三方互助匹配");
   }
 
   const request = await prisma.mutualAidMatchRequest.upsert({
@@ -312,6 +338,10 @@ export async function enqueueThreePartyMatch(input: ThreePartyMatchInput) {
       status: "WAITING",
       userId: { not: input.userId },
       user: {
+        OR: [
+          { role: { in: ["ADMIN", "SUPER_ADMIN"] } },
+          { dcrAccess: true, dcrPledgeSigned: true },
+        ],
         initiatedCycles: { none: { status: { in: activeStatuses } } },
         linksAsFrom: { none: { cycle: { status: { in: activeStatuses } } } },
         linksAsTo: { none: { cycle: { status: { in: activeStatuses } } } },

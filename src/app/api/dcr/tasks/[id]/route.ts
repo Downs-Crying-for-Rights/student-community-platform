@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { getPublicDcrTaskCopy } from "@/lib/dcr-task-public";
+import { canUseDcrWorkspace } from "@/lib/dcr-capabilities";
 
 /**
  * GET /api/dcr/tasks/[id]
@@ -72,9 +73,9 @@ export const GET = withAuth(async (
     if (!isPrivileged && !isRequester && !isHelper) {
       const access = await prisma.user.findUnique({
         where: { id: req.user.id },
-        select: { dcrAccess: true },
+        select: { dcrAccess: true, dcrPledgeSigned: true },
       });
-      if (!access?.dcrAccess) {
+      if (!access || !canUseDcrWorkspace({ ...access, role: req.user.role })) {
         return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
       }
 

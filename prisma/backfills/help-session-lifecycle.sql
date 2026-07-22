@@ -26,7 +26,8 @@ BEGIN
         ELSE session."closedAt"
       END
     FROM "MutualAidTask" AS task
-    WHERE session."taskId" = task."id";
+    WHERE session."taskId" = task."id"
+      AND (SELECT COUNT(*) FROM "HelpSession" sibling WHERE sibling."taskId" = task."id") = 1;
 
     INSERT INTO "_ApplicationBackfill" ("name")
     VALUES ('20260718210000_add_help_session_lifecycle');

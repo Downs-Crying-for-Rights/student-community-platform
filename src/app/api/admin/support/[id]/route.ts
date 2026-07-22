@@ -14,6 +14,7 @@ import {
 } from "@/lib/support-ticket";
 import { containsBlockedSupportWord } from "@/lib/support-ticket-server";
 import { revokePunishment } from "@/lib/punishment-service";
+import { runSerializableTransaction } from "@/lib/serializable-transaction";
 
 export const GET = withAuth(async (_req: AuthenticatedRequest, { params }) => {
   const ticket = await prisma.supportTicket.findFirst({
@@ -49,15 +50,25 @@ export const POST = withAuth(async (req: AuthenticatedRequest, { params }) => {
   }
 
   const message = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.supportTicket.updateMany({
+      where: {
+        id: ticket.id,
+        status: ticket.kind === "PUNISHMENT_APPEAL"
+          ? { in: ["OPEN", "IN_PROGRESS", "WAITING_FOR_USER"] }
+          : { in: ["OPEN", "IN_PROGRESS", "WAITING_FOR_USER", "RESOLVED"] },
+      },
+      data: { status: "WAITING_FOR_USER", resolvedAt: null },
+    });
+    if (claimed.count !== 1) throw new Error("SUPPORT_TICKET_NOT_REPLYABLE");
     const created = await tx.supportTicketMessage.create({
       data: { ticketId: ticket.id, content, authorType: "STAFF", authorId: req.user.id },
     });
-    await tx.supportTicket.update({
-      where: { id: ticket.id },
-      data: { status: "WAITING_FOR_USER", resolvedAt: null },
-    });
     return created;
+  }).catch((error) => {
+    if (error instanceof Error && error.message === "SUPPORT_TICKET_NOT_REPLYABLE") return null;
+    throw error;
   });
+  if (!message) return noStoreJson({ error: "工单已关闭或处理，不能回复" }, { status: 409 });
   await logAudit(req.user.id, "SUPPORT_REPLY", "SUPPORT_TICKET", ticket.id, { status: "WAITING_FOR_USER" });
   await createNotification(ticket.requesterId, "SYSTEM", "客服工单有新回复", "工作人员已回复你的客服工单，请前往查看。", `/support/${ticket.id}`);
   return noStoreJson({ message }, { status: 201 });
@@ -93,7 +104,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, { params }) => {
   if (hasAppealDecision) {
     if (existing.kind !== "PUNISHMENT_APPEAL" || !existing.punishmentId) return noStoreJson({ error: "该工单不是处罚申诉" }, { status: 409 });
     if (["RESOLVED", "CLOSED"].includes(existing.status)) return noStoreJson({ error: "该处罚申诉已处理" }, { status: 409 });
-    const ticket = await prisma.$transaction(async (tx) => {
+    const ticket = await runSerializableTransaction(async (tx) => {
       const claimed = await tx.supportTicket.updateMany({
         where: { id: existing.id, status: { in: ["OPEN", "IN_PROGRESS", "WAITING_FOR_USER"] } },
         data: { status: "RESOLVED", resolvedAt: new Date(), assignedToId: req.user.id },

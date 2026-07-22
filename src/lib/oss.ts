@@ -105,6 +105,14 @@ export async function uploadSensitiveObject(
   }));
 }
 
+export async function uploadPrivateObject(
+  buffer: Buffer,
+  key: string,
+  contentType: string,
+): Promise<void> {
+  await uploadSensitiveObject(buffer, key, contentType);
+}
+
 export async function deleteSensitiveObject(key: string): Promise<void> {
   await s3.send(new DeleteObjectCommand({ Bucket: OSS_BUCKET, Key: key }));
 }
@@ -126,6 +134,74 @@ export function verifyMediaSignature(key: string, signature: string): boolean {
   const expectedBuffer = Buffer.from(expected);
   return actualBuffer.length === expectedBuffer.length
     && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+export type ProtectedMediaScope = "CASE" | "EVIDENCE" | "DCR_CHAT";
+
+const MEDIA_KEY = /^uploads\/\d{4}\/\d{2}\/[a-f0-9]{32}\.(webp|gif|jpg|png|webm|ogg|mp3|m4a|wav|pdf|txt|doc|docx|xls|xlsx|zip)$/;
+
+export function isMediaObjectKey(value: string): boolean {
+  return MEDIA_KEY.test(value);
+}
+
+export function getMediaKey(urlOrKey: string): string | null {
+  if (isMediaObjectKey(urlOrKey)) return urlOrKey;
+  try {
+    const appUrl = new URL(process.env.NEXTAUTH_URL || "http://localhost:3000");
+    const url = new URL(urlOrKey);
+    const key = url.searchParams.get("key") || "";
+    return url.origin === appUrl.origin && url.pathname === "/api/media" && isMediaObjectKey(key)
+      ? key
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseProtectedMediaUrl(
+  value: string,
+  expectedScope: ProtectedMediaScope,
+  expectedResourceId: string,
+): string | null {
+  try {
+    const appUrl = new URL(process.env.NEXTAUTH_URL || "http://localhost:3000");
+    const url = new URL(value);
+    const key = url.searchParams.get("key") || "";
+    const scope = url.searchParams.get("scope");
+    const resourceId = url.searchParams.get("resourceId") || "";
+    const exp = Number(url.searchParams.get("exp"));
+    const signature = url.searchParams.get("sig") || "";
+    if (url.origin !== appUrl.origin || url.pathname !== "/api/media") return null;
+    if (!isMediaObjectKey(key) || scope !== expectedScope || resourceId !== expectedResourceId) return null;
+    return verifyProtectedMediaSignature(key, expectedScope, expectedResourceId, exp, signature) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+export function createProtectedMediaUrl(
+  key: string,
+  scope: ProtectedMediaScope,
+  resourceId: string,
+  expiresInSeconds = 300,
+): string {
+  const appUrl = (process.env.NEXTAUTH_URL || "http://localhost:3000").replace(/\/$/, "");
+  const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
+  const payload = `${key}\n${scope}\n${resourceId}\n${exp}`;
+  const sig = signMediaKey(payload);
+  return `${appUrl}/api/media?key=${encodeURIComponent(key)}&scope=${scope}&resourceId=${encodeURIComponent(resourceId)}&exp=${exp}&sig=${sig}`;
+}
+
+export function verifyProtectedMediaSignature(
+  key: string,
+  scope: ProtectedMediaScope,
+  resourceId: string,
+  exp: number,
+  signature: string,
+): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  if (!isMediaObjectKey(key) || !resourceId || !Number.isSafeInteger(exp) || exp <= now || exp > now + 3600) return false;
+  return verifyMediaSignature(`${key}\n${scope}\n${resourceId}\n${exp}`, signature);
 }
 
 function signMediaKey(key: string): string {

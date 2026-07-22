@@ -70,7 +70,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     console.error("POST /api/dcr/cycles error:", error);
     const message = error?.message || "服务器内部错误";
     const status = message.includes("不存在") ? 404
-      : message.includes("活跃") || message.includes("考核") ? 409
+      : message.includes("活跃") || message.includes("考核") || message.includes("准入") || message.includes("守则") ? 409
         : message.includes("不同") ? 400 : 500;
     return NextResponse.json({ error: message }, { status });
   }

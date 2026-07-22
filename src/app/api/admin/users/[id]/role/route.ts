@@ -37,6 +37,9 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     if (targetUser.role === "SUPER_ADMIN" && req.user.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "仅超级管理员可修改超级管理员账号" }, { status: 403 });
     }
+    if (targetUser.role === "ADMIN" && req.user.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "仅超级管理员可修改管理员账号" }, { status: 403 });
+    }
 
     // 仅 SUPER_ADMIN 可将用户角色设为 SUPER_ADMIN
     if (newRole === "SUPER_ADMIN" && req.user.role !== "SUPER_ADMIN") {

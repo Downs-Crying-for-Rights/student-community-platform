@@ -8,7 +8,7 @@ import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
 import { generateAnonymousId, truncateText } from "@/lib/utils";
 import { z } from "zod";
-import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
+import { anonymizePsychologyPost, checkPostZoneAccess, dcrMatchedParticipantWhere } from "@/lib/post-access";
 import { sendAdminActionMail } from "@/lib/mail";
 import { canCreateDcrPost } from "@/lib/dcr-capabilities";
 import { publicUserSelect, toPublicUser } from "@/lib/public-user";
@@ -61,6 +61,9 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
     const skip = (page - 1) * pageSize;
     const userId = req.user?.id;
     const isModerator = req.user ? hasMinimumRole(req.user.role, "MODERATOR") : false;
+    if ((bookmarkedBy || likedBy) && (!userId || (bookmarkedBy && bookmarkedBy !== userId) || (likedBy && likedBy !== userId))) {
+      return NextResponse.json({ error: "只能查看自己的收藏和点赞记录" }, { status: userId ? 403 : 401 });
+    }
 
     let requestedZone: BoardZone = zone ? BoardZone[zone] : BoardZone.PUBLIC;
     if (boardId) {
@@ -70,7 +73,7 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
     } else if (caseIdsParam) {
       requestedZone = BoardZone.DCR;
     }
-    const zoneAccess = await checkPostAccess(req.user, { board: { zone: requestedZone } });
+    const zoneAccess = await checkPostZoneAccess(req.user, requestedZone);
     if (!zoneAccess.allowed) {
       return NextResponse.json({ error: zoneAccess.error }, { status: zoneAccess.status });
     }
@@ -87,13 +90,15 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
     if (filterStatus && isModerator) {
       // Moderator+ can filter by specific status (for moderation kanban)
       where.status = PostStatus[filterStatus];
+    } else if (isModerator) {
+      // Moderators retain oversight of every status and shadow-banned author.
     } else if (userId) {
-      // Logged-in user: PUBLISHED posts + own PENDING posts, filter shadow-banned
+      // Logged-in users can inspect their own submissions in any status.
       where.AND = [
         {
           OR: [
             { status: PostStatus.PUBLISHED },
-            { status: PostStatus.PENDING, authorId: userId },
+            { authorId: userId },
           ],
         },
         {
@@ -141,15 +146,21 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
       where.likes = { some: { userId: likedBy } };
     }
 
-    if (requestedZone === BoardZone.PSYCHOLOGY) {
-      if (isModerator) {
-        where.visibility = { not: "MATCHED" };
-      } else {
-        where.AND = [
-          ...(where.AND as Record<string, unknown>[]),
-          { OR: [{ visibility: "PUBLIC" }, { visibility: "MODS_ONLY", authorId: userId }] },
-        ];
-      }
+    if (!isModerator) {
+      where.AND = [
+        ...((where.AND as Record<string, unknown>[] | undefined) ?? []),
+        userId
+          ? { OR: [{ visibility: "PUBLIC" }, { visibility: "MODS_ONLY", authorId: userId }, ...(requestedZone === BoardZone.DCR ? [{ AND: [{ visibility: "MATCHED" }, dcrMatchedParticipantWhere(userId)] }] : [])] }
+          : { visibility: "PUBLIC" },
+      ];
+    } else if (requestedZone === BoardZone.PSYCHOLOGY) {
+      where.visibility = { not: "MATCHED" };
+    }
+    if (requestedZone === BoardZone.DCR && !isModerator) {
+      where.AND = [
+        ...((where.AND as Record<string, unknown>[] | undefined) ?? []),
+        { OR: [{ caseId: null }, { authorId: userId! }, { case_: { requestStatus: "APPROVED" } }] },
+      ];
     }
 
     // Determine sort order

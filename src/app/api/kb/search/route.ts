@@ -91,10 +91,10 @@ async function getVisibilityFilter(
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { dcrAccess: true },
+    select: { dcrAccess: true, dcrPledgeSigned: true },
   });
 
-  if (user?.dcrAccess) {
+  if (user?.dcrAccess && user.dcrPledgeSigned) {
     return ["PUBLIC", "DCR_ONLY"];
   }
 

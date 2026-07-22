@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
 import { scanContent } from "@/lib/sensitive-engine";
+import { cursorWhere, encodeCompoundCursor, parseCompoundCursor } from "@/lib/compound-cursor";
 
 const sendMessageSchema = z.object({
   content: z.string().min(1).max(5000),
@@ -40,37 +41,35 @@ export const GET = withAuth(async (
     }
 
     const { searchParams } = new URL(req.url);
-    const cursor = searchParams.get("cursor");
-    const before = searchParams.get("before"); // message ID cursor for "load older"
-    const after = searchParams.get("after");   // message ID cursor for "poll new"
-    const take = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "30")));
-
-    // Resolve message ID cursors to createdAt timestamps
-    let cursorDate: Date | undefined;
-    if (cursor) {
-      cursorDate = new Date(cursor);
-    } else if (before) {
-      const beforeMsg = await prisma.chatMessage.findUnique({ where: { id: before }, select: { createdAt: true } });
-      if (beforeMsg) cursorDate = beforeMsg.createdAt;
-    } else if (after) {
-      const afterMsg = await prisma.chatMessage.findUnique({ where: { id: after }, select: { createdAt: true } });
-      if (afterMsg) cursorDate = afterMsg.createdAt;
+    const cursorValue = searchParams.get("cursor");
+    const directionValue = searchParams.get("direction") ?? "older";
+    if (directionValue !== "older" && directionValue !== "newer") {
+      return NextResponse.json({ error: "无效的分页方向" }, { status: 400 });
     }
-
-    const isAfterMode = !!after;
+    if (searchParams.has("before") || searchParams.has("after")) {
+      return NextResponse.json({ error: "不支持混用分页游标" }, { status: 400 });
+    }
+    const direction = directionValue;
+    const cursor = cursorValue ? parseCompoundCursor(cursorValue, `chat-room:${roomId}`, direction) : null;
+    if (cursorValue && !cursor) return NextResponse.json({ error: "无效的分页游标" }, { status: 400 });
+    const requestedTake = Number(searchParams.get("limit") ?? 30);
+    const take = Number.isInteger(requestedTake) ? Math.min(100, Math.max(1, requestedTake)) : 30;
 
     const messages = await prisma.chatMessage.findMany({
       where: {
         roomId,
-        ...(cursorDate ? { createdAt: isAfterMode ? { gt: cursorDate } : { lt: cursorDate } } : {}),
+        ...(cursor ? cursorWhere(cursor, direction) : {}),
       },
-      orderBy: { createdAt: isAfterMode ? "asc" : "desc" },
+      orderBy: [
+        { createdAt: direction === "newer" ? "asc" : "desc" },
+        { id: direction === "newer" ? "asc" : "desc" },
+      ],
       take: take + 1,
     });
 
     const hasMore = messages.length > take;
     const sliced = messages.slice(0, take);
-    const result = isAfterMode ? sliced : sliced.reverse();
+    const result = direction === "newer" ? sliced : sliced.toReversed();
 
     const senders = await prisma.user.findMany({
       where: { id: { in: [...new Set(result.map((message) => message.senderId))] } },
@@ -88,6 +87,15 @@ export const GET = withAuth(async (
         },
       })),
       hasMore,
+      pagination: {
+        hasMore,
+        olderCursor: direction === "older" && hasMore && sliced.length
+          ? encodeCompoundCursor(`chat-room:${roomId}`, "older", sliced.at(-1)!)
+          : null,
+        newerCursor: result.length
+          ? encodeCompoundCursor(`chat-room:${roomId}`, "newer", result.at(-1)!)
+          : null,
+      },
     });
   } catch (error) {
     console.error("GET /api/chat/rooms/[roomId]/messages error:", error);
@@ -170,6 +178,7 @@ export const POST = withAuth(async (
         ...message,
         sender: sender ?? { id: userId, nickname: null, avatar: null },
       },
+      newerCursor: encodeCompoundCursor(`chat-room:${roomId}`, "newer", message),
     }, { status: 201 });
   } catch (error) {
     console.error("POST /api/chat/rooms/[roomId]/messages error:", error);

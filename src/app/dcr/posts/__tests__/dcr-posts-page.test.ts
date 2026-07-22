@@ -92,7 +92,7 @@ function setSession(id: string, role: string) {
 describe("GET /api/posts with caseIds filter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, psychAccess: false });
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrPledgeSigned: true, psychAccess: false });
   });
 
   it("should filter posts by caseIds when provided", async () => {

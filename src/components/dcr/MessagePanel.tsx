@@ -96,6 +96,7 @@ export function MessagePanel({ caseId, currentUserId, caseStatus, isSubmitter }:
     try {
       const form = new FormData();
       form.append("file", file);
+      form.append("caseId", caseId);
       const res = await fetch("/api/upload/case-media", { method: "POST", body: form });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "上传失败");
@@ -113,7 +114,7 @@ export function MessagePanel({ caseId, currentUserId, caseStatus, isSubmitter }:
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, []);
+  }, [caseId]);
 
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {

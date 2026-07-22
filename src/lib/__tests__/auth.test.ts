@@ -166,6 +166,32 @@ describe("NextAuth 配置", () => {
         expect(result.phone).toBe("13800138000");
       }
     });
+
+    it("安全版本过期时不得信任 session.update 提交的新版本", async () => {
+      const jwtCallback = authOptions.callbacks?.jwt;
+      expect(jwtCallback).toBeDefined();
+      mockFindUnique.mockResolvedValue({
+        id: "test-user-id",
+        role: "USER",
+        securityVersion: 2,
+        deactivatedAt: null,
+        isBanned: false,
+        isMuted: false,
+      });
+
+      const result = await jwtCallback!({
+        token: { id: "test-user-id", sub: "test-user-id", securityVersion: 1 } as any,
+        user: undefined as any,
+        account: null,
+        trigger: "update",
+        session: { user: { securityVersion: 2 } },
+      });
+
+      expect(result.id).toBe("");
+      expect(result.sub).toBeUndefined();
+      expect(result.isBanned).toBe(true);
+      expect(result.securityVersion).toBe(1);
+    });
   });
 
   describe("QQ Provider 配置", () => {

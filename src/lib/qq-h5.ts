@@ -464,8 +464,8 @@ export async function previewQQTaskPublish(userId: string, token: string) {
   });
   if (!grant?.targetId) throw new QQH5Error("GRANT_UNAVAILABLE", "发布链接已过期、已使用或不属于当前账号", 410);
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { dcrAccess: true } });
-  if (!user?.dcrAccess) throw new QQH5Error("DCR_ACCESS_REQUIRED", "当前账号没有 DCR 区访问权限", 403);
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { dcrAccess: true, dcrPledgeSigned: true } });
+  if (!user?.dcrAccess || !user.dcrPledgeSigned) throw new QQH5Error("DCR_ACCESS_REQUIRED", "当前账号没有 DCR 区访问权限", 403);
   const caseRecord = await prisma.case.findUnique({
     where: { id: grant.targetId },
     select: {
@@ -502,8 +502,8 @@ export async function confirmQQTaskPublish(userId: string, token: string) {
       select: { targetId: true },
     });
     if (!grant?.targetId) throw new QQH5Error("GRANT_UNAVAILABLE", "发布链接已过期或已使用", 410);
-    const user = await tx.user.findUnique({ where: { id: userId }, select: { dcrAccess: true } });
-    if (!user?.dcrAccess) throw new QQH5Error("DCR_ACCESS_REQUIRED", "当前账号没有 DCR 区访问权限", 403);
+    const user = await tx.user.findUnique({ where: { id: userId }, select: { dcrAccess: true, dcrPledgeSigned: true } });
+    if (!user?.dcrAccess || !user.dcrPledgeSigned) throw new QQH5Error("DCR_ACCESS_REQUIRED", "当前账号没有 DCR 区访问权限", 403);
     const caseRecord = await tx.case.findUnique({
       where: { id: grant.targetId },
       select: { id: true, category: true, submitterId: true, requestStatus: true },

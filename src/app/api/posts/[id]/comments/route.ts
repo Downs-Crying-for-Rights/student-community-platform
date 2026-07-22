@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { withAuth, withOptionalAuth, type AuthenticatedRequest, type OptionalAuthRequest } from "@/lib/rbac";
 import { createCommentSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditTargetType } from "@/lib/audit";
@@ -60,8 +60,8 @@ async function getCommentDepth(commentId: string): Promise<number> {
  * Includes author info and nested replies (up to depth 2 for display).
  * Filters out deleted comments.
  */
-export const GET = withAuth(async (
-  req: AuthenticatedRequest,
+export const GET = withOptionalAuth(async (
+  req: OptionalAuthRequest,
   context: { params: Record<string, string> },
 ) => {
   try {
@@ -69,7 +69,7 @@ export const GET = withAuth(async (
 
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      select: { id: true, authorId: true, status: true, visibility: true, board: { select: { zone: true } } },
+      select: { id: true, authorId: true, status: true, visibility: true, caseId: true, author: { select: { isShadowBanned: true } }, board: { select: { zone: true } } },
     });
 
     if (!post) {
@@ -77,7 +77,7 @@ export const GET = withAuth(async (
     }
 
     const access = await checkPostAccess(req.user, post);
-    if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+    if (!access.allowed) return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
 
     // Fetch top-level comments (no parent) with nested replies up to 2 levels
     const comments = await prisma.comment.findMany({
@@ -151,23 +151,19 @@ export const POST = withAuth(async (
     // Check post exists and status
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      select: { id: true, status: true, authorId: true, title: true, visibility: true, board: { select: { zone: true } } },
+      select: { id: true, status: true, authorId: true, title: true, visibility: true, caseId: true, author: { select: { isShadowBanned: true } }, board: { select: { zone: true } } },
     });
 
     if (!post) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
 
+    if (post.status !== "PUBLISHED") {
+      return NextResponse.json({ error: post.status === "PENDING" ? "待审核帖子禁止评论" : "未发布帖子禁止评论" }, { status: 403 });
+    }
+
     const access = await checkPostAccess(req.user, post);
     if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
-
-    if (post.status === "PENDING") {
-      return NextResponse.json({ error: "待审核帖子禁止评论" }, { status: 403 });
-    }
-
-    if (post.status === "DELETED") {
-      return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
-    }
 
     // Check nesting depth if parentId provided
     if (parentId) {

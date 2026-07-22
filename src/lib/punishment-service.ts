@@ -44,7 +44,14 @@ export function calculatePunishmentProjection(records: ProjectionRecord[], now =
   };
 }
 
-export async function recalculatePunishmentProjection(userId: string, db: Db = prisma, now = new Date()) {
+export async function recalculatePunishmentProjection(
+  userId: string,
+  db: Db = prisma,
+  now = new Date(),
+): Promise<{ id: string; isMuted: boolean; muteUntil: Date | null; isBanned: boolean; banUntil: Date | null; isShadowBanned: boolean }> {
+  if (db === prisma) {
+    return runSerializableTransaction((tx) => recalculatePunishmentProjection(userId, tx, now));
+  }
   if ("$queryRaw" in db) {
     await db.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`punishment-projection:${userId}`}))`;
   }
@@ -82,6 +89,9 @@ export async function applyPunishment(input: {
     const expiresAt = input.expiresAt ?? null;
     if (isTemporaryPunishment(input.type) && (!expiresAt || expiresAt <= now)) throw new Error("INVALID_PUNISHMENT_EXPIRY");
     if (!isTemporaryPunishment(input.type) && expiresAt) throw new Error("UNEXPECTED_PUNISHMENT_EXPIRY");
+    if (isBanPunishment(input.type) && "$queryRaw" in tx) {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('punishment:last-active-super-admin'))`;
+    }
     const target = await tx.user.findUnique({
       where: { id: input.userId },
       select: { role: true, isBanned: true, deactivatedAt: true },
@@ -109,7 +119,7 @@ export async function applyPunishment(input: {
     });
     return punishment;
   };
-  return db ? run(db) : runSerializableTransaction(run);
+  return db && db !== prisma ? run(db) : runSerializableTransaction(run);
 }
 
 export async function revokePunishment(input: { punishmentId: string; operatorId: string; reason: string }, db?: Db) {
@@ -117,17 +127,19 @@ export async function revokePunishment(input: { punishmentId: string; operatorId
     const existing = await tx.userPunishment.findUnique({ where: { id: input.punishmentId } });
     if (!existing || existing.action !== "APPLIED") throw new Error("PUNISHMENT_NOT_FOUND");
     if (existing.revokedAt) throw new Error("PUNISHMENT_ALREADY_REVOKED");
-    const punishment = await tx.userPunishment.update({
-      where: { id: existing.id },
+    const revoked = await tx.userPunishment.updateMany({
+      where: { id: existing.id, action: "APPLIED", revokedAt: null },
       data: { revokedAt: new Date(), revokedById: input.operatorId, revokeReason: input.reason },
     });
+    if (revoked.count !== 1) throw new Error("PUNISHMENT_ALREADY_REVOKED");
+    const punishment = await tx.userPunishment.findUniqueOrThrow({ where: { id: existing.id } });
     await recalculatePunishmentProjection(existing.userId, tx);
     await tx.notification.create({
       data: { userId: existing.userId, type: "SYSTEM", title: "账户处罚已解除", content: `处罚已解除。说明：${input.reason}`, link: "/support" },
     });
     return punishment;
   };
-  return db ? run(db) : runSerializableTransaction(run);
+  return db && db !== prisma ? run(db) : runSerializableTransaction(run);
 }
 
 export async function getCurrentPunishmentStatus(userId: string, now = new Date()) {

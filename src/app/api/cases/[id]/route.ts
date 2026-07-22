@@ -54,6 +54,13 @@ class CaseReviewError extends Error {
   }
 }
 
+class CaseWorkflowError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "CaseWorkflowError";
+  }
+}
+
 const joinActionSchema = z.object({
   action: z.literal("JOIN"),
 });
@@ -79,7 +86,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
         submitter: { select: { id: true, nickname: true } },
         handler: { select: { id: true, nickname: true } },
         handlers: { select: { userId: true, user: { select: { id: true, nickname: true } } } },
-        timeline: { orderBy: { createdAt: "asc" } },
+        timeline: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
       } as Record<string, unknown>,
     });
 
@@ -256,6 +263,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       }
 
       const reviewResult = await runSerializableTransaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${id}`}))`;
         const caseRecord = await tx.case.findUnique({
           where: { id },
           include: {
@@ -463,6 +471,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       include: {
         submitter: { select: { id: true } },
         handler: { select: { id: true } },
+        handlers: { select: { userId: true } },
       },
     });
 
@@ -493,7 +502,8 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
     // Permission checks based on transition
     const isSubmitter = caseRecord.submitterId === userId;
-    const isHandler = caseRecord.handlerId === userId;
+    const isHandler = caseRecord.handlerId === userId
+      || caseRecord.handlers?.some((handler) => handler.userId === userId) === true;
     const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
     const helperProfile = userRole === "DCR_HELPER" || isAdmin
@@ -581,9 +591,55 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
     // Update case + create timeline event + CaseHandler in transaction
     const updatedCase = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${id}`}))`;
+      const lockedCase = await tx.case.findUnique({
+        where: { id },
+        include: { handlers: { select: { userId: true } } },
+      });
+      if (!lockedCase) throw new CaseWorkflowError(404, "委托不存在");
+      const lockedOldStatus = lockedCase.status;
+      if (!VALID_TRANSITIONS[lockedOldStatus]?.includes(newStatus)) {
+        throw new CaseWorkflowError(409, `不允许从 ${lockedOldStatus} 转换到 ${newStatus}`);
+      }
+      const lockedIsSubmitter = lockedCase.submitterId === userId;
+      const lockedIsHandler = lockedCase.handlerId === userId
+        || lockedCase.handlers?.some((handler) => handler.userId === userId) === true;
+      if (lockedOldStatus === "OPENED" && newStatus === "IN_PROGRESS") {
+        if (lockedCase.requestStatus !== "APPROVED") throw new CaseWorkflowError(409, "该委托仍在管理员审核中，审核通过后才能接单");
+        if (lockedIsSubmitter) throw new CaseWorkflowError(403, "不能接取自己提交的委托");
+        const activeCaseCount = await tx.caseHandler.count({
+          where: { userId, case_: { status: { in: [CaseStatus.IN_PROGRESS, CaseStatus.NEED_MORE_INFO] } } },
+        });
+        if (activeCaseCount >= 5) throw new CaseWorkflowError(409, "已达到同时处理委托上限（5 个）");
+      }
+      if (lockedOldStatus === "OPENED" && newStatus === "CLOSED" && !lockedIsSubmitter && !isAdmin) {
+        throw new CaseWorkflowError(403, "仅提交者或 Admin 可取消委托");
+      }
+      if (lockedOldStatus === "IN_PROGRESS" && newStatus === "NEED_MORE_INFO" && !lockedIsHandler && !isAdmin) {
+        throw new CaseWorkflowError(403, "仅处理者或 Admin 可请求补充信息");
+      }
+      if (lockedOldStatus === "NEED_MORE_INFO" && newStatus === "IN_PROGRESS" && !lockedIsSubmitter && !isAdmin) {
+        throw new CaseWorkflowError(403, "仅提交者或 Admin 可补充信息");
+      }
+      if (lockedOldStatus === "IN_PROGRESS" && newStatus === "CLOSED" && !lockedIsHandler && !isAdmin) {
+        throw new CaseWorkflowError(403, "仅处理者或 Admin 可关闭委托");
+      }
+
+      const lockedUpdateData: Record<string, unknown> = { status: newStatus };
+      if (lockedOldStatus === "OPENED" && newStatus === "IN_PROGRESS") lockedUpdateData.handlerId = userId;
+      let lockedActionDesc = `状态变更: ${lockedOldStatus} → ${newStatus}`;
+      if (lockedOldStatus === "OPENED" && newStatus === "IN_PROGRESS") {
+        lockedActionDesc = "DCRHelper 接单";
+      } else if (lockedOldStatus === "IN_PROGRESS" && newStatus === "NEED_MORE_INFO") {
+        lockedActionDesc = "请求补充信息";
+      } else if (lockedOldStatus === "NEED_MORE_INFO" && newStatus === "IN_PROGRESS") {
+        lockedActionDesc = "已补充信息";
+      } else if (newStatus === "CLOSED") {
+        lockedActionDesc = lockedOldStatus === "OPENED" ? "提交者取消委托" : "委托已关闭";
+      }
       const updated = await tx.case.update({
         where: { id },
-        data: updateData,
+        data: lockedUpdateData,
         include: {
           submitter: { select: { id: true, nickname: true } },
           handler: { select: { id: true, nickname: true } },
@@ -593,15 +649,15 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       await tx.timelineEvent.create({
         data: {
           caseId: id,
-          action: actionDesc,
-          oldStatus,
+          action: lockedActionDesc,
+          oldStatus: lockedOldStatus,
           newStatus,
           details: details ?? null,
         },
       });
 
       // If accepting case (OPENED → IN_PROGRESS), create CaseHandler record + session channel
-      if (oldStatus === "OPENED" && newStatus === "IN_PROGRESS") {
+      if (lockedOldStatus === "OPENED" && newStatus === "IN_PROGRESS") {
         await tx.caseHandler.create({
           data: { caseId: id, userId },
         });
@@ -617,7 +673,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
             content: `会话通道已建立。匿名标识: ${anonymousId}`,
             isAnonymous: true,
             senderId: userId,
-            receiverId: caseRecord.submitterId,
+            receiverId: lockedCase.submitterId,
             caseId: id,
           },
         });
@@ -661,6 +717,9 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
   } catch (error) {
     if (error instanceof CaseReviewError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (error instanceof CaseWorkflowError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     if (error instanceof SerializableTransactionConflict) {
       return NextResponse.json(
@@ -764,7 +823,29 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
   const isOpenedCase = oldStatus === "OPENED";
 
   // Build transaction
-  const updatedCase = await prisma.$transaction(async (tx) => {
+  const joinResult = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${caseId}`}))`;
+    const lockedCase = await tx.case.findUnique({
+      where: { id: caseId },
+      include: { handlers: { select: { userId: true } } },
+    });
+    if (!lockedCase) throw new CaseWorkflowError(404, "委托不存在");
+    if (lockedCase.requestStatus !== "APPROVED") throw new CaseWorkflowError(409, "该委托仍在管理员审核中，审核通过后才能加入");
+    if (lockedCase.submitterId === userId) throw new CaseWorkflowError(403, "不能加入自己提交的委托");
+    if (lockedCase.status !== "OPENED" && lockedCase.status !== "IN_PROGRESS") {
+      throw new CaseWorkflowError(409, `当前状态 ${lockedCase.status} 不允许加入`);
+    }
+    if (lockedCase.handlers.some((handler) => handler.userId === userId)) {
+      throw new CaseWorkflowError(409, "您已是该工单的处理者");
+    }
+    if (lockedCase.handlers.length >= 5) throw new CaseWorkflowError(409, "该工单处理者已达上限（5 人）");
+    const activeCaseCount = await tx.caseHandler.count({
+      where: { userId, case_: { status: { in: [CaseStatus.IN_PROGRESS, CaseStatus.NEED_MORE_INFO] } } },
+    });
+    if (activeCaseCount >= 5) throw new CaseWorkflowError(409, "已达到同时处理委托上限（5 个）");
+    const lockedOldStatus = lockedCase.status;
+    const lockedIsOpenedCase = lockedOldStatus === "OPENED";
+
     // Create CaseHandler record
     await tx.caseHandler.create({
       data: { caseId, userId },
@@ -777,7 +858,7 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
 
     // If OPENED, transition to IN_PROGRESS and set handlerId (primary handler)
     const updateData: Record<string, unknown> = {};
-    if (isOpenedCase) {
+    if (lockedIsOpenedCase) {
       updateData.status = "IN_PROGRESS";
       updateData.handlerId = userId;
     }
@@ -792,38 +873,39 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
     });
 
     // Create timeline event
-    const actionDesc = isOpenedCase ? "DCRHelper 接单" : "DCRHelper 加入协助";
-    const newStatus = isOpenedCase ? "IN_PROGRESS" : oldStatus;
+    const actionDesc = lockedIsOpenedCase ? "DCRHelper 接单" : "DCRHelper 加入协助";
+    const newStatus = lockedIsOpenedCase ? "IN_PROGRESS" : lockedOldStatus;
     await tx.timelineEvent.create({
       data: {
         caseId,
         action: actionDesc,
-        oldStatus,
+        oldStatus: lockedOldStatus,
         newStatus,
         details: null,
       },
     });
 
     // If OPENED → IN_PROGRESS, create session channel message
-    if (isOpenedCase) {
+    if (lockedIsOpenedCase) {
       const anonymousId = generateAnonymousId();
       await tx.message.create({
         data: {
           content: `会话通道已建立。匿名标识: ${anonymousId}`,
           isAnonymous: true,
           senderId: userId,
-          receiverId: caseRecord.submitterId,
+          receiverId: lockedCase.submitterId,
           caseId,
         },
       });
     }
 
-    return updated;
+    return { updated, oldStatus: lockedOldStatus, isOpenedCase: lockedIsOpenedCase, submitterId: lockedCase.submitterId };
   });
+  const { updated: updatedCase, oldStatus: lockedOldStatus, isOpenedCase: lockedIsOpenedCase } = joinResult;
 
   // Send notification to submitter
   if (caseRecord.submitterId !== userId) {
-    const notifBody = isOpenedCase
+    const notifBody = lockedIsOpenedCase
       ? "您的委托已被接单，状态已更新为 IN_PROGRESS"
       : "有新的协助者加入了您的委托";
     await createNotification(
@@ -841,7 +923,7 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
     "UPDATE_CASE_STATUS",
     AuditTargetType.CASE,
     caseId,
-    { action: "JOIN", oldStatus, newStatus: isOpenedCase ? "IN_PROGRESS" : oldStatus },
+    { action: "JOIN", oldStatus: lockedOldStatus, newStatus: lockedIsOpenedCase ? "IN_PROGRESS" : lockedOldStatus },
   );
 
   return NextResponse.json({ case: updatedCase });

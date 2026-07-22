@@ -25,15 +25,6 @@ vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 
-const mockRedisGet = vi.fn();
-const mockRedisSet = vi.fn();
-vi.mock("@/lib/redis", () => ({
-  default: {
-    get: (...args: unknown[]) => mockRedisGet(...args),
-    set: (...args: unknown[]) => mockRedisSet(...args),
-  },
-}));
-
 import { getServerSession } from "next-auth/next";
 
 const mockGetServerSession = vi.mocked(getServerSession);
@@ -131,7 +122,10 @@ describe("GET /api/recommendations", () => {
     expect(data.recommendations[1].post).toBeNull();
     expect(mockPostFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: { in: ["p1"] }, status: "PUBLISHED" },
+        where: {
+          id: { in: ["p1"] }, status: "PUBLISHED", visibility: "PUBLIC",
+          board: { zone: "PUBLIC" }, author: { isShadowBanned: false },
+        },
       }),
     );
   });
@@ -151,6 +145,20 @@ describe("GET /api/recommendations", () => {
 
     expect(res.status).toBe(200);
     expect(data.recommendations[0].post).toBeNull();
+  });
+
+  it("每次请求都重新校验推荐帖可见性", async () => {
+    mockGetServerSession.mockResolvedValue(null);
+    mockRecommendationFindMany.mockResolvedValue([{ id: "r1", postId: "p1", sortOrder: 0, isActive: true }]);
+    mockPostFindMany.mockResolvedValueOnce([{ id: "p1", title: "可见" }]).mockResolvedValueOnce([]);
+    const { GET } = await import("../route");
+
+    const first = await (await GET(makeRequest(), { params: {} })).json();
+    const second = await (await GET(makeRequest(), { params: {} })).json();
+
+    expect(first.recommendations[0].post).toMatchObject({ id: "p1" });
+    expect(second.recommendations[0].post).toBeNull();
+    expect(mockPostFindMany).toHaveBeenCalledTimes(2);
   });
 
   it("应返回空数组当没有活跃推荐", async () => {

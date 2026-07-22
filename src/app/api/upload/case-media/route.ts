@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { enforceRateLimit } from "@/lib/rate-limiter";
-import { generateObjectKey, uploadToOSS } from "@/lib/oss";
+import { createProtectedMediaUrl, generateObjectKey, uploadPrivateObject } from "@/lib/oss";
+import prisma from "@/lib/prisma";
 
 const MAX_MEDIA_SIZE = 20 * 1024 * 1024;
 const MIME_EXTENSIONS: Record<string, string> = {
@@ -41,9 +42,16 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   try {
     const formData = await req.formData();
     const file = formData.get("file");
+    const caseId = String(formData.get("caseId") || "");
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "请选择要发送的文件" }, { status: 400 });
     }
+    const privileged = ["MODERATOR", "ADMIN", "SUPER_ADMIN"].includes(req.user.role);
+    const caseRecord = await prisma.case.findFirst({
+      where: { id: caseId, ...(privileged ? {} : { OR: [{ submitterId: req.user.id }, { handlerId: req.user.id }, { handlers: { some: { userId: req.user.id } } }] }) },
+      select: { id: true },
+    });
+    if (!caseRecord) return NextResponse.json({ error: "无权向该委托上传文件" }, { status: 403 });
 
     const extension = MIME_EXTENSIONS[file.type];
     if (!extension) {
@@ -55,7 +63,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const key = generateObjectKey(extension);
-    const url = await uploadToOSS(buffer, key, file.type);
+    await uploadPrivateObject(buffer, key, file.type);
+    const url = createProtectedMediaUrl(key, "CASE", caseId);
 
     return NextResponse.json({
       url,

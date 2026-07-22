@@ -5,6 +5,7 @@ import { paginationSchema } from "@/lib/validators";
 import { TaskStatus } from "@prisma/client";
 import { z } from "zod";
 import { getPublicDcrTaskCopy } from "@/lib/dcr-task-public";
+import { canUseDcrWorkspace } from "@/lib/dcr-capabilities";
 
 // ==================== Schemas ====================
 
@@ -55,16 +56,12 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const userRole = req.user.role;
 
     // Check dcrAccess (Admin/SuperAdmin bypass)
-    const isAdminLevel = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
-    if (!isAdminLevel) {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { dcrAccess: true },
-      });
-
-      if (!user?.dcrAccess) {
-        return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
-      }
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { dcrAccess: true, dcrPledgeSigned: true },
+    });
+    if (!user || !canUseDcrWorkspace({ ...user, role: userRole })) {
+      return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);

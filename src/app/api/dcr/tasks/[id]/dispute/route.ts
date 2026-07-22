@@ -77,25 +77,30 @@ export const POST = withAuth(async (
     }
 
     // Transition to DISPUTED in a transaction
-    const oldStatus = task.status;
-
     await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+      const currentTask = await tx.mutualAidTask.findUnique({ where: { id }, select: { status: true, requesterId: true } });
+      const currentSession = await tx.helpSession.findUnique({
+        where: { id: selected.id },
+        select: { helperId: true, status: true },
+      });
+      if (!currentTask || !currentSession) throw new Error("SESSION_STATE_CHANGED");
+      if (currentTask.requesterId !== userId && currentSession.helperId !== userId) throw new Error("SESSION_FORBIDDEN");
+      if (!canTransition(currentSession.status as TaskStatus, "DISPUTED")) throw new Error("SESSION_STATE_CHANGED");
       const updated = await tx.helpSession.updateMany({
-        where: { id: selected.id, status: selected.status },
-        data: { status: "DISPUTED", statusBeforeDispute: selected.status },
+        where: { id: selected.id, status: currentSession.status },
+        data: { status: "DISPUTED", statusBeforeDispute: currentSession.status },
       });
       if (updated.count === 0) throw new Error("SESSION_STATE_CHANGED");
-      const status = aggregateHelpSessionStatus(
-        task.helpSessions.map((session) => session.id === selected.id ? "DISPUTED" : session.status),
-      );
+      const sessions = await tx.helpSession.findMany({ where: { taskId: id }, select: { status: true } });
+      const status = aggregateHelpSessionStatus(sessions.map((session) => session.status));
       await tx.mutualAidTask.updateMany({ where: { id }, data: { status } });
 
       await tx.taskTimelineEvent.create({
         data: {
           taskId: id,
           action: "dispute",
-          oldStatus,
+          oldStatus: currentTask.status,
           newStatus: "DISPUTED",
           details: `[session:${selected.id}]\n${explanation}`,
           operatorId: userId,
@@ -126,6 +131,9 @@ export const POST = withAuth(async (
   } catch (error) {
     if (error instanceof Error && error.message === "SESSION_STATE_CHANGED") {
       return NextResponse.json({ error: "会话状态已变化，请刷新后重试" }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === "SESSION_FORBIDDEN") {
+      return NextResponse.json({ error: "仅互助双方可发起争议" }, { status: 403 });
     }
     console.error("POST /api/dcr/tasks/[id]/dispute error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

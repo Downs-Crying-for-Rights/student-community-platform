@@ -26,36 +26,96 @@ function DMThreadContent() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [isSystemReadOnly, setIsSystemReadOnly] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const initialScrollRef = useRef(false);
+  const loadInFlightRef = useRef(false);
+  const generationRef = useRef(0);
+  const controllersRef = useRef(new Set<AbortController>());
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (mode: "initial" | "poll" | "older", cursor?: string, generation = generationRef.current) => {
+    if (mode !== "older" && loadInFlightRef.current) return;
+    if (mode !== "older") loadInFlightRef.current = true;
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
+    const container = scrollRef.current;
+    const previousHeight = container?.scrollHeight ?? 0;
     try {
-      const res = await fetch(`/api/dm/thread/${threadId}`);
+      const params = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+      const res = await fetch(`/api/dm/thread/${threadId}${params}`, { signal: controller.signal });
       const data = await res.json().catch(() => ({}));
+      if (generation !== generationRef.current) return;
       if (res.ok) {
-        setMessages(data.messages ?? []);
+        const incoming: DMMessage[] = data.messages ?? [];
+        setMessages((previous) => {
+          const byId = new Map((cursor ? [...incoming, ...previous] : [...previous, ...incoming]).map((message) => [message.id, message]));
+          return [...byId.values()].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        });
+        if (mode !== "poll") {
+          setNextCursor(data.nextCursor ?? null);
+          setHasMore(Boolean(data.hasMore));
+        }
         setIsSystemReadOnly(Boolean(data.isSystemReadOnly));
         setError("");
+        if (mode === "older") {
+          requestAnimationFrame(() => {
+            if (container) container.scrollTop += container.scrollHeight - previousHeight;
+          });
+        }
       } else {
         setError(data.error || "私信加载失败");
       }
-    } catch {
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      if (generation !== generationRef.current) return;
       setError("网络错误，请检查连接后重试");
     } finally {
-      setLoading(false);
+      controllersRef.current.delete(controller);
+      if (generation === generationRef.current) {
+        setLoading(false);
+        setLoadingOlder(false);
+        if (mode !== "older") loadInFlightRef.current = false;
+      }
     }
   }, [threadId]);
 
   useEffect(() => {
+    const generation = ++generationRef.current;
+    const controllers = controllersRef.current;
+    controllers.forEach((controller) => controller.abort());
+    controllers.clear();
+    loadInFlightRef.current = false;
+    initialScrollRef.current = false;
+    setMessages([]);
+    setNextCursor(null);
+    setHasMore(false);
+    setError("");
+    setLoading(true);
     fetch("/api/auth/session").then((res) => res.json()).then((data) => setUserId(data?.user?.id ?? ""));
-    load();
-    const timer = setInterval(load, 10000);
-    return () => clearInterval(timer);
+    void load("initial", undefined, generation);
+    const timer = setInterval(() => void load("poll", undefined, generation), 10000);
+    return () => {
+      clearInterval(timer);
+      controllers.forEach((controller) => controller.abort());
+      controllers.clear();
+    };
   }, [load]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!loading && messages.length > 0 && !initialScrollRef.current) {
+      initialScrollRef.current = true;
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [loading, messages.length]);
+
+  function loadOlder() {
+    if (!nextCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    void load("older", nextCursor);
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -71,7 +131,7 @@ function DMThreadContent() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setContent("");
-        await load();
+        await load("poll");
       } else {
         setError(data.error || "发送失败");
       }
@@ -88,8 +148,9 @@ function DMThreadContent() {
         <Button variant="ghost" size="sm" asChild><Link href="/messages?tab=dm"><ArrowLeft className="h-4 w-4" />返回私信</Link></Button>
         <h1 className="font-semibold">一对一私信</h1>
       </div>
-      {error && <p className="mb-3 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
-      <div className="flex-1 space-y-3 overflow-y-auto pb-24">
+      {error && <div className="mb-3 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"><p>{error}</p><Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => void load(nextCursor ? "older" : "poll", nextCursor ?? undefined)}>重试</Button></div>}
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pb-24">
+        {!loading && hasMore && <div className="flex justify-center"><Button variant="ghost" size="sm" onClick={loadOlder} disabled={loadingOlder}>{loadingOlder && <Loader2 className="h-4 w-4 animate-spin" />}加载更早消息</Button></div>}
         {loading ? <Loader2 className="mx-auto mt-12 h-6 w-6 animate-spin" /> : messages.map((message) => (
           <div key={message.id} className={cn("flex items-end gap-1", message.senderId === userId ? "justify-end" : "justify-start")}>
             <div className={cn("max-w-[80%] rounded-2xl px-4 py-2 text-sm", message.senderId === userId ? "bg-primary text-primary-foreground" : "bg-muted")}>{message.content}</div>

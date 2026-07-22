@@ -24,7 +24,7 @@ export interface EvidenceItem {
   id: string;
   type: string;
   description: string;
-  fileUrl: string | null;
+  hasFile: boolean;
   fileName: string | null;
   fileSize: number | null;
   createdAt: string;
@@ -385,7 +385,7 @@ export default function EvidenceRoomPage() {
                           <p className="text-foreground whitespace-pre-wrap break-words">
                             {item.description}
                           </p>
-                          {item.fileName && item.fileUrl && (
+                          {item.fileName && item.hasFile && (
                             <Button
                               type="button"
                               variant="ghost"

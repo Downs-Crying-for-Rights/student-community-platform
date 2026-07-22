@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   sessionUpdate: vi.fn(),
   sessionUpdateMany: vi.fn(),
   sessionFindUniqueOrThrow: vi.fn(),
+  sessionFindUnique: vi.fn(),
   sessionFindMany: vi.fn(),
   taskUpdate: vi.fn(),
   timelineCreate: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("@/lib/prisma", () => {
       update: mocks.sessionUpdate,
       updateMany: mocks.sessionUpdateMany,
       findUniqueOrThrow: mocks.sessionFindUniqueOrThrow,
+      findUnique: mocks.sessionFindUnique,
       findMany: mocks.sessionFindMany,
     },
     mutualAidTask: { findUnique: mocks.taskFindUnique, updateMany: mocks.taskUpdate },
@@ -99,6 +101,7 @@ describe("POST /api/dcr/tasks/[id]/close", () => {
       ...task().helpSessions[0],
       helperConfirmed: true,
     });
+    mocks.sessionFindUnique.mockResolvedValue(task().helpSessions[0]);
     mocks.sessionFindMany.mockResolvedValue([{ status: "COMPLETED" }, { status: "IN_PROGRESS" }]);
     mocks.sessionUpdateMany.mockResolvedValue({ count: 1 });
     mocks.taskUpdate.mockResolvedValue({ count: 1 });
@@ -133,11 +136,28 @@ describe("POST /api/dcr/tasks/[id]/close", () => {
     }));
   });
 
+  it("stores a completion report when the final session completes", async () => {
+    mocks.sessionFindMany.mockResolvedValue([{ status: "COMPLETED" }]);
+    const response = await POST(
+      request("helper1", { action: "confirm", sessionId: session1 }),
+      { params: { id: "task1" } },
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.status).toBe("COMPLETED");
+    expect(data.completionReport).toMatchObject({ taskId: "task1", closeType: "mutual" });
+    expect(mocks.taskUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "COMPLETED", completionReport: expect.any(Object) }),
+    }));
+  });
+
   it("notifies the counterpart when a close request is awaiting confirmation", async () => {
     mocks.sessionFindUniqueOrThrow.mockResolvedValue({
       ...task().helpSessions[1],
       helperConfirmed: true,
     });
+    mocks.sessionFindUnique.mockResolvedValue(task().helpSessions[1]);
     mocks.sessionFindMany.mockResolvedValue([{ status: "EVIDENCE_PENDING" }]);
 
     const response = await POST(

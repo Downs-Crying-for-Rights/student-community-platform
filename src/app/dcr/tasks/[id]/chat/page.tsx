@@ -90,8 +90,17 @@ export default function HelpChatPage() {
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [olderCursor, setOlderCursor] = useState<string | null>(null);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const pollingRef = useRef(false);
+  const initialScrollRef = useRef(false);
+  const generationRef = useRef(0);
+  const controllersRef = useRef(new Set<AbortController>());
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -127,14 +136,36 @@ export default function HelpChatPage() {
   }, [taskId]);
 
   /* ---- Fetch messages ---- */
-  const fetchMessages = useCallback(async () => {
+  const fetchMessages = useCallback(async (mode: "initial" | "poll" | "older", cursor?: string, generation = generationRef.current) => {
+    if (mode !== "older" && pollingRef.current) return;
+    if (mode !== "older") pollingRef.current = true;
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
+    const container = messagesRef.current;
+    const previousHeight = container?.scrollHeight ?? 0;
     try {
-      const res = await fetch(`${chatApi}${chatApi.includes("?") ? "&" : "?"}pageSize=50`);
+      const params = new URLSearchParams({ pageSize: "50" });
+      if (cursor) params.set("cursor", cursor);
+      const res = await fetch(`${chatApi}${chatApi.includes("?") ? "&" : "?"}${params}`, { signal: controller.signal });
+      if (generation !== generationRef.current) return;
       if (res.ok) {
         const data = await res.json();
-        setMessages(data.messages ?? []);
+        const incoming: ChatMessage[] = data.messages ?? [];
+        setMessages((previous) => {
+          const byId = new Map((cursor ? [...incoming, ...previous] : [...previous, ...incoming]).map((message) => [message.id, message]));
+          return [...byId.values()].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        });
+        if (mode !== "poll") {
+          setOlderCursor(data.pagination?.nextCursor ?? null);
+          setHasOlder(Boolean(data.pagination?.hasMore));
+        }
         setMutualAid(data.mutualAid ?? null);
         setError(null);
+        if (mode === "older") {
+          requestAnimationFrame(() => {
+            if (container) container.scrollTop += container.scrollHeight - previousHeight;
+          });
+        }
       } else if (res.status === 403) {
         setError("无权访问此聊天");
       } else if (res.status === 404) {
@@ -142,24 +173,47 @@ export default function HelpChatPage() {
       } else {
         setError("加载消息失败");
       }
-    } catch {
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      if (generation !== generationRef.current) return;
       setError("网络错误，请检查连接后重试");
     } finally {
-      setLoading(false);
+      controllersRef.current.delete(controller);
+      if (generation === generationRef.current) {
+        setLoading(false);
+        setLoadingOlder(false);
+        if (mode !== "older") pollingRef.current = false;
+      }
     }
   }, [chatApi]);
 
   useEffect(() => {
     if (!taskId) return;
-    fetchTask();
-    fetchMessages();
+    const generation = ++generationRef.current;
+    const controllers = controllersRef.current;
+    controllers.forEach((controller) => controller.abort());
+    controllers.clear();
+    pollingRef.current = false;
+    initialScrollRef.current = false;
+    setMessages([]);
+    setOlderCursor(null);
+    setHasOlder(false);
+    setError(null);
+    setLoading(true);
+    void fetchTask();
+    void fetchMessages("initial", undefined, generation);
+    return () => {
+      controllers.forEach((controller) => controller.abort());
+      controllers.clear();
+    };
   }, [taskId, fetchTask, fetchMessages]);
 
   /* ---- Polling ---- */
   useEffect(() => {
-    const interval = setInterval(fetchMessages, 15000);
+    const generation = generationRef.current;
+    const interval = setInterval(() => void fetchMessages("poll", undefined, generation), 15000);
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") fetchMessages();
+      if (document.visibilityState === "visible") void fetchMessages("poll", undefined, generation);
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => {
@@ -170,28 +224,43 @@ export default function HelpChatPage() {
 
   /* ---- Auto-scroll ---- */
   useEffect(() => {
-    if (!loading && messages.length > 0) scrollToBottom();
+    if (!loading && messages.length > 0 && !initialScrollRef.current) {
+      initialScrollRef.current = true;
+      scrollToBottom();
+    }
   }, [loading, messages.length, scrollToBottom]);
+
+  const loadOlder = () => {
+    if (!olderCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    void fetchMessages("older", olderCursor);
+  };
 
   /* ---- Send message ---- */
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = content.trim();
-    if (!trimmed || sending) return;
+    if ((!trimmed && !attachment) || sending) return;
 
     setSending(true);
     setSendError(null);
 
     try {
+      const body = attachment ? new FormData() : JSON.stringify({ content: trimmed });
+      if (body instanceof FormData) {
+        body.append("content", trimmed);
+        body.append("file", attachment!);
+      }
       const res = await fetch(chatApi, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: trimmed }),
+        ...(body instanceof FormData ? {} : { headers: { "Content-Type": "application/json" } }),
+        body,
       });
 
       if (res.ok) {
         setContent("");
-        await fetchMessages();
+        setAttachment(null);
+        await fetchMessages("poll");
         setTimeout(() => scrollToBottom(), 50);
       } else {
         const data = await res.json().catch(() => null);
@@ -350,17 +419,32 @@ export default function HelpChatPage() {
         </div>
 
         {/* ===== Message list ===== */}
+        {error && messages.length > 0 && (
+          <div role="alert" className="mb-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">
+            {error}
+            <Button type="button" size="sm" variant="outline" className="ml-3" onClick={() => void fetchMessages(olderCursor ? "older" : "poll", olderCursor ?? undefined)}>重试</Button>
+          </div>
+        )}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">私聊消息</CardTitle>
           </CardHeader>
           <CardContent>
             <div
+              ref={messagesRef}
               className="max-h-[28rem] space-y-3 overflow-y-auto"
               role="log"
               aria-label="聊天消息列表"
               aria-live="polite"
             >
+              {hasOlder && (
+                <div className="flex justify-center pb-2">
+                  <Button type="button" variant="ghost" size="sm" disabled={loadingOlder} onClick={loadOlder}>
+                    {loadingOlder && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                    加载更早消息
+                  </Button>
+                </div>
+              )}
               {messages.length === 0 ? (
                 <p className="py-4 text-center text-sm text-muted-foreground">
                   暂无消息
@@ -409,6 +493,11 @@ export default function HelpChatPage() {
                           <p className="text-sm whitespace-pre-wrap break-words">
                             {msg.content}
                           </p>
+                          {msg.fileUrl && (
+                            <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="mt-2 block text-sm underline">
+                              查看附件
+                            </a>
+                          )}
                           <div className="mt-1 flex items-center gap-2">
                             <span
                               className={cn(
@@ -464,7 +553,7 @@ export default function HelpChatPage() {
             {/* ===== Send form ===== */}
             <form
               onSubmit={handleSend}
-              className="mt-4 flex gap-2"
+              className="mt-4 flex flex-wrap gap-2"
               aria-label="发送消息"
             >
               <textarea
@@ -486,10 +575,21 @@ export default function HelpChatPage() {
                   }
                 }}
               />
+              <label className="inline-flex cursor-pointer items-center gap-1 self-end rounded-md border px-3 py-2 text-sm">
+                <Upload className="h-4 w-4" aria-hidden="true" />
+                {attachment ? attachment.name : "附件"}
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain,.doc,.docx,.xls,.xlsx,.zip"
+                  disabled={sending}
+                  onChange={(event) => setAttachment(event.target.files?.[0] ?? null)}
+                />
+              </label>
               <Button
                 type="submit"
                 size="sm"
-                disabled={sending || !content.trim()}
+                disabled={sending || (!content.trim() && !attachment)}
                 aria-label="发送"
                 className="self-end"
               >

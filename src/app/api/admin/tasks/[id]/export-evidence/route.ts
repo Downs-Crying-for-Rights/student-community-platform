@@ -81,7 +81,7 @@ export const GET = withAuth(async (
         description: item.description,
         fileName: item.fileName,
         fileSize: item.fileSize,
-        fileUrl: item.fileUrl,
+        hasFile: Boolean(item.fileUrl),
         createdAt: item.createdAt,
         uploaderId: item.uploaderId,
       })),
@@ -105,6 +105,7 @@ export const GET = withAuth(async (
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Cache-Control": "private, no-store",
       },
     });
   } catch (error) {

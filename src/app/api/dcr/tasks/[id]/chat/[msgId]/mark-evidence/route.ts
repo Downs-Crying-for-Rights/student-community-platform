@@ -62,11 +62,12 @@ export const POST = withAuth(async (
       if (!current || ["DISPUTED", "COMPLETED", "CLOSED"].includes(current.status)) {
         throw new Error("SESSION_READ_ONLY");
       }
-      const updatedMsg = await tx.helpChatMessage.update({
-        where: { id: msgId },
+      const marked = await tx.helpChatMessage.updateMany({
+        where: { id: msgId, isEvidence: false },
         data: { isEvidence: true },
-        select: { id: true, isEvidence: true },
       });
+
+      if (marked.count === 0) return { id: msgId, isEvidence: true };
 
       await tx.evidenceItem.create({
         data: {
@@ -77,7 +78,7 @@ export const POST = withAuth(async (
         },
       });
 
-      return updatedMsg;
+      return { id: msgId, isEvidence: true };
     });
 
     return NextResponse.json({ id: updated.id, isEvidence: true });

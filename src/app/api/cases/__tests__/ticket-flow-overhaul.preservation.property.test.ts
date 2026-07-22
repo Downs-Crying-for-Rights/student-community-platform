@@ -205,7 +205,9 @@ describe("Observation 2: 状态机转换规则不变", () => {
           // Mock transaction to execute the callback
           mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
             const tx = {
+              $queryRaw: vi.fn().mockResolvedValue([]),
               case: {
+                findUnique: (...args: unknown[]) => mockCaseFindUnique(...args),
                 update: vi.fn().mockResolvedValue({
                   id: "case-1",
                   status: transition.to,
@@ -213,7 +215,10 @@ describe("Observation 2: 状态机转换规则不变", () => {
                   handler: { id: userId, nickname: "Handler" },
                 }),
               },
-              caseHandler: { create: vi.fn().mockResolvedValue({}) },
+              caseHandler: {
+                count: (...args: unknown[]) => mockCaseHandlerCount(...args),
+                create: vi.fn().mockResolvedValue({}),
+              },
               user: { update: vi.fn().mockResolvedValue({}) },
               timelineEvent: { create: vi.fn().mockResolvedValue({}) },
               message: { create: vi.fn().mockResolvedValue({}) },
@@ -431,7 +436,9 @@ describe("Observation 5: DCR_HELPER 并发处理上限 5 个活跃工单", () =>
 
           mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
             const tx = {
+              $queryRaw: vi.fn().mockResolvedValue([]),
               case: {
+                findUnique: (...args: unknown[]) => mockCaseFindUnique(...args),
                 update: vi.fn().mockResolvedValue({
                   id: "case-ok",
                   status: "IN_PROGRESS",
@@ -439,7 +446,10 @@ describe("Observation 5: DCR_HELPER 并发处理上限 5 个活跃工单", () =>
                   handler: { id: helperId, nickname: "Helper" },
                 }),
               },
-              caseHandler: { create: vi.fn().mockResolvedValue({}) },
+              caseHandler: {
+                count: (...args: unknown[]) => mockCaseHandlerCount(...args),
+                create: vi.fn().mockResolvedValue({}),
+              },
               user: { update: vi.fn().mockResolvedValue({}) },
               timelineEvent: { create: vi.fn().mockResolvedValue({}) },
               message: { create: vi.fn().mockResolvedValue({}) },

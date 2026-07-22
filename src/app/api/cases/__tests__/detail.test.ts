@@ -263,8 +263,9 @@ describe("PATCH /api/cases/[id]", () => {
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        case: { update: vi.fn().mockResolvedValue(updatedCase) },
-        caseHandler: { create: vi.fn() },
+        $queryRaw: vi.fn(),
+        case: { findUnique: mockCaseFindUnique, update: vi.fn().mockResolvedValue(updatedCase) },
+        caseHandler: { count: mockCaseHandlerCount, create: vi.fn() },
         timelineEvent: { create: vi.fn() },
         user: { update: vi.fn() },
         message: { create: vi.fn() },
@@ -382,8 +383,9 @@ describe("PATCH /api/cases/[id]", () => {
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        case: { update: vi.fn().mockResolvedValue(updatedCase) },
-        caseHandler: { create: vi.fn() },
+        $queryRaw: vi.fn(),
+        case: { findUnique: mockCaseFindUnique, update: vi.fn().mockResolvedValue(updatedCase) },
+        caseHandler: { count: mockCaseHandlerCount, create: vi.fn() },
         timelineEvent: { create: vi.fn() },
         user: { update: vi.fn() },
         message: { create: vi.fn() },
@@ -428,8 +430,9 @@ describe("PATCH /api/cases/[id] - JOIN action", () => {
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        case: { update: vi.fn().mockResolvedValue(updatedCase) },
-        caseHandler: { create: vi.fn() },
+        $queryRaw: vi.fn(),
+        case: { findUnique: mockCaseFindUnique, update: vi.fn().mockResolvedValue(updatedCase) },
+        caseHandler: { count: mockCaseHandlerCount, create: vi.fn() },
         timelineEvent: { create: vi.fn() },
         user: { update: vi.fn() },
         message: { create: vi.fn() },
@@ -494,8 +497,9 @@ describe("PATCH /api/cases/[id] - JOIN action", () => {
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        case: { update: vi.fn().mockResolvedValue(updatedCase) },
-        caseHandler: { create: vi.fn() },
+        $queryRaw: vi.fn(),
+        case: { findUnique: mockCaseFindUnique, update: vi.fn().mockResolvedValue(updatedCase) },
+        caseHandler: { count: mockCaseHandlerCount, create: vi.fn() },
         timelineEvent: { create: vi.fn() },
         user: { update: vi.fn() },
         message: { create: vi.fn() },

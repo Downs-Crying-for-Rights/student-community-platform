@@ -43,16 +43,20 @@ export const PATCH = withAuth(async (
     // Update comment and adjust post comment count
     const countDelta = isDeleted && !existing.isDeleted ? -1 : !isDeleted && existing.isDeleted ? 1 : 0;
 
-    await prisma.$transaction([
-      prisma.comment.update({ where: { id }, data: { isDeleted } }),
-      ...(countDelta !== 0
-        ? [prisma.post.update({
-            where: { id: existing.postId },
-            data: { commentCount: { increment: countDelta } },
-          })]
-        : []),
-      ...(countDelta !== 0 && existing.authorId !== req.user.id
-        ? [prisma.notification.create({
+    await prisma.$transaction(async (tx) => {
+      const changed = await tx.comment.updateMany({
+        where: { id, isDeleted: existing.isDeleted },
+        data: { isDeleted, reportAutoHidden: false },
+      });
+      if (changed.count !== 1) throw new Error("COMMENT_STATE_CHANGED");
+      if (countDelta !== 0) {
+        await tx.post.update({
+          where: { id: existing.postId },
+          data: { commentCount: { increment: countDelta } },
+        });
+      }
+      if (countDelta !== 0 && existing.authorId !== req.user.id) {
+        await tx.notification.create({
             data: {
               userId: existing.authorId,
               type: "SYSTEM",
@@ -60,9 +64,9 @@ export const PATCH = withAuth(async (
               content: isDeleted ? "你的评论已由平台删除。" : "你的评论已由平台恢复。",
               link: `/post/${existing.postId}`,
             },
-          })]
-        : []),
-    ]);
+          });
+      }
+    });
 
     const action = isDeleted ? "ADMIN_DELETE_COMMENT" : "ADMIN_RESTORE_COMMENT";
     await logAudit(req.user.id, action, AuditTargetType.COMMENT, id, {
@@ -71,6 +75,9 @@ export const PATCH = withAuth(async (
 
     return NextResponse.json({ message: isDeleted ? "评论已删除" : "评论已恢复" });
   } catch (error) {
+    if (error instanceof Error && error.message === "COMMENT_STATE_CHANGED") {
+      return NextResponse.json({ error: "评论状态已变化，请刷新后重试" }, { status: 409 });
+    }
     console.error("PATCH /api/admin/comments/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

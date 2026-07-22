@@ -7,6 +7,7 @@ RELEASE_DIR="$APP_DIR/releases/$RELEASE_SHA"
 SHARED_DIR="$APP_DIR/shared"
 CURRENT_LINK="$APP_DIR/current"
 PROJECT_NAME="forum-dcr2026"
+DEPLOY_OVERRIDE="$RELEASE_DIR/docker-compose.production.yml"
 BOT_DIR="${BOT_DIR:-/opt/forum-dcr2026-bot}"
 HEALTH_URL="https://forum.dcr2026.com/"
 DEPLOYMENT_URL="https://forum.dcr2026.com/DEPLOYMENT"
@@ -73,8 +74,29 @@ chmod 600 "$RELEASE_DIR/.env"
 
 cd "$RELEASE_DIR"
 printf '%s\n' "$RELEASE_SHA" > public/DEPLOYMENT
-docker compose -p "$PROJECT_NAME" config --quiet
-APP_RELEASE="$RELEASE_SHA" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
+docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" config --quiet
+
+# Apply reviewed forward-only migrations as an explicit deployment phase.
+# The application container itself never mutates the database on restart.
+APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" build web
+APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" up -d postgres
+postgres_ready=false
+for attempt in {1..30}; do
+  if docker compose -p "$PROJECT_NAME" exec -T postgres pg_isready -U postgres -d student_community >/dev/null 2>&1; then
+    postgres_ready=true
+    break
+  fi
+  echo "PostgreSQL readiness attempt $attempt/30 failed; retrying in 2 seconds"
+  sleep 2
+done
+if [[ "$postgres_ready" != true ]]; then
+  echo "PostgreSQL did not become ready; migrations were not attempted" >&2
+  docker compose -p "$PROJECT_NAME" logs --tail=100 postgres >&2 || true
+  exit 1
+fi
+APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" run --rm --no-deps web \
+  node /prisma-cli/node_modules/prisma/build/index.js migrate deploy --schema=./prisma/schema.prisma
+APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" up -d --no-build --remove-orphans
 
 if ! docker compose -p "$PROJECT_NAME" exec -T web sh -ec '
   test -n "$OSS_REGION"
@@ -108,7 +130,7 @@ if ! docker compose -p "$PROJECT_NAME" exec -T web sh -ec '
   if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" ]]; then
     echo "Rolling back to $PREVIOUS_RELEASE" >&2
     cd "$PREVIOUS_RELEASE"
-    APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
+    APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" up -d --build --remove-orphans
   fi
   exit 1
 fi
@@ -136,7 +158,7 @@ if [[ "$healthy" != true ]]; then
   if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" ]]; then
     echo "Rolling back to $PREVIOUS_RELEASE" >&2
     cd "$PREVIOUS_RELEASE"
-    APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans
+    APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" up -d --build --remove-orphans
   fi
   exit 1
 fi
@@ -151,7 +173,7 @@ if [[ -f "$BOT_DIR/docker-compose.yml" ]]; then
       ln -sfn "$PREVIOUS_RELEASE" "$CURRENT_LINK.new"
       mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
       rollback_failed=false
-      (cd "$PREVIOUS_RELEASE" && APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans) || rollback_failed=true
+      (cd "$PREVIOUS_RELEASE" && APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" up -d --build --remove-orphans) || rollback_failed=true
       (cd "$BOT_DIR" && docker compose up -d --build --no-deps worker) || rollback_failed=true
       if [[ "$rollback_failed" == true ]]; then echo "QQ bot rollback failed" >&2; fi
     fi
@@ -172,7 +194,7 @@ if [[ -f "$BOT_DIR/docker-compose.yml" ]]; then
       ln -sfn "$PREVIOUS_RELEASE" "$CURRENT_LINK.new"
       mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
       rollback_failed=false
-      (cd "$PREVIOUS_RELEASE" && APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -p "$PROJECT_NAME" up -d --build --remove-orphans) || rollback_failed=true
+      (cd "$PREVIOUS_RELEASE" && APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" up -d --build --remove-orphans) || rollback_failed=true
       (cd "$BOT_DIR" && docker compose up -d --build --no-deps worker) || rollback_failed=true
       if [[ "$rollback_failed" == true ]]; then echo "QQ bot rollback failed" >&2; fi
     fi

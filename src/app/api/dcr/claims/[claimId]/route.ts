@@ -59,6 +59,12 @@ export const POST = withAuth(async (
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${claim.targetTaskId}`}))`;
+      const currentClaim = await tx.helpClaim.findUnique({
+        where: { id: claim.id },
+        select: { status: true, requesterId: true },
+      });
+      if (!currentClaim || currentClaim.status !== "PENDING") throw new Error("CLAIM_ALREADY_HANDLED");
+      if (currentClaim.requesterId !== req.user.id) throw new Error("CLAIM_FORBIDDEN");
       const currentTask = await tx.mutualAidTask.findUnique({
         where: { id: claim.targetTaskId },
         select: { status: true },
@@ -109,7 +115,7 @@ export const POST = withAuth(async (
         data: {
           taskId: claim.targetTaskId,
           action: "claim_accepted",
-          oldStatus: claim.targetTask.status,
+          oldStatus: currentTask.status,
           newStatus: nextStatus,
           details: claim.offeredTask
             ? `双方确认，已交换委托 ${claim.offeredTask.id}`
@@ -145,6 +151,9 @@ export const POST = withAuth(async (
     }
     if (error instanceof Error && error.message === "TASK_NO_LONGER_ACCEPTS_CLAIMS") {
       return NextResponse.json({ error: "任务已进入结案流程，不能再接受申请" }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === "CLAIM_FORBIDDEN") {
+      return NextResponse.json({ error: "只有委托发起人可以处理申请" }, { status: 403 });
     }
     console.error("POST /api/dcr/claims/[claimId] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

@@ -30,6 +30,7 @@ export default function AdminTutorialPage() {
   const [editing, setEditing] = useState<TutorialChapter | null>(null);
   const [form, setForm] = useState({ title: "", content: "", order: 0 });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const fetchChapters = useCallback(async () => {
     setLoading(true);
@@ -68,23 +69,23 @@ export default function AdminTutorialPage() {
     if (!form.title.trim() || !form.content.trim()) return;
     setSaving(true);
     try {
-      if (editing) {
-        await fetch(`/api/admin/dcr/tutorial/${editing.id}`, {
+      const res = editing
+        ? await fetch(`/api/admin/dcr/tutorial/${editing.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(form),
-        });
-      } else {
-        await fetch("/api/admin/dcr/tutorial", {
+        })
+        : await fetch("/api/admin/dcr/tutorial", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(form),
         });
-      }
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "保存失败");
+      setError("");
       setDialogOpen(false);
       fetchChapters();
-    } catch {
-      /* ignore */
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "保存失败");
     } finally {
       setSaving(false);
     }
@@ -92,16 +93,18 @@ export default function AdminTutorialPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("确定删除此章节？")) return;
-    await fetch(`/api/admin/dcr/tutorial/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/dcr/tutorial/${id}`, { method: "DELETE" });
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error || "删除失败");
     fetchChapters();
   }
 
   async function handleToggle(ch: TutorialChapter) {
-    await fetch(`/api/admin/dcr/tutorial/${ch.id}`, {
+    const res = await fetch(`/api/admin/dcr/tutorial/${ch.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !ch.active }),
     });
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error || "状态更新失败");
     fetchChapters();
   }
 
@@ -110,16 +113,12 @@ export default function AdminTutorialPage() {
     if (toIndex < 0 || toIndex >= chapters.length) return;
     const a = chapters[fromIndex];
     const b = chapters[toIndex];
-    await fetch(`/api/admin/dcr/tutorial/${a.id}`, {
+    const res = await fetch("/api/admin/dcr/tutorial", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order: b.order }),
+      body: JSON.stringify({ firstId: a.id, secondId: b.id }),
     });
-    await fetch(`/api/admin/dcr/tutorial/${b.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order: a.order }),
-    });
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error || "排序失败");
     fetchChapters();
   }
 
@@ -132,6 +131,7 @@ export default function AdminTutorialPage() {
           新增章节
         </Button>
       </div>
+      {error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

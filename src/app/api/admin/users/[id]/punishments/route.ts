@@ -50,7 +50,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
   if (!parsed.success) return NextResponse.json({ error: "参数校验失败", details: parsed.error.flatten() }, { status: 400 });
   const target = await prisma.user.findUnique({ where: { id }, select: { id: true, role: true } });
   if (!target) return NextResponse.json({ error: "用户不存在" }, { status: 404 });
-  if (target.role === "SUPER_ADMIN" && req.user.role !== "SUPER_ADMIN") return NextResponse.json({ error: "仅超级管理员可处罚超级管理员账号" }, { status: 403 });
+  if ((target.role === "ADMIN" || target.role === "SUPER_ADMIN") && req.user.role !== "SUPER_ADMIN") return NextResponse.json({ error: "仅超级管理员可处罚管理员账号" }, { status: 403 });
   const expiresAt = parsed.data.durationMinutes ? new Date(Date.now() + parsed.data.durationMinutes * 60_000) : null;
   let punishment;
   try {

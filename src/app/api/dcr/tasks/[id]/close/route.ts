@@ -99,6 +99,10 @@ export const POST = withAuth(async (
 
       const updated = await prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+        const currentTask = await tx.mutualAidTask.findUnique({ where: { id }, select: { status: true } });
+        if (!currentTask || !canTransition(currentTask.status as TaskStatus, "CLOSED")) {
+          throw new Error("TASK_STATE_CHANGED");
+        }
         await tx.helpSession.updateMany({
           where: { taskId: id, status: { notIn: ["COMPLETED", "CLOSED"] } },
           data: {
@@ -122,14 +126,14 @@ export const POST = withAuth(async (
           data: {
             taskId: id,
             action: "force_close",
-            oldStatus: task.status,
+            oldStatus: currentTask.status,
              newStatus: "CLOSED",
             details: reason,
             operatorId: userId,
           },
         });
         await logAudit(userId, "TASK_FORCE_CLOSE", "TASK", id, {
-          oldStatus: task.status,
+          oldStatus: currentTask.status,
           reason,
         }, undefined, tx);
 
@@ -171,6 +175,14 @@ export const POST = withAuth(async (
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+      const currentTask = await tx.mutualAidTask.findUnique({ where: { id }, select: { status: true } });
+      const lockedSession = await tx.helpSession.findUnique({
+        where: { id: selected.id },
+        include: { evidenceRoom: { include: { items: { select: { type: true } } } } },
+      });
+      if (!currentTask || !lockedSession) throw new Error("SESSION_STATE_CHANGED");
+      if (lockedSession.requesterId !== userId && lockedSession.helperId !== userId) throw new Error("SESSION_FORBIDDEN");
+      if (lockedSession.status !== expectedStatus) throw new Error("SESSION_STATE_CHANGED");
       const claimed = await tx.helpSession.updateMany({
         where: { id: selected.id, status: expectedStatus },
         data: {
@@ -197,12 +209,18 @@ export const POST = withAuth(async (
       }
       const statuses = await tx.helpSession.findMany({ where: { taskId: id }, select: { status: true } });
       const status = aggregateHelpSessionStatus(statuses.map((item) => item.status));
-      await tx.mutualAidTask.updateMany({ where: { id }, data: { status } });
+      const completionReport = status === "COMPLETED"
+        ? generateCompletionReport(task, "mutual", undefined)
+        : undefined;
+      await tx.mutualAidTask.updateMany({
+        where: { id },
+        data: { status, ...(completionReport ? { completionReport: completionReport as any } : {}) },
+      });
       await tx.taskTimelineEvent.create({
         data: {
           taskId: id,
           action: bothConfirmed ? "complete" : action === "request" ? "close_request" : "close_confirm",
-          oldStatus: task.status,
+          oldStatus: currentTask.status,
           newStatus: status,
           details: `[session:${selected.id}]`,
           operatorId: userId,
@@ -217,7 +235,7 @@ export const POST = withAuth(async (
         undefined,
         tx,
       );
-      return { status, sessionStatus, bothConfirmed };
+      return { status, sessionStatus, bothConfirmed, completionReport };
     });
     const counterpartId = isRequester ? selected.helperId : task.requesterId;
     await notifyMutualAidUsersBestEffort([counterpartId], {
@@ -225,13 +243,24 @@ export const POST = withAuth(async (
       content: `互助任务「${task.title}」的一项会话状态已更新。`,
       link: `/dcr/tasks/${id}`,
     });
-    return NextResponse.json({ status: result.status, sessionId: selected.id, sessionStatus: result.sessionStatus });
+    return NextResponse.json({
+      status: result.status,
+      sessionId: selected.id,
+      sessionStatus: result.sessionStatus,
+      ...(result.completionReport ? { completionReport: result.completionReport } : {}),
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "EVIDENCE_INCOMPLETE") {
       return NextResponse.json({ error: "证据不完整，无法结案" }, { status: 400 });
     }
     if (error instanceof Error && error.message === "SESSION_STATE_CHANGED") {
       return NextResponse.json({ error: "会话状态已变化，请刷新后重试" }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === "TASK_STATE_CHANGED") {
+      return NextResponse.json({ error: "任务状态已变化，请刷新后重试" }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === "SESSION_FORBIDDEN") {
+      return NextResponse.json({ error: "仅互助双方可操作" }, { status: 403 });
     }
     console.error("POST /api/dcr/tasks/[id]/close error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

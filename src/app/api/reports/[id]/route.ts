@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { ReportResolutionAction, Role } from "@prisma/client";
+import type { Prisma, ReportResolutionAction } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { withAuth, hasMinimumRole, isAdminRole, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
@@ -27,8 +27,8 @@ const updateReportSchema = z.object({
 
 const REPORT_TARGET = {
   targetUser: { select: { id: true, role: true } },
-  targetPost: { select: { id: true, authorId: true, status: true } },
-  targetComment: { select: { id: true, authorId: true, postId: true, isDeleted: true } },
+  targetPost: { select: { id: true, authorId: true, status: true, reportAutoHidden: true } },
+  targetComment: { select: { id: true, authorId: true, postId: true, isDeleted: true, reportAutoHidden: true } },
   targetTask: { select: { id: true, requesterId: true } },
   targetCaseMessage: { select: { id: true, senderId: true } },
   targetHelpMessage: { select: { id: true, senderId: true } },
@@ -144,22 +144,30 @@ export const PATCH = withAuth(async (
     }
 
     const report = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", existing.targetKey);
       const claimed = await tx.report.updateMany({
         where: { id, status: existing.status },
         data: { status: newStatus },
       });
       if (claimed.count !== 1) throw new Error("REPORT_ALREADY_HANDLED");
 
-      if (actionDeletesTarget(action) && existing.targetPost && existing.targetPost.status !== "DELETED") {
-        await tx.post.update({ where: { id: existing.targetPost.id }, data: { status: "DELETED" } });
+       if (actionDeletesTarget(action) && existing.targetPost) {
+         await tx.post.update({ where: { id: existing.targetPost.id }, data: { status: "DELETED", reportAutoHidden: false } });
         await tx.postRevision.updateMany({
           where: { postId: existing.targetPost.id, status: "PENDING" },
           data: { status: "SUPERSEDED", reviewedAt: new Date() },
         });
       }
-      if (actionDeletesTarget(action) && existing.targetComment && !existing.targetComment.isDeleted) {
-        await tx.comment.update({ where: { id: existing.targetComment.id }, data: { isDeleted: true } });
-        await tx.post.update({ where: { id: existing.targetComment.postId }, data: { commentCount: { decrement: 1 } } });
+       if (actionDeletesTarget(action) && existing.targetComment) {
+         const deleted = await tx.comment.updateMany({
+           where: { id: existing.targetComment.id, isDeleted: false },
+           data: { isDeleted: true, reportAutoHidden: false },
+         });
+         if (deleted.count === 1) {
+           await tx.post.update({ where: { id: existing.targetComment.postId }, data: { commentCount: { decrement: 1 } } });
+         } else if (existing.targetComment.reportAutoHidden) {
+           await tx.comment.update({ where: { id: existing.targetComment.id }, data: { reportAutoHidden: false } });
+         }
       }
       if (responsibleId && (actionBansUser(action) || actionShadowHidesUser(action))) {
         const punishmentType = actionBansUser(action) ? "ACCOUNT_BAN" : "POST_SHADOW_HIDE";
@@ -181,7 +189,7 @@ export const PATCH = withAuth(async (
         });
       }
 
-      const updated = await tx.report.update({
+       const updated = await tx.report.update({
         where: { id },
         data: {
           status: newStatus,
@@ -192,7 +200,11 @@ export const PATCH = withAuth(async (
             resolvedById: req.user.id,
           } : {}),
         },
-      });
+       });
+
+       if (newStatus === "DISMISSED") {
+         await restoreAutoHiddenTargetIfAllDismissed(tx, existing);
+       }
 
       if (newStatus === "RESOLVED" || newStatus === "DISMISSED") {
         await tx.notification.create({
@@ -240,3 +252,32 @@ export const PATCH = withAuth(async (
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
 }, "MODERATOR", { captureAllTelemetry: true });
+
+async function restoreAutoHiddenTargetIfAllDismissed(
+  tx: Prisma.TransactionClient,
+  report: NonNullable<Awaited<ReturnType<typeof loadReport>>>,
+) {
+  const remaining = await tx.report.count({
+    where: { targetKey: report.targetKey, status: { not: "DISMISSED" } },
+  });
+  if (remaining !== 0) return;
+
+  if (report.targetPost?.reportAutoHidden) {
+    await tx.post.updateMany({
+      where: { id: report.targetPost.id, status: "DELETED", reportAutoHidden: true },
+      data: { status: "PUBLISHED", reportAutoHidden: false },
+    });
+  }
+  if (report.targetComment?.reportAutoHidden) {
+    const restored = await tx.comment.updateMany({
+      where: { id: report.targetComment.id, isDeleted: true, reportAutoHidden: true },
+      data: { isDeleted: false, reportAutoHidden: false },
+    });
+    if (restored.count === 1) {
+      await tx.post.update({
+        where: { id: report.targetComment.postId },
+        data: { commentCount: { increment: 1 } },
+      });
+    }
+  }
+}

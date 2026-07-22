@@ -130,7 +130,7 @@ export default function AdminQuizPage() {
         <CardContent className="space-y-3">
           {error && <div role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
           <Input placeholder="题目文本" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} />
-          {[0,1,2,3].map((i) => (
+          <fieldset className="space-y-3"><legend className="sr-only">题目选项与正确答案</legend>{[0,1,2,3].map((i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="text-sm font-mono w-6">{String.fromCharCode(65 + i)}.</span>
               <Input placeholder={`选项 ${String.fromCharCode(65 + i)}`} value={[form.opt1, form.opt2, form.opt3, form.opt4][i]}
@@ -138,9 +138,9 @@ export default function AdminQuizPage() {
                   const arr: any = { ...form, [`opt${i+1}`]: e.target.value };
                   setForm(arr);
                 }} />
-              <input type="radio" name="answer" checked={form.answer === i} onChange={() => setForm({ ...form, answer: i })} className="mt-1" />
+              <input type="radio" name="answer" aria-label={`将选项 ${String.fromCharCode(65 + i)} 设为正确答案`} checked={form.answer === i} onChange={() => setForm({ ...form, answer: i })} className="mt-1" />
             </div>
-          ))}
+          ))}</fieldset>
           <div className="flex gap-2">
             <Button onClick={handleSave} disabled={!form.text.trim()}>
               {editingId ? "更新" : "添加"}

@@ -42,7 +42,7 @@ describe("/api/admin/support/[id]", () => {
 
   it("notifies the owner after a staff reply without auditing message content", async () => {
     mocks.ticketFindFirst.mockResolvedValue({ id: "ticket-1", requesterId: "user-1", status: "OPEN" });
-    mocks.messageCreate.mockResolvedValue({ id: "message-1" }); mocks.ticketUpdate.mockResolvedValue({});
+    mocks.messageCreate.mockResolvedValue({ id: "message-1" }); mocks.ticketUpdateMany.mockResolvedValue({ count: 1 });
     const response = await POST(new NextRequest("http://localhost/api/admin/support/ticket-1", { method: "POST", body: JSON.stringify({ content: "private staff reply" }) }), { params: { id: "ticket-1" } });
     expect(response.status).toBe(201);
     expect(mocks.notify).toHaveBeenCalledWith("user-1", "SYSTEM", expect.any(String), expect.any(String), "/support/ticket-1");

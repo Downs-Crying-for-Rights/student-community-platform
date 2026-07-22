@@ -39,28 +39,29 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "无权关闭此会话" }, { status: 403 });
     }
 
-    if (confideRequest.status === "CLOSED") {
-      return NextResponse.json(
-        { error: "会话已关闭" },
-        { status: 409 },
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`psych-session:${id}`}))`;
+      const current = await tx.confideRequest.findUnique({ where: { id } });
+      if (!current) return null;
+      if (current.requesterId !== userId && current.listenerId !== userId) throw new Error("SESSION_FORBIDDEN");
+      if (current.status === "CLOSED") return { updated: current, newlyClosed: false };
+      const updated = await tx.confideRequest.update({
+        where: { id },
+        data: { status: "CLOSED", closedAt: new Date() },
+      });
+      await logAudit(
+        userId,
+        AuditAction.CONFIDE_CLOSE,
+        AuditTargetType.CONFIDE_REQUEST,
+        id,
+        { closedBy: userId },
+        undefined,
+        tx,
       );
-    }
-
-    const updated = await prisma.confideRequest.update({
-      where: { id },
-      data: {
-        status: "CLOSED",
-        closedAt: new Date(),
-      },
+      return { updated, newlyClosed: true };
     });
-
-    await logAudit(
-      userId,
-      AuditAction.CONFIDE_CLOSE,
-      AuditTargetType.CONFIDE_REQUEST,
-      id,
-      { closedBy: userId },
-    );
+    if (!result) return NextResponse.json({ error: "会话不存在" }, { status: 404 });
+    const { updated, newlyClosed } = result;
 
     // Notify the other party
     const otherPartyId =
@@ -68,7 +69,7 @@ export const POST = withAuth(async (
         ? confideRequest.listenerId
         : confideRequest.requesterId;
 
-    if (otherPartyId) {
+    if (newlyClosed && otherPartyId) {
       await createNotification(
         otherPartyId,
         "PSYCH_MATCH",
@@ -85,6 +86,9 @@ export const POST = withAuth(async (
       },
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "SESSION_FORBIDDEN") {
+      return NextResponse.json({ error: "无权关闭此会话" }, { status: 403 });
+    }
     console.error("POST /api/psych/session/[id]/close error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

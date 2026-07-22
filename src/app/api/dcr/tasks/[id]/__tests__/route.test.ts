@@ -65,7 +65,7 @@ describe("GET /api/dcr/tasks/[id]", () => {
   it("有 DCR 权限的非参与者可查看进行中任务的稳定脱敏结构", async () => {
     session("outsider");
     mockTaskFindUnique.mockResolvedValue(task);
-    mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrPledgeSigned: true });
 
     const res = await GET(request(), { params: { id: "task1" } });
     const data = await res.json();
@@ -96,7 +96,7 @@ describe("GET /api/dcr/tasks/[id]", () => {
   it("非参与 DCR 用户查看 OPEN 任务时只收到脱敏信息", async () => {
     session("outsider");
     mockTaskFindUnique.mockResolvedValue({ ...task, status: "OPEN" });
-    mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrPledgeSigned: true });
 
     const res = await GET(request(), { params: { id: "task1" } });
     const data = await res.json();

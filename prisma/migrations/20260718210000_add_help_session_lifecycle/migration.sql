@@ -28,6 +28,7 @@ SET
     ELSE NULL
   END
 FROM "MutualAidTask" AS task
-WHERE session."taskId" = task."id";
+WHERE session."taskId" = task."id"
+  AND (SELECT COUNT(*) FROM "HelpSession" sibling WHERE sibling."taskId" = task."id") = 1;
 
 CREATE INDEX "HelpSession_status_idx" ON "HelpSession"("status");

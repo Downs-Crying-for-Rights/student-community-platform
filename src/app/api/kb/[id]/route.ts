@@ -37,10 +37,10 @@ export const GET = withAuth(async (
     if (article.visibility === "DCR_ONLY" && userRole !== "ADMIN") {
       const user = await prisma.user.findUnique({
         where: { id: req.user.id },
-        select: { dcrAccess: true },
+        select: { dcrAccess: true, dcrPledgeSigned: true },
       });
 
-      if (!user?.dcrAccess) {
+      if (!user?.dcrAccess || !user.dcrPledgeSigned) {
         return NextResponse.json({ error: "权限不足" }, { status: 403 });
       }
     }

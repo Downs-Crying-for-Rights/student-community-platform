@@ -20,7 +20,7 @@ export const POST = withAuth(async (
     // Verify post exists and is not deleted
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      select: { id: true, status: true, authorId: true, visibility: true, board: { select: { zone: true } } },
+      select: { id: true, status: true, authorId: true, visibility: true, caseId: true, author: { select: { isShadowBanned: true } }, board: { select: { zone: true } } },
     });
 
     if (!post || post.status === "DELETED") {

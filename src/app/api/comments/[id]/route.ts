@@ -26,7 +26,10 @@ export const PATCH = withAuth(async (
         post: {
           select: {
             authorId: true,
+            status: true,
             visibility: true,
+            caseId: true,
+            author: { select: { isShadowBanned: true } },
             board: { select: { zone: true } },
           },
         },
@@ -116,7 +119,10 @@ export const DELETE = withAuth(async (
         post: {
           select: {
             authorId: true,
+            status: true,
             visibility: true,
+            caseId: true,
+            author: { select: { isShadowBanned: true } },
             board: { select: { zone: true } },
           },
         },
@@ -146,16 +152,19 @@ export const DELETE = withAuth(async (
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
-    await prisma.$transaction([
-      prisma.comment.update({
-        where: { id },
-        data: { isDeleted: true },
-      }),
-      prisma.post.update({
+    const deleted = await prisma.$transaction(async (tx) => {
+      const changed = await tx.comment.updateMany({
+        where: { id, isDeleted: false },
+        data: { isDeleted: true, reportAutoHidden: false },
+      });
+      if (changed.count !== 1) return false;
+      await tx.post.update({
         where: { id: existing.postId },
         data: { commentCount: { decrement: 1 } },
-      }),
-    ]);
+      });
+      return true;
+    });
+    if (!deleted) return NextResponse.json({ error: "评论已被删除" }, { status: 409 });
 
     await logAudit(
       req.user.id,

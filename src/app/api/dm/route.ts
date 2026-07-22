@@ -6,6 +6,7 @@ import { enforceRateLimit } from "@/lib/rate-limiter";
 import { logAudit } from "@/lib/audit";
 import { requireDMConsent } from "@/lib/dm-consent";
 import { SYSTEM_ANNOUNCEMENT_USER_ID } from "@/lib/announcement";
+import { cursorWhere, encodeCompoundCursor, parseCompoundCursor } from "@/lib/compound-cursor";
 
 async function consentRequired(userId: string) {
   const consent = await requireDMConsent(userId);
@@ -99,11 +100,18 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const consentResponse = await consentRequired(userId);
     if (consentResponse) return consentResponse;
 
+    const url = new URL(req.url);
+    const cursorValue = url.searchParams.get("cursor");
+    const cursor = cursorValue ? parseCompoundCursor(cursorValue, `dm-threads:${userId}`, "older") : null;
+    if (cursorValue && !cursor) return NextResponse.json({ error: "无效的分页游标" }, { status: 400 });
+    const requestedPageSize = Number(url.searchParams.get("pageSize") ?? 20);
+    const pageSize = Number.isInteger(requestedPageSize) ? Math.min(50, Math.max(1, requestedPageSize)) : 20;
+
     const threads = await prisma.dMThread.findMany({
       where: {
-        OR: [
-          { participant1Id: userId },
-          { participant2Id: userId },
+        AND: [
+          { OR: [{ participant1Id: userId }, { participant2Id: userId }] },
+          ...(cursor ? [cursorWhere(cursor, "older", "updatedAt")] : []),
         ],
       },
       include: {
@@ -115,11 +123,14 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           select: { content: true, createdAt: true, senderId: true },
         },
       },
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: pageSize + 1,
     });
 
     // Map to include the "other" participant
-    const result = threads.map((t) => {
+    const hasMore = threads.length > pageSize;
+    const page = threads.slice(0, pageSize);
+    const result = page.map((t) => {
       const other = t.participant1Id === userId ? t.participant2 : t.participant1;
       return {
         id: t.id,
@@ -129,7 +140,16 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       };
     });
 
-    return NextResponse.json({ threads: result });
+    const last = page.at(-1);
+    return NextResponse.json({
+      threads: result,
+      pagination: {
+        hasMore,
+        nextCursor: hasMore && last
+          ? encodeCompoundCursor(`dm-threads:${userId}`, "older", { id: last.id, createdAt: last.updatedAt })
+          : null,
+      },
+    });
   } catch (error) {
     console.error("GET /api/dm error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

@@ -35,7 +35,7 @@ describe("三方互助系统匹配", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.cycleCount.mockResolvedValue(0);
-    mocks.userFindUnique.mockResolvedValue({ id: "user-a", quizPassed: true, dcrAccess: true, role: "USER" });
+    mocks.userFindUnique.mockResolvedValue({ id: "user-a", quizPassed: true, dcrAccess: true, dcrPledgeSigned: true, role: "USER" });
     mocks.requestUpsert.mockResolvedValue({ id: "request-a", userId: "user-a", offerText: "A 的帮助" });
     mocks.requestFindMany.mockResolvedValue([]);
     mocks.cycleFindFirst.mockResolvedValue(null);
@@ -44,9 +44,10 @@ describe("三方互助系统匹配", () => {
     mocks.linkCreate.mockResolvedValue({});
     mocks.userUpdate.mockResolvedValue({});
     mocks.transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback({
-      mutualAidCycle: { create: mocks.cycleCreate },
+      $queryRaw: vi.fn().mockResolvedValue(undefined),
+      mutualAidCycle: { create: mocks.cycleCreate, findFirst: mocks.cycleFindFirst },
       mutualAidLink: { create: mocks.linkCreate },
-      user: { update: mocks.userUpdate },
+      user: { findMany: mocks.userFindMany, update: mocks.userUpdate },
     }));
   });
 
@@ -54,9 +55,14 @@ describe("三方互助系统匹配", () => {
     mocks.userFindMany
       .mockResolvedValueOnce([{ id: "admin-b" }, { id: "admin-c" }])
       .mockResolvedValueOnce([
-        { id: "user-a", quizPassed: true, dcrAccess: true, role: "USER" },
+        { id: "user-a", quizPassed: true, dcrAccess: true, dcrPledgeSigned: true, role: "USER" },
         { id: "admin-b", quizPassed: false, dcrAccess: false, role: "ADMIN" },
         { id: "admin-c", quizPassed: false, dcrAccess: false, role: "SUPER_ADMIN" },
+      ])
+      .mockResolvedValueOnce([
+        { id: "user-a", dcrAccess: true, dcrPledgeSigned: true, role: "USER" },
+        { id: "admin-b", dcrAccess: false, dcrPledgeSigned: false, role: "ADMIN" },
+        { id: "admin-c", dcrAccess: false, dcrPledgeSigned: false, role: "SUPER_ADMIN" },
       ]);
 
     const result = await enqueueThreePartyMatch({ userId: "user-a", offerText: "A 的帮助" });

@@ -4,12 +4,6 @@ const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
-  // TODO: 移除 ignoreBuildErrors — 需要先修复以下预存类型错误:
-  // chat/page.tsx(缺少select组件声明), dcr/mod(ReviewDecision类型),
-  // dcr/requests(FileEdit导入), upload/route(handler签名), dcr/tasks/start(session include)
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   serverExternalPackages: ["nodemailer", "bcryptjs"],
   // Allow up to 10MB uploads for image upload API
   experimental: {

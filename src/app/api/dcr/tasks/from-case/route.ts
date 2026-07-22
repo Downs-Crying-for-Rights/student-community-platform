@@ -11,6 +11,7 @@ import {
   SerializableTransactionConflict,
 } from "@/lib/serializable-transaction";
 import { getPublicDcrTaskCopy } from "@/lib/dcr-task-public";
+import { canUseDcrWorkspace } from "@/lib/dcr-capabilities";
 
 const publishSchema = z.object({
   caseId: z.string().min(1),
@@ -38,10 +39,10 @@ function text(value: unknown): string {
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
-    select: { dcrAccess: true },
+    select: { dcrAccess: true, dcrPledgeSigned: true },
   });
 
-  if (!user?.dcrAccess) {
+  if (!user || !canUseDcrWorkspace({ ...user, role: req.user.role })) {
     return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
   }
 
@@ -95,9 +96,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { dcrAccess: true },
+      select: { dcrAccess: true, dcrPledgeSigned: true },
     });
-    if (!user?.dcrAccess) {
+    if (!user || !canUseDcrWorkspace({ ...user, role: req.user.role })) {
       return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
     }
 

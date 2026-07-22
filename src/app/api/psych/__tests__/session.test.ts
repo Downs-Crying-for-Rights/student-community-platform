@@ -5,27 +5,46 @@ import { NextRequest } from "next/server";
 
 const mockConfideRequestFindUnique = vi.fn();
 const mockConfideRequestUpdate = vi.fn();
+const mockConfideRequestUpdateMany = vi.fn();
 const mockCreateNotification = vi.fn();
 const mockMessageCreate = vi.fn();
 const mockScanContent = vi.fn();
 const mockUserFindMany = vi.fn();
+const mockUserFindUnique = vi.fn();
 const mockAuditLogCreate = vi.fn();
+const mockMessageFindMany = vi.fn();
+const mockMessageCount = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     confideRequest: {
       findUnique: (...args: unknown[]) => mockConfideRequestFindUnique(...args),
       update: (...args: unknown[]) => mockConfideRequestUpdate(...args),
+      updateMany: (...args: unknown[]) => mockConfideRequestUpdateMany(...args),
     },
     message: {
       create: (...args: unknown[]) => mockMessageCreate(...args),
+      findMany: (...args: unknown[]) => mockMessageFindMany(...args),
+      count: (...args: unknown[]) => mockMessageCount(...args),
     },
     user: {
       findMany: (...args: unknown[]) => mockUserFindMany(...args),
+      findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
     },
     auditLog: {
       create: (...args: unknown[]) => mockAuditLogCreate(...args),
     },
+    $transaction: async (callback: (tx: unknown) => unknown) => callback({
+      $queryRaw: vi.fn(),
+      confideRequest: {
+        findUnique: (...args: unknown[]) => mockConfideRequestFindUnique(...args),
+        update: (...args: unknown[]) => mockConfideRequestUpdate(...args),
+        updateMany: (...args: unknown[]) => mockConfideRequestUpdateMany(...args),
+      },
+      message: { create: (...args: unknown[]) => mockMessageCreate(...args) },
+      user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
+      auditLog: { create: (...args: unknown[]) => mockAuditLogCreate(...args) },
+    }),
   },
 }));
 
@@ -121,7 +140,7 @@ describe("POST /api/psych/session/[id]/close", () => {
     expect(data.error).toBe("无权关闭此会话");
   });
 
-  it("应返回 409 当会话已关闭", async () => {
+  it("重复关闭会话应幂等成功", async () => {
     setSession("user1", "USER");
     mockConfideRequestFindUnique.mockResolvedValue({
       ...matchedSession,
@@ -132,8 +151,9 @@ describe("POST /api/psych/session/[id]/close", () => {
     const res = await POST(makeCloseRequest(), { params: { id: "cr1" } });
     const data = await res.json();
 
-    expect(res.status).toBe(409);
-    expect(data.error).toBe("会话已关闭");
+    expect(res.status).toBe(200);
+    expect(data.confideRequest.status).toBe("CLOSED");
+    expect(mockCreateNotification).not.toHaveBeenCalled();
   });
 
   it("应成功关闭会话（倾诉者关闭）", async () => {
@@ -190,6 +210,7 @@ describe("POST /api/psych/session/[id]/close", () => {
 describe("POST /api/psych/session/[id]/message", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUserFindUnique.mockResolvedValue({ psychAccess: true });
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -323,9 +344,25 @@ describe("POST /api/psych/session/[id]/message", () => {
       { params: { id: "cr1" } },
     );
 
-    expect(mockConfideRequestUpdate).toHaveBeenCalledWith({
-      where: { id: "cr1" },
+    expect(mockConfideRequestUpdateMany).toHaveBeenCalledWith({
+      where: { id: "cr1", status: "MATCHED" },
       data: { status: "ACTIVE" },
     });
+  });
+
+  it("过期会话不会写入消息或重新变为 ACTIVE", async () => {
+    setSession("user1", "USER");
+    mockConfideRequestFindUnique.mockResolvedValue({
+      ...matchedSession,
+      expiresAt: new Date(Date.now() - 1_000),
+    });
+    mockScanContent.mockResolvedValue([]);
+
+    const { POST } = await import("../session/[id]/message/route");
+    const res = await POST(makeMessageRequest({ content: "迟到的消息" }), { params: { id: "cr1" } });
+
+    expect(res.status).toBe(410);
+    expect(mockMessageCreate).not.toHaveBeenCalled();
+    expect(mockConfideRequestUpdateMany).not.toHaveBeenCalled();
   });
 });

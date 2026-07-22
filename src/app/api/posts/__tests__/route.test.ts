@@ -99,6 +99,7 @@ describe("GET /api/posts", () => {
           AND: [
             { status: "PUBLISHED" },
             { author: { isShadowBanned: false } },
+            { visibility: "PUBLIC" },
           ],
         }),
       }),
@@ -371,6 +372,73 @@ describe("POST /api/posts", () => {
         }),
       }),
     );
+  });
+
+  it("普通用户列表仅额外包含自己的 MODS_ONLY 帖子", async () => {
+    setSession("user1", "USER");
+    mockPostFindMany.mockResolvedValue([]);
+    mockPostCount.mockResolvedValue(0);
+
+    const { GET } = await import("../route");
+    await GET(makeRequest("GET"), { params: {} });
+
+    expect(mockPostFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([{
+          OR: [
+            { visibility: "PUBLIC" },
+            { visibility: "MODS_ONLY", authorId: "user1" },
+          ],
+        }]),
+      }),
+    }));
+  });
+
+  it("拒绝跨用户查询收藏或点赞记录", async () => {
+    setSession("user1", "USER");
+    const { GET } = await import("../route");
+
+    const bookmarked = await GET(makeRequest("GET", "http://localhost:3000/api/posts?bookmarkedBy=user2"), { params: {} });
+    const liked = await GET(makeRequest("GET", "http://localhost:3000/api/posts?likedBy=user2"), { params: {} });
+
+    expect(bookmarked.status).toBe(403);
+    expect(liked.status).toBe(403);
+    expect(mockPostFindMany).not.toHaveBeenCalled();
+  });
+
+  it("DCR 列表要求已签署承诺", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrPledgeSigned: false });
+    const { GET } = await import("../route");
+
+    const res = await GET(makeRequest("GET", "http://localhost:3000/api/posts?zone=DCR"), { params: {} });
+
+    expect(res.status).toBe(403);
+    expect(mockPostFindMany).not.toHaveBeenCalled();
+  });
+
+  it("DCR MATCHED 列表使用共享参与者条件", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrPledgeSigned: true });
+    mockPostFindMany.mockResolvedValue([]);
+    mockPostCount.mockResolvedValue(0);
+    const { GET } = await import("../route");
+
+    const res = await GET(makeRequest("GET", "http://localhost:3000/api/posts?zone=DCR"), { params: {} });
+
+    expect(res.status).toBe(200);
+    expect(mockPostFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([expect.objectContaining({
+          OR: expect.arrayContaining([expect.objectContaining({
+            AND: [
+              { visibility: "MATCHED" },
+              expect.objectContaining({ OR: expect.arrayContaining([{ authorId: "user1" }]) }),
+            ],
+          })]),
+        })]),
+      }),
+    }));
   });
 
   it("投稿邀请码用户可创建 DCR 帖子但无需完整准入", async () => {

@@ -20,6 +20,7 @@ vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 
 import { getServerSession } from "next-auth/next";
+import { encodeCompoundCursor } from "@/lib/compound-cursor";
 import { GET, POST } from "../route";
 
 const currentUser = "cm0000000000000000000001";
@@ -44,6 +45,19 @@ describe("/api/dm", () => {
     expect(response.status).toBe(428);
     expect(data.code).toBe("DM_CONSENT_REQUIRED");
     expect(data.consent.version).toBe(2);
+    expect(mocks.threadFindMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed and foreign thread-list cursors", async () => {
+    const malformed = await GET(new NextRequest("http://localhost/api/dm?cursor=invalid"), {} as never);
+    const foreignCursor = encodeCompoundCursor("dm-threads:someone-else", "older", {
+      id: "thread-1",
+      createdAt: new Date("2026-07-22T10:00:00.000Z"),
+    });
+    const foreign = await GET(new NextRequest(`http://localhost/api/dm?cursor=${foreignCursor}`), {} as never);
+
+    expect(malformed.status).toBe(400);
+    expect(foreign.status).toBe(400);
     expect(mocks.threadFindMany).not.toHaveBeenCalled();
   });
 
@@ -95,5 +109,6 @@ describe("/api/dm", () => {
     expect(response.status).toBe(200);
     expect(data.threads[0].other.id).toBe(otherUser);
     expect(Object.keys(data.threads[0])).not.toContain("admin");
+    expect(data.pagination).toEqual({ hasMore: false, nextCursor: null });
   });
 });

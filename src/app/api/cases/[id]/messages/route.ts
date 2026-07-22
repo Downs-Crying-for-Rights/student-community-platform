@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
+import { createProtectedMediaUrl, getMediaKey } from "@/lib/oss";
 
 const createMessageSchema = z.object({
   content: z.string().max(2000, "消息内容不能超过 2000 个字符").optional().default(""),
@@ -82,7 +83,12 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
       },
     });
 
-    return NextResponse.json({ messages });
+    return NextResponse.json({ messages: messages.map((message) => ({
+      ...message,
+      mediaUrl: message.mediaUrl && getMediaKey(message.mediaUrl)
+        ? createProtectedMediaUrl(getMediaKey(message.mediaUrl)!, "CASE", message.id)
+        : null,
+    })) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("GET /api/cases/[id]/messages error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

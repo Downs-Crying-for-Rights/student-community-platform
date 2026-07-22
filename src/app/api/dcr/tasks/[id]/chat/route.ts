@@ -4,9 +4,20 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { sendChatMessageSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { enforceRateLimit } from "@/lib/rate-limiter";
+import { cursorWhere, encodeCompoundCursor, parseCompoundCursor } from "@/lib/compound-cursor";
+import { createProtectedMediaUrl, generateObjectKey, getMediaKey, uploadPrivateObject } from "@/lib/oss";
 
 /** Roles that can access HelpChat alongside A and B */
 const PRIVILEGED_ROLES = ["MODERATOR", "ADMIN", "SUPER_ADMIN"] as const;
+const MAX_CHAT_FILE_SIZE = 20 * 1024 * 1024;
+const CHAT_FILE_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+  "application/pdf": "pdf", "text/plain": "txt", "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/zip": "zip",
+};
 
 /**
  * Verify the current user has access to the HelpChat for a given task.
@@ -72,8 +83,7 @@ async function verifyAccess(
  * Return paginated chat messages for the task's HelpChat.
  * - Requires auth
  * - Verifies access: only requester (A), helper (B), Moderator, or Admin
- * - Supports pagination via query params: page (default 1), pageSize (default 20)
- * - Messages ordered by createdAt asc
+ * - Returns the newest page in chronological order and accepts an older-message cursor
  *
  * Validates: Requirements 3.2, 3.7
  */
@@ -96,18 +106,22 @@ export const GET = withAuth(async (
       return NextResponse.json({ error: "聊天通道不存在" }, { status: 404 });
     }
 
-    // Parse pagination from query params
+    // Fetch newest-first so the initial page always contains the latest messages,
+    // then reverse the page for chronological rendering.
     const url = new URL(req.url);
-    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+    const cursorValue = url.searchParams.get("cursor");
+    const cursor = cursorValue ? parseCompoundCursor(cursorValue, `help-chat:${chat.id}`, "older") : null;
+    if (cursorValue && !cursor) return NextResponse.json({ error: "无效的分页游标" }, { status: 400 });
     const pageSize = Math.min(50, Math.max(1, parseInt(url.searchParams.get("pageSize") ?? "20", 10) || 20));
-    const skip = (page - 1) * pageSize;
 
-    const [messages, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       prisma.helpChatMessage.findMany({
-        where: { chatId: chat.id },
-        orderBy: { createdAt: "asc" },
-        skip,
-        take: pageSize,
+        where: {
+          chatId: chat.id,
+          ...(cursor ? cursorWhere(cursor, "older") : {}),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: pageSize + 1,
         select: {
           id: true,
           content: true,
@@ -121,6 +135,14 @@ export const GET = withAuth(async (
       }),
       prisma.helpChatMessage.count({ where: { chatId: chat.id } }),
     ]);
+    const hasMore = rows.length > pageSize;
+    const page = rows.slice(0, pageSize);
+    const messages = page.toReversed().map((message) => ({
+      ...message,
+      fileUrl: message.fileUrl && getMediaKey(message.fileUrl)
+        ? createProtectedMediaUrl(getMediaKey(message.fileUrl)!, "DCR_CHAT", message.id)
+        : null,
+    }));
 
     return NextResponse.json({
       messages,
@@ -130,12 +152,14 @@ export const GET = withAuth(async (
         mode: session.claim?.offeredTask ? "TASK_EXCHANGE" : "GOOD_SAMARITAN",
       },
       pagination: {
-        page,
         pageSize,
         total,
-        totalPages: Math.ceil(total / pageSize),
+        hasMore,
+        nextCursor: hasMore && page.length > 0
+          ? encodeCompoundCursor(`help-chat:${chat.id}`, "older", page.at(-1)!)
+          : null,
       },
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("GET /api/dcr/tasks/[id]/chat error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
@@ -188,8 +212,18 @@ export const POST = withAuth(async (
       });
     }
 
-    // Parse and validate body
-    const body = await req.json();
+    const isMultipart = req.headers.get("content-type")?.includes("multipart/form-data") === true;
+    let file: File | null = null;
+    let body: unknown;
+    if (isMultipart) {
+      const formData = await req.formData();
+      const candidate = formData.get("file");
+      file = candidate instanceof File ? candidate : null;
+      const content = String(formData.get("content") || "").trim();
+      body = { content: content || (file ? "[附件]" : "") };
+    } else {
+      body = await req.json();
+    }
     const parsed = sendChatMessageSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -200,6 +234,15 @@ export const POST = withAuth(async (
     }
 
     const { content, quotedMessageId, fileUrl } = parsed.data;
+    if (!isMultipart && fileUrl) {
+      return NextResponse.json({ error: "附件必须通过聊天上传接口提交" }, { status: 400 });
+    }
+    if (isMultipart && !file) {
+      return NextResponse.json({ error: "请选择要上传的附件" }, { status: 400 });
+    }
+    if (file && (!CHAT_FILE_EXTENSIONS[file.type] || file.size <= 0 || file.size > MAX_CHAT_FILE_SIZE)) {
+      return NextResponse.json({ error: "附件格式不支持或大小超过 20MB" }, { status: 400 });
+    }
 
     // Sensitive word detection
     const matches = await scanContent(content);
@@ -208,6 +251,18 @@ export const POST = withAuth(async (
         { error: "消息包含敏感词，请修改后重试", matches },
         { status: 400 },
       );
+    }
+    if (file && (await scanContent(file.name)).length > 0) {
+      return NextResponse.json({ error: "文件名包含敏感词，请修改后重试" }, { status: 400 });
+    }
+
+    let fileKey: string | null = null;
+    if (file) {
+      if (!process.env.OSS_BUCKET || !process.env.OSS_ACCESS_KEY_ID || !process.env.OSS_ACCESS_KEY_SECRET) {
+        return NextResponse.json({ error: "文件存储服务未配置" }, { status: 503 });
+      }
+      fileKey = generateObjectKey(CHAT_FILE_EXTENSIONS[file.type]);
+      await uploadPrivateObject(Buffer.from(await file.arrayBuffer()), fileKey, file.type);
     }
 
     // Create message (and optionally evidence item) in a transaction
@@ -223,7 +278,7 @@ export const POST = withAuth(async (
           content,
           senderId: userId,
           quotedMessageId: quotedMessageId ?? null,
-          fileUrl: fileUrl ?? null,
+          fileUrl: fileKey,
         },
         select: {
           id: true,
@@ -232,13 +287,14 @@ export const POST = withAuth(async (
         },
       });
 
-      // If fileUrl is provided, auto-create EVIDENCE_ITEM in EvidenceRoom
-      if (fileUrl && evidenceRoom) {
+      if (fileKey && evidenceRoom) {
         await tx.evidenceItem.create({
           data: {
             type: "EVIDENCE_ITEM",
-            description: "Chat file upload",
-            fileUrl,
+            description: content === "[附件]" ? "聊天附件" : content,
+            fileUrl: fileKey,
+            fileName: file?.name || null,
+            fileSize: file?.size || null,
             roomId: evidenceRoom.id,
             uploaderId: userId,
           },
@@ -249,8 +305,13 @@ export const POST = withAuth(async (
     });
 
     return NextResponse.json(
-      { id: message.id, content: message.content, createdAt: message.createdAt },
-      { status: 201 },
+      {
+        id: message.id,
+        content: message.content,
+        createdAt: message.createdAt,
+        fileUrl: fileKey ? createProtectedMediaUrl(fileKey, "DCR_CHAT", message.id) : null,
+      },
+      { status: 201, headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
     if (error instanceof Error && error.message === "SESSION_READ_ONLY") {

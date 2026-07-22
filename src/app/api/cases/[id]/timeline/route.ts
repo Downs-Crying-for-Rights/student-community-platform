@@ -21,7 +21,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
     // Check case exists and access
     const caseRecord = await prisma.case.findUnique({
       where: { id },
-      select: { submitterId: true, handlerId: true },
+      select: { submitterId: true, handlerId: true, handlers: { select: { userId: true } } },
     });
 
     if (!caseRecord) {
@@ -29,7 +29,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
     }
 
     const isSubmitter = caseRecord.submitterId === userId;
-    const isHandler = caseRecord.handlerId === userId;
+    const isHandler = caseRecord.handlerId === userId || caseRecord.handlers?.some((handler) => handler.userId === userId) === true;
     const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
     if (!isSubmitter && !isHandler && !isAdmin) {
@@ -38,7 +38,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
 
     const timeline = await prisma.timelineEvent.findMany({
       where: { caseId: id },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
 
     // Log audit

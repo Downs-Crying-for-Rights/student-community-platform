@@ -86,6 +86,11 @@ export default function ChatRoomPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isNearBottomRef = useRef(true);
+  const pollInFlightRef = useRef(false);
+  const [olderCursor, setOlderCursor] = useState<string | null>(null);
+  const latestCursorRef = useRef<string | null>(null);
+  const generationRef = useRef(0);
+  const controllersRef = useRef(new Set<AbortController>());
 
   const isOwner = room?.createdBy.id === userId;
   const ownerOrAdmin = isOwner || room?.members.some((m) => m.id === userId && (m.role === "OWNER" || m.role === "ADMIN"));
@@ -101,42 +106,68 @@ export default function ChatRoomPage() {
     } catch { /* ignore */ }
   }, [roomId, userId, router]);
 
-  const fetchMessages = useCallback(async (before?: string) => {
+  const fetchMessages = useCallback(async (mode: "initial" | "older", cursor?: string, generation = generationRef.current) => {
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
     try {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
-      if (before) params.set("before", before);
-      const res = await fetch(`/api/chat/rooms/${roomId}/messages?${params}`);
+      if (cursor) params.set("cursor", cursor);
+      const res = await fetch(`/api/chat/rooms/${roomId}/messages?${params}`, { signal: controller.signal });
+      if (generation !== generationRef.current) return;
       if (res.status === 403) { setIsMember(false); return; }
       if (!res.ok) return;
       const data = await res.json();
-      if (before) {
-        setMessages((prev) => [...data.messages, ...prev]);
-        setHasMore(data.messages.length >= PAGE_SIZE);
+      if (mode === "older") {
+        const el = scrollRef.current;
+        const previousHeight = el?.scrollHeight ?? 0;
+        setMessages((prev) => {
+          const ids = new Set(prev.map((message) => message.id));
+          return [...data.messages.filter((message: Message) => !ids.has(message.id)), ...prev];
+        });
+        setHasMore(Boolean(data.pagination?.hasMore));
+        setOlderCursor(data.pagination?.olderCursor ?? null);
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop += el.scrollHeight - previousHeight;
+        });
       } else {
         setMessages(data.messages);
-        setHasMore(data.messages.length >= PAGE_SIZE);
+        setHasMore(Boolean(data.pagination?.hasMore));
+        setOlderCursor(data.pagination?.olderCursor ?? null);
+        latestCursorRef.current = data.pagination?.newerCursor ?? null;
         // Mark last read
         if (data.messages.length > 0) setLastRead(roomId, data.messages[data.messages.length - 1].id);
       }
-    } catch { /* ignore */ } finally {
-      setLoading(false);
-      setLoadingMore(false);
+    } catch (cause) {
+      if (!(cause instanceof DOMException && cause.name === "AbortError")) { /* keep loaded messages */ }
+    } finally {
+      controllersRef.current.delete(controller);
+      if (generation === generationRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, [roomId]);
 
   const pollNewMessages = useCallback(async () => {
-    if (messages.length === 0) return;
-    const lastId = messages[messages.length - 1].id;
+    const cursor = latestCursorRef.current;
+    if (pollInFlightRef.current) return;
+    pollInFlightRef.current = true;
     try {
-      const res = await fetch(`/api/chat/rooms/${roomId}/messages?after=${lastId}&limit=20`);
+      const params = new URLSearchParams({ direction: "newer", limit: "20" });
+      if (cursor) params.set("cursor", cursor);
+      const res = await fetch(`/api/chat/rooms/${roomId}/messages?${params}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.messages && data.messages.length > 0) {
-        setMessages((prev) => [...prev, ...data.messages]);
+        setMessages((prev) => {
+          const ids = new Set(prev.map((message) => message.id));
+          return [...prev, ...data.messages.filter((message: Message) => !ids.has(message.id))];
+        });
+        latestCursorRef.current = data.pagination?.newerCursor ?? latestCursorRef.current;
         setLastRead(roomId, data.messages[data.messages.length - 1].id);
       }
-    } catch { /* ignore */ }
-  }, [roomId, messages]);
+    } catch { /* ignore */ } finally { pollInFlightRef.current = false; }
+  }, [roomId]);
 
   const fetchJoinRequests = useCallback(async () => {
     if (!ownerOrAdmin) return;
@@ -147,7 +178,24 @@ export default function ChatRoomPage() {
     } catch { /* ignore */ } finally { setManageLoading(false); }
   }, [roomId, ownerOrAdmin]);
 
-  useEffect(() => { fetchRoom(); fetchMessages(); }, [fetchRoom, fetchMessages]);
+  useEffect(() => {
+    const generation = ++generationRef.current;
+    const controllers = controllersRef.current;
+    controllers.forEach((controller) => controller.abort());
+    controllers.clear();
+    setMessages([]);
+    setOlderCursor(null);
+    setHasMore(true);
+    setLoading(true);
+    latestCursorRef.current = null;
+    pollInFlightRef.current = false;
+    void fetchRoom();
+    void fetchMessages("initial", undefined, generation);
+    return () => {
+      controllers.forEach((controller) => controller.abort());
+      controllers.clear();
+    };
+  }, [fetchRoom, fetchMessages]);
 
   useEffect(() => {
     intervalRef.current = setInterval(pollNewMessages, 3000);
@@ -170,9 +218,9 @@ export default function ChatRoomPage() {
     // Load older messages when scrolled to top
     if (el.scrollTop < 50 && !loadingMore && hasMore) {
       setLoadingMore(true);
-      fetchMessages(messages[0]?.id);
+      if (olderCursor) void fetchMessages("older", olderCursor);
     }
-  }, [messages, loadingMore, hasMore, fetchMessages]);
+  }, [olderCursor, loadingMore, hasMore, fetchMessages]);
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -189,6 +237,7 @@ export default function ChatRoomPage() {
         setMessages((current) => current.some((message) => message.id === data.message.id)
           ? current
           : [...current, data.message]);
+        latestCursorRef.current = data.newerCursor ?? latestCursorRef.current;
         setLastRead(roomId, data.message.id);
         isNearBottomRef.current = true;
       }
@@ -205,7 +254,7 @@ export default function ChatRoomPage() {
       const res = await fetch(url, { method: "POST" });
       if (res.ok) {
         if (room?.joinMode === "APPROVAL") { setRequestStatus("PENDING"); }
-        else { setIsMember(true); fetchMessages(); }
+        else { setIsMember(true); void fetchMessages("initial"); }
         fetchRoom();
       } else { const data = await res.json(); alert(data.error || "加入失败"); }
     } catch { /* ignore */ } finally { setJoining(false); }

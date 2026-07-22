@@ -21,9 +21,11 @@ const mockDmMessageFindUnique = vi.fn();
 const mockChatMessageFindUnique = vi.fn();
 const mockChatMemberFindUnique = vi.fn();
 const mockChatRoomFindUnique = vi.fn();
+const mockExecuteRawUnsafe = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
-  default: {
+  default: (() => {
+    const client = {
     report: {
       create: (...args: unknown[]) => mockReportCreate(...args),
       findFirst: (...args: unknown[]) => mockReportFindFirst(...args),
@@ -33,10 +35,12 @@ vi.mock("@/lib/prisma", () => ({
     post: {
       findUnique: (...args: unknown[]) => mockPostFindUnique(...args),
       update: (...args: unknown[]) => mockPostUpdate(...args),
+      updateMany: (...args: unknown[]) => mockPostUpdate(...args),
     },
     comment: {
       findUnique: (...args: unknown[]) => mockCommentFindUnique(...args),
       update: (...args: unknown[]) => mockCommentUpdate(...args),
+      updateMany: (...args: unknown[]) => mockCommentUpdate(...args),
     },
     user: {
       findMany: (...args: unknown[]) => mockUserFindMany(...args),
@@ -54,7 +58,10 @@ vi.mock("@/lib/prisma", () => ({
     chatMessage: { findUnique: (...args: unknown[]) => mockChatMessageFindUnique(...args) },
     chatRoomMember: { findUnique: (...args: unknown[]) => mockChatMemberFindUnique(...args) },
     chatRoom: { findUnique: (...args: unknown[]) => mockChatRoomFindUnique(...args) },
-  },
+      $executeRawUnsafe: (...args: unknown[]) => mockExecuteRawUnsafe(...args),
+    };
+    return { ...client, $transaction: (callback: (tx: typeof client) => unknown) => callback(client) };
+  })(),
 }));
 
 const mockLogAudit = vi.fn();
@@ -99,6 +106,9 @@ function setSession(id: string, role: string) {
 describe("POST /api/reports", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockExecuteRawUnsafe.mockResolvedValue(0);
+    mockPostUpdate.mockResolvedValue({ count: 1 });
+    mockCommentUpdate.mockResolvedValue({ count: 1 });
     mockPostFindUnique.mockResolvedValue({
       id: "post1",
       authorId: "other-user",
@@ -233,21 +243,15 @@ describe("POST /api/reports", () => {
     expect(mockReportFindFirst).toHaveBeenCalledWith({
       where: {
         reporterId: "user1",
-        targetUserId: null,
-        targetPostId: null,
-        targetCommentId: null,
-        targetTaskId: taskId,
-        targetCaseMessageId: null,
-        targetHelpMessageId: null,
-        targetDmMessageId: null,
-        targetChatMessageId: null,
-        targetChatRoomId: null,
+        targetKey: `task:${taskId}`,
       },
     });
     expect(mockReportCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ targetTaskId: taskId }),
     });
-    expect(mockReportCount).not.toHaveBeenCalled();
+    expect(mockReportCount).toHaveBeenCalledWith({
+      where: { targetKey: `task:${taskId}`, status: { not: "DISMISSED" } },
+    });
   });
 
   it("多目标举报应被拒绝", async () => {
@@ -297,7 +301,7 @@ describe("POST /api/reports", () => {
     // 3 reports on this post (threshold met)
     mockReportCount.mockResolvedValue(3);
     mockPostFindUnique.mockResolvedValue({ id: postId, authorId: "author", visibility: "PUBLIC", status: "PUBLISHED", board: { zone: "PUBLIC" } });
-    mockPostUpdate.mockResolvedValue({});
+    mockPostUpdate.mockResolvedValue({ count: 1 });
     mockUserFindMany.mockResolvedValue([{ id: "mod1" }]);
     mockNotificationCreateMany.mockResolvedValue({ count: 1 });
 
@@ -313,8 +317,8 @@ describe("POST /api/reports", () => {
     expect(res.status).toBe(201);
     expect(mockPostUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: postId },
-        data: { status: "DELETED" },
+        where: { id: postId, status: { not: "DELETED" }, reportAutoHidden: false },
+        data: { status: "DELETED", reportAutoHidden: true },
       }),
     );
     expect(mockNotificationCreateMany).toHaveBeenCalled();
@@ -354,8 +358,8 @@ describe("POST /api/reports", () => {
     expect(res.status).toBe(201);
     expect(mockCommentUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: commentId },
-        data: { isDeleted: true },
+        where: { id: commentId, isDeleted: false, reportAutoHidden: false },
+        data: { isDeleted: true, reportAutoHidden: true },
       }),
     );
   });

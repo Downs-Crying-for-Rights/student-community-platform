@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canCreateDcrPost, canSubmitDcrDelegation, canUseDcrWorkspace } from "@/lib/dcr-capabilities";
+import { canCreateDcrPost, canParticipateInDcrWorkflow, canSubmitDcrDelegation, canUseDcrWorkspace } from "@/lib/dcr-capabilities";
 
 describe("DCR contribution capabilities", () => {
   it("allows contribution invites to post and submit without workspace access", () => {
@@ -33,5 +33,15 @@ describe("DCR contribution capabilities", () => {
       dcrPledgeSigned: false,
       dcrContributionAccess: false,
     })).toBe(false);
+    expect(canParticipateInDcrWorkflow({
+      role: "USER",
+      dcrAccess: true,
+      dcrPledgeSigned: false,
+    })).toBe(false);
+  });
+
+  it("uses the same pledge-aware capability for internal workflows", () => {
+    expect(canParticipateInDcrWorkflow({ role: "USER", dcrAccess: true, dcrPledgeSigned: true })).toBe(true);
+    expect(canParticipateInDcrWorkflow({ role: "ADMIN", dcrAccess: false, dcrPledgeSigned: false })).toBe(true);
   });
 });

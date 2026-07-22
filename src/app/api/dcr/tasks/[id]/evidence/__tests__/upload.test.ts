@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   scanContent: vi.fn(),
   enforceRateLimit: vi.fn(),
   generateObjectKey: vi.fn(),
-  uploadToOSS: vi.fn(),
+  uploadPrivateObject: vi.fn(),
   logAudit: vi.fn(),
 }));
 
@@ -29,7 +29,7 @@ vi.mock("@/lib/sensitive-engine", () => ({ scanContent: mocks.scanContent }));
 vi.mock("@/lib/rate-limiter", () => ({ enforceRateLimit: mocks.enforceRateLimit }));
 vi.mock("@/lib/oss", () => ({
   generateObjectKey: mocks.generateObjectKey,
-  uploadToOSS: mocks.uploadToOSS,
+  uploadPrivateObject: mocks.uploadPrivateObject,
 }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.logAudit }));
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
@@ -66,7 +66,7 @@ describe("POST /api/dcr/tasks/[id]/evidence multipart upload", () => {
     mocks.scanContent.mockResolvedValue([]);
     mocks.enforceRateLimit.mockResolvedValue(null);
     mocks.generateObjectKey.mockReturnValue("uploads/2026/07/evidence.pdf");
-    mocks.uploadToOSS.mockResolvedValue("https://forum.example/api/media?key=evidence.pdf&sig=test");
+    mocks.uploadPrivateObject.mockResolvedValue(undefined);
     mocks.evidenceCreate.mockResolvedValue({ id: "item-1", type: "EVIDENCE_ITEM", createdAt: new Date() });
     mocks.logAudit.mockResolvedValue(undefined);
     process.env.OSS_BUCKET = "bucket";
@@ -84,14 +84,14 @@ describe("POST /api/dcr/tasks/[id]/evidence multipart upload", () => {
       where: { taskId: "task-1", id: "session-1" },
     }));
     expect(mocks.generateObjectKey).toHaveBeenCalledWith("pdf");
-    expect(mocks.uploadToOSS).toHaveBeenCalledWith(expect.any(Buffer), "uploads/2026/07/evidence.pdf", "application/pdf");
+    expect(mocks.uploadPrivateObject).toHaveBeenCalledWith(expect.any(Buffer), "uploads/2026/07/evidence.pdf", "application/pdf");
     expect(mocks.evidenceCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         roomId: "room-1",
         uploaderId: "helper",
         fileName: "proof.pdf",
         fileSize: 3,
-        fileUrl: "https://forum.example/api/media?key=evidence.pdf&sig=test",
+        fileUrl: "uploads/2026/07/evidence.pdf",
       }),
     }));
   });
@@ -102,7 +102,7 @@ describe("POST /api/dcr/tasks/[id]/evidence multipart upload", () => {
     const response = await POST(uploadRequest(file), context as never);
 
     expect(response.status).toBe(400);
-    expect(mocks.uploadToOSS).not.toHaveBeenCalled();
+    expect(mocks.uploadPrivateObject).not.toHaveBeenCalled();
     expect(mocks.evidenceCreate).not.toHaveBeenCalled();
   });
 
@@ -121,7 +121,7 @@ describe("POST /api/dcr/tasks/[id]/evidence multipart upload", () => {
     }), context as never);
 
     expect(response.status).toBe(400);
-    expect(mocks.uploadToOSS).not.toHaveBeenCalled();
+    expect(mocks.uploadPrivateObject).not.toHaveBeenCalled();
     expect(mocks.evidenceCreate).not.toHaveBeenCalled();
   });
 
@@ -137,6 +137,6 @@ describe("POST /api/dcr/tasks/[id]/evidence multipart upload", () => {
     const response = await POST(uploadRequest(file), context as never);
 
     expect(response.status).toBe(403);
-    expect(mocks.uploadToOSS).not.toHaveBeenCalled();
+    expect(mocks.uploadPrivateObject).not.toHaveBeenCalled();
   });
 });

@@ -39,6 +39,9 @@ import {
   validateFile,
   compressImage,
   createPrivateMediaUrl,
+  createProtectedMediaUrl,
+  getMediaKey,
+  parseProtectedMediaUrl,
   uploadToOSS,
   verifyMediaSignature,
   MAX_RAW_SIZE,
@@ -203,6 +206,24 @@ describe("private media URLs", () => {
     expect(url.origin).toBe("http://localhost:3000");
     expect(url.searchParams.get("key")).toBe(key);
     expect(verifyMediaSignature(key, url.searchParams.get("sig") || "")).toBe(true);
+  });
+
+  it("accepts only same-origin, unexpired URLs for the expected scope and resource", () => {
+    const key = "uploads/2026/07/d615317cea51e56e394ea36378aa1497.pdf";
+    const url = createProtectedMediaUrl(key, "EVIDENCE", "item-1");
+
+    expect(parseProtectedMediaUrl(url, "EVIDENCE", "item-1")).toBe(key);
+    expect(parseProtectedMediaUrl(url, "CASE", "item-1")).toBeNull();
+    expect(parseProtectedMediaUrl(url, "EVIDENCE", "item-2")).toBeNull();
+    expect(parseProtectedMediaUrl(url.replace("http://localhost:3000", "https://attacker.example"), "EVIDENCE", "item-1")).toBeNull();
+  });
+
+  it("safely parses canonical keys and legacy same-origin URLs only", () => {
+    const key = "uploads/2026/07/d615317cea51e56e394ea36378aa1497.webp";
+    expect(getMediaKey(key)).toBe(key);
+    expect(getMediaKey(`http://localhost:3000/api/media?key=${encodeURIComponent(key)}&sig=legacy`)).toBe(key);
+    expect(getMediaKey(`https://attacker.example/api/media?key=${encodeURIComponent(key)}&sig=legacy`)).toBeNull();
+    expect(getMediaKey("uploads/../../secret")).toBeNull();
   });
 
   it("rejects a signature when the object key is changed", () => {

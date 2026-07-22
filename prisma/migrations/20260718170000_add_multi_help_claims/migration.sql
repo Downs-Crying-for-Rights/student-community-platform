@@ -29,33 +29,8 @@ ALTER TABLE "HelpClaim" ADD CONSTRAINT "HelpClaim_targetTaskId_fkey" FOREIGN KEY
 ALTER TABLE "HelpClaim" ADD CONSTRAINT "HelpClaim_offeredTaskId_fkey" FOREIGN KEY ("offeredTaskId") REFERENCES "MutualAidTask"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "HelpClaim" ADD CONSTRAINT "HelpClaim_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "HelpSession"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
-CREATE TABLE "DMThread" (
-    "id" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-    "participant1Id" TEXT NOT NULL,
-    "participant2Id" TEXT NOT NULL,
-
-    CONSTRAINT "DMThread_pkey" PRIMARY KEY ("id")
-);
-
-CREATE TABLE "DMMessage" (
-    "id" TEXT NOT NULL,
-    "content" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "threadId" TEXT NOT NULL,
-    "senderId" TEXT NOT NULL,
-
-    CONSTRAINT "DMMessage_pkey" PRIMARY KEY ("id")
-);
-
-CREATE UNIQUE INDEX "DMThread_participant1Id_participant2Id_key" ON "DMThread"("participant1Id", "participant2Id");
-CREATE INDEX "DMThread_participant1Id_updatedAt_idx" ON "DMThread"("participant1Id", "updatedAt");
-CREATE INDEX "DMThread_participant2Id_updatedAt_idx" ON "DMThread"("participant2Id", "updatedAt");
-CREATE INDEX "DMMessage_threadId_createdAt_idx" ON "DMMessage"("threadId", "createdAt");
+-- DMThread and DMMessage were created by
+-- 20260627132915_add_dm_models_and_trust_level. This migration only adds the
+-- sender index and relation that were missing from that original definition.
 CREATE INDEX "DMMessage_senderId_idx" ON "DMMessage"("senderId");
-
-ALTER TABLE "DMThread" ADD CONSTRAINT "DMThread_participant1Id_fkey" FOREIGN KEY ("participant1Id") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "DMThread" ADD CONSTRAINT "DMThread_participant2Id_fkey" FOREIGN KEY ("participant2Id") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "DMMessage" ADD CONSTRAINT "DMMessage_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "DMThread"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "DMMessage" ADD CONSTRAINT "DMMessage_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

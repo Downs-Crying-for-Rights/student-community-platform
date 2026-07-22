@@ -196,7 +196,7 @@ describe("GET /api/kb", () => {
 
   it("DCR 用户应看到 PUBLIC 和 DCR_ONLY 文章", async () => {
     setSession("user2", "USER");
-    mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrPledgeSigned: true });
     mockArticleFindMany.mockResolvedValue([]);
     mockArticleCount.mockResolvedValue(0);
 

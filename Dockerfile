@@ -51,5 +51,6 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Run the lifecycle backfill after the legacy schema sync and before traffic.
-CMD ["sh", "-c", "node /prisma-cli/node_modules/prisma/build/index.js db push --schema=./prisma/schema.prisma --skip-generate --accept-data-loss && node /prisma-cli/node_modules/prisma/build/index.js db execute --schema=./prisma/schema.prisma --file=./prisma/backfills/help-session-lifecycle.sql && node server.js"]
+# Schema changes are applied explicitly by the deployment process before this
+# container starts. Application restarts must never mutate the database.
+CMD ["node", "server.js"]

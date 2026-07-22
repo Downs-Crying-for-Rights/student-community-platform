@@ -13,6 +13,8 @@ const mockUserUpdate = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockPunishmentCreate = vi.fn();
 const mockNotificationCreate = vi.fn();
+const mockExecuteRawUnsafe = vi.fn();
+const mockReportCount = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -27,14 +29,16 @@ vi.mock("@/lib/prisma", () => ({
       report: {
         update: (...args: unknown[]) => mockReportUpdate(...args),
         updateMany: (...args: unknown[]) => mockReportUpdateMany(...args),
+        count: (...args: unknown[]) => mockReportCount(...args),
       },
-      post: { update: (...args: unknown[]) => mockPostUpdate(...args) },
+      post: { update: (...args: unknown[]) => mockPostUpdate(...args), updateMany: (...args: unknown[]) => mockPostUpdate(...args) },
       postRevision: { updateMany: (...args: unknown[]) => mockPostRevisionUpdateMany(...args) },
-      comment: { update: (...args: unknown[]) => mockCommentUpdate(...args) },
+      comment: { update: (...args: unknown[]) => mockCommentUpdate(...args), updateMany: (...args: unknown[]) => mockCommentUpdate(...args) },
       user: { update: (...args: unknown[]) => mockUserUpdate(...args) },
       userPunishment: { create: (...args: unknown[]) => mockPunishmentCreate(...args) },
       notification: { create: (...args: unknown[]) => mockNotificationCreate(...args) },
       auditLog: { create: vi.fn() },
+      $executeRawUnsafe: (...args: unknown[]) => mockExecuteRawUnsafe(...args),
     }),
   },
 }));
@@ -81,6 +85,10 @@ function setSession(id: string, role: string) {
 describe("PATCH /api/reports/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockExecuteRawUnsafe.mockResolvedValue(0);
+    mockReportCount.mockResolvedValue(1);
+    mockPostUpdate.mockResolvedValue({ count: 1 });
+    mockCommentUpdate.mockResolvedValue({ count: 1 });
     mockNotificationCreate.mockResolvedValue({});
     mockReportUpdateMany.mockResolvedValue({ count: 1 });
   });
@@ -263,7 +271,7 @@ describe("PATCH /api/reports/[id]", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED" } });
+    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED", reportAutoHidden: false } });
     expect(mockPostRevisionUpdateMany).toHaveBeenCalledWith({
       where: { postId: "p1", status: "PENDING" },
       data: { status: "SUPERSEDED", reviewedAt: expect.any(Date) },
@@ -296,7 +304,7 @@ describe("PATCH /api/reports/[id]", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED" } });
+    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED", reportAutoHidden: false } });
   });
 
   it("版主不能通过举报处理封禁责任用户", async () => {
@@ -350,7 +358,7 @@ describe("PATCH /api/reports/[id]", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockCommentUpdate).toHaveBeenCalledWith({ where: { id: "c1" }, data: { isDeleted: true } });
+    expect(mockCommentUpdate).toHaveBeenCalledWith({ where: { id: "c1", isDeleted: false }, data: { isDeleted: true, reportAutoHidden: false } });
     expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { commentCount: { decrement: 1 } } });
   });
 
@@ -372,7 +380,7 @@ describe("PATCH /api/reports/[id]", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED" } });
+    expect(mockPostUpdate).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "DELETED", reportAutoHidden: false } });
     expect(mockUserUpdate).toHaveBeenCalledWith({
       where: { id: "author1" },
       data: { isBanned: true, securityVersion: { increment: 1 } },

@@ -61,9 +61,9 @@ export const GET = withOptionalAuth(async (
     const isModerator = hasMinimumRole(req.user.role, "MODERATOR");
 
     const contributionAccess = await canManageOwnContributionPost(userId, post);
-    const access = contributionAccess ? { allowed: true as const } : await checkPostAccess(req.user, post);
+    const access = await checkPostAccess(req.user, post, { skipZoneAccess: contributionAccess });
     if (!access.allowed) {
-      return NextResponse.json({ error: access.error }, { status: access.status });
+      return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
     if (post.board.zone === "DCR" && post.case_ && post.case_.requestStatus !== "APPROVED" && !isAuthor && !isModerator) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
@@ -138,7 +138,7 @@ export const PATCH = withAuth(async (
     }
 
     const contributionAccess = await canManageOwnContributionPost(req.user.id, existing);
-    const access = contributionAccess ? { allowed: true as const } : await checkPostAccess(req.user, existing);
+    const access = await checkPostAccess(req.user, existing, { skipZoneAccess: contributionAccess });
     if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
 
     if (existing.status === "DELETED") {
@@ -269,7 +269,7 @@ export const DELETE = withAuth(async (
 
     const existing = await prisma.post.findUnique({
       where: { id },
-      select: { id: true, authorId: true, status: true, visibility: true, board: { select: { zone: true } } },
+      select: { id: true, authorId: true, status: true, visibility: true, caseId: true, board: { select: { zone: true } } },
     });
 
     if (!existing) {

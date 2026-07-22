@@ -6,6 +6,7 @@ import { z } from "zod";
 import { enforceRateLimit } from "@/lib/rate-limiter";
 import { Prisma } from "@prisma/client";
 import { notifyMutualAidUsersBestEffort } from "@/lib/mutual-aid-notifications";
+import { canUseDcrWorkspace } from "@/lib/dcr-capabilities";
 
 const claimSchema = z.object({
   offeredTaskId: z.string().cuid().nullable().optional(),
@@ -33,10 +34,10 @@ export const POST = withAuth(async (
     // Check dcrAccess
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { dcrAccess: true },
+      select: { dcrAccess: true, dcrPledgeSigned: true },
     });
 
-    if (!user?.dcrAccess) {
+    if (!user || !canUseDcrWorkspace({ ...user, role: req.user.role })) {
       return NextResponse.json({ error: "无 DCR 区访问权限" }, { status: 403 });
     }
 
@@ -108,10 +109,24 @@ export const POST = withAuth(async (
     }
 
     const claim = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+      const currentTask = await tx.mutualAidTask.findUnique({
+        where: { id },
+        select: { requesterId: true, status: true },
+      });
+      if (!currentTask || !["OPEN", "CLAIMED", "IN_PROGRESS"].includes(currentTask.status)) {
+        throw new Error("TASK_NO_LONGER_ACCEPTS_CLAIMS");
+      }
+      if (currentTask.requesterId === userId) throw new Error("CANNOT_CLAIM_OWN_TASK");
+
+      const currentExistingClaim = await tx.helpClaim.findUnique({
+        where: { targetTaskId_applicantId: { targetTaskId: id, applicantId: userId } },
+        select: { id: true, status: true },
+      });
       let result: { id: string; status: string; offeredTaskId: string | null };
-      if (existingClaim) {
+      if (currentExistingClaim) {
         const updated = await tx.helpClaim.updateMany({
-          where: { id: existingClaim.id, status: { not: "ACCEPTED" } },
+          where: { id: currentExistingClaim.id, status: { not: "ACCEPTED" } },
           data: {
             offeredTaskId: offeredTask?.id ?? null,
             status: "PENDING",
@@ -122,7 +137,7 @@ export const POST = withAuth(async (
         });
         if (updated.count === 0) throw new Error("CLAIM_ALREADY_ACCEPTED");
         result = (await tx.helpClaim.findUnique({
-          where: { id: existingClaim.id },
+          where: { id: currentExistingClaim.id },
           select: { id: true, status: true, offeredTaskId: true },
         }))!;
       } else {
@@ -131,7 +146,7 @@ export const POST = withAuth(async (
             targetTaskId: id,
             offeredTaskId: offeredTask?.id ?? null,
             applicantId: userId,
-            requesterId: task.requesterId,
+            requesterId: currentTask.requesterId,
           },
           select: { id: true, status: true, offeredTaskId: true },
         });
@@ -140,8 +155,8 @@ export const POST = withAuth(async (
         data: {
           taskId: id,
           action: "claim_requested",
-          oldStatus: task.status,
-          newStatus: task.status,
+          oldStatus: currentTask.status,
+          newStatus: currentTask.status,
           details: offeredTask ? `已交换委托：${offeredTask.title}` : "互助人选择无偿帮助，未附带自己的委托",
           operatorId: userId,
         },
@@ -169,6 +184,12 @@ export const POST = withAuth(async (
   } catch (error) {
     if (error instanceof Error && error.message === "CLAIM_ALREADY_ACCEPTED") {
       return NextResponse.json({ error: "该互助关系已建立，不能重复申请" }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === "TASK_NO_LONGER_ACCEPTS_CLAIMS") {
+      return NextResponse.json({ error: "任务已进入结案流程，不能再申请" }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === "CANNOT_CLAIM_OWN_TASK") {
+      return NextResponse.json({ error: "不能领取自己发起的任务" }, { status: 400 });
     }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ error: "该委托的接取申请已存在" }, { status: 409 });

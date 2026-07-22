@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, Fragment } from "react";
+import { useEffect, useState, useCallback, Fragment, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -53,23 +53,26 @@ export default function ApplicationReviewPage() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const requestRef = useRef(0);
 
   const fetchApplications = useCallback(async () => {
+    const requestId = ++requestRef.current;
     setLoading(true);
     setError("");
     try {
       const res = await fetch(`/api/admin/applications?type=${activeTab}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || "获取申请列表失败");
+        if (requestId === requestRef.current) setError(data.error || "获取申请列表失败");
         return;
       }
       const data = await res.json();
+      if (requestId !== requestRef.current) return;
       setApplications(data.applications);
     } catch {
-      setError("网络错误，请检查连接后重试");
+      if (requestId === requestRef.current) setError("网络错误，请检查连接后重试");
     } finally {
-      setLoading(false);
+      if (requestId === requestRef.current) setLoading(false);
     }
   }, [activeTab]);
 

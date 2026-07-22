@@ -5,7 +5,7 @@ import { createEvidenceItemSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit } from "@/lib/audit";
 import { enforceRateLimit } from "@/lib/rate-limiter";
-import { generateObjectKey, uploadToOSS } from "@/lib/oss";
+import { generateObjectKey, uploadPrivateObject } from "@/lib/oss";
 
 /** Roles that can access EvidenceRoom alongside A and B */
 const PRIVILEGED_ROLES = ["MODERATOR", "ADMIN", "SUPER_ADMIN"] as const;
@@ -117,7 +117,12 @@ export const GET = withAuth(async (
       FOLLOW_UP: [],
     };
 
-    for (const item of allItems) {
+    const protectedItems = allItems.map((item) => ({
+      ...item,
+      fileUrl: null,
+      hasFile: Boolean(item.fileUrl),
+    }));
+    for (const item of protectedItems) {
       if (grouped[item.type]) {
         grouped[item.type].push(item);
       }
@@ -128,8 +133,8 @@ export const GET = withAuth(async (
 
     return NextResponse.json({
       items: grouped,
-      total: allItems.length,
-    });
+      total: protectedItems.length,
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("GET /api/dcr/tasks/[id]/evidence error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
@@ -255,7 +260,8 @@ export const POST = withAuth(async (
       }
       if (file) {
         const key = generateObjectKey(EVIDENCE_FILE_EXTENSIONS[file.type]);
-        fileUrl = await uploadToOSS(Buffer.from(await file.arrayBuffer()), key, file.type);
+        await uploadPrivateObject(Buffer.from(await file.arrayBuffer()), key, file.type);
+        fileUrl = key;
       }
       const created = await tx.evidenceItem.create({
         data: {

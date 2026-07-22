@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { createProtectedMediaUrl, getMediaKey } from "@/lib/oss";
 
 /** Roles that can access EvidenceRoom alongside A and B */
 const PRIVILEGED_ROLES = ["MODERATOR", "ADMIN", "SUPER_ADMIN"] as const;
@@ -52,14 +53,14 @@ export const GET = withAuth(async (
       return NextResponse.json({ error: "该条目没有关联文件" }, { status: 400 });
     }
 
-    // Generate signed URL — MVP: return fileUrl directly
-    // TODO: Replace with actual signed URL generation when OSS presigning is available
-    const signedUrl = item.fileUrl;
+    const key = getMediaKey(item.fileUrl);
+    if (!key) return NextResponse.json({ error: "文件地址无效" }, { status: 410 });
+    const signedUrl = createProtectedMediaUrl(key, "EVIDENCE", item.id, 300);
 
     // Audit log for download operation
     await logAudit(userId, "DOWNLOAD_EVIDENCE", "EVIDENCE_ITEM", itemId);
 
-    return NextResponse.json({ url: signedUrl, expiresIn: 3600 });
+    return NextResponse.json({ url: signedUrl, expiresIn: 300 }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("GET /api/dcr/tasks/[id]/evidence/[itemId]/url error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });

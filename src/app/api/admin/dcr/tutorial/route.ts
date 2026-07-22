@@ -8,6 +8,7 @@ const tutorialSchema = z.object({
   content: z.string().min(1).max(10000),
   order: z.number().int().min(0).optional(),
 });
+const reorderSchema = z.object({ firstId: z.string().cuid(), secondId: z.string().cuid() });
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   if (req.user.role !== "SUPER_ADMIN") {
@@ -33,4 +34,20 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     data: { ...parsed.data, order: parsed.data.order ?? (maxOrder?.order ?? -1) + 1 },
   });
   return NextResponse.json({ chapter }, { status: 201 });
+}, "SUPER_ADMIN");
+
+export const PATCH = withAuth(async (req: AuthenticatedRequest) => {
+  const parsed = reorderSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: "参数校验失败" }, { status: 400 });
+  const chapters = await prisma.dcrTutorialChapter.findMany({
+    where: { id: { in: [parsed.data.firstId, parsed.data.secondId] } },
+    select: { id: true, order: true },
+  });
+  if (chapters.length !== 2) return NextResponse.json({ error: "教程章节不存在" }, { status: 404 });
+  const [first, second] = parsed.data.firstId === chapters[0].id ? chapters : [chapters[1], chapters[0]];
+  await prisma.$transaction([
+    prisma.dcrTutorialChapter.update({ where: { id: first.id }, data: { order: second.order } }),
+    prisma.dcrTutorialChapter.update({ where: { id: second.id }, data: { order: first.order } }),
+  ]);
+  return NextResponse.json({ success: true });
 }, "SUPER_ADMIN");

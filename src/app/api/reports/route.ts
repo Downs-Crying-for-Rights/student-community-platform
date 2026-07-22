@@ -5,6 +5,7 @@ import { createReportSchema, paginationSchema } from "@/lib/validators";
 import { checkPostAccess } from "@/lib/post-access";
 import { z } from "zod";
 import { sendAdminActionMail } from "@/lib/mail";
+import { Prisma } from "@prisma/client";
 
 const AUTO_HIDE_THRESHOLD = 3;
 
@@ -56,7 +57,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     if (data.targetPostId) {
       const post = await prisma.post.findUnique({
         where: { id: data.targetPostId },
-        select: { authorId: true, visibility: true, board: { select: { zone: true } } },
+        select: { authorId: true, status: true, visibility: true, caseId: true, author: { select: { isShadowBanned: true } }, board: { select: { zone: true } } },
       });
       if (!post) return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
       if (post.authorId === reporterId) return NextResponse.json({ error: "不能举报自己的帖子" }, { status: 400 });
@@ -69,10 +70,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         where: { id: data.targetCommentId },
         select: {
           authorId: true,
-          post: { select: { authorId: true, visibility: true, board: { select: { zone: true } } } },
+          isDeleted: true,
+          post: { select: { authorId: true, status: true, visibility: true, caseId: true, author: { select: { isShadowBanned: true } }, board: { select: { zone: true } } } },
         },
       });
-      if (!comment) return NextResponse.json({ error: "评论不存在" }, { status: 404 });
+      if (!comment || comment.isDeleted) return NextResponse.json({ error: "评论不存在" }, { status: 404 });
       if (comment.authorId === reporterId) return NextResponse.json({ error: "不能举报自己的评论" }, { status: 400 });
       const access = await checkPostAccess(req.user, comment.post);
       if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
@@ -175,20 +177,24 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       targetChatMessageId: data.targetChatMessageId ?? null,
       targetChatRoomId: data.targetChatRoomId ?? null,
     };
-    const existingReport = await prisma.report.findFirst({ where: { reporterId, ...targetData } });
-    if (existingReport) return NextResponse.json({ error: "您已举报过该内容" }, { status: 409 });
-
-    const report = await prisma.report.create({
-      data: {
-        reason: data.reason,
-        details: data.details,
-        status: "PENDING",
-        reporterId,
-        ...targetData,
-      },
-    });
-
-    await checkAutoHideThreshold(data.targetPostId, data.targetCommentId);
+    const targetKey = getReportTargetKey(targetData);
+    const report = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", targetKey);
+      const duplicate = await tx.report.findFirst({ where: { reporterId, targetKey } });
+      if (duplicate) throw new Error("REPORT_DUPLICATE");
+      const created = await tx.report.create({
+        data: {
+          reason: data.reason,
+          details: data.details,
+          status: "PENDING",
+          reporterId,
+          targetKey,
+          ...targetData,
+        },
+      });
+      await checkAutoHideThreshold(tx, targetKey, data.targetPostId, data.targetCommentId);
+      return created;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     await sendAdminActionMail({
       minimumRole: "MODERATOR",
       subject: "新举报待处理",
@@ -197,6 +203,12 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     });
     return NextResponse.json({ report }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === "REPORT_DUPLICATE") {
+      return NextResponse.json({ error: "您已举报过该内容" }, { status: 409 });
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "您已举报过该内容" }, { status: 409 });
+    }
     console.error("POST /api/reports error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
@@ -269,28 +281,59 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
  * Check if the same content (post or comment) has been reported by 3+ different users.
  * If so, auto-hide the content and notify all Moderators.
  */
+type ReportTargetData = {
+  targetUserId: string | null;
+  targetPostId: string | null;
+  targetCommentId: string | null;
+  targetTaskId: string | null;
+  targetCaseMessageId: string | null;
+  targetHelpMessageId: string | null;
+  targetDmMessageId: string | null;
+  targetChatMessageId: string | null;
+  targetChatRoomId: string | null;
+};
+
+function getReportTargetKey(target: ReportTargetData) {
+  const entries = [
+    ["user", target.targetUserId],
+    ["post", target.targetPostId],
+    ["comment", target.targetCommentId],
+    ["task", target.targetTaskId],
+    ["case-message", target.targetCaseMessageId],
+    ["help-message", target.targetHelpMessageId],
+    ["dm-message", target.targetDmMessageId],
+    ["chat-message", target.targetChatMessageId],
+    ["chat-room", target.targetChatRoomId],
+  ] as const;
+  const entry = entries.find(([, value]) => value);
+  if (!entry) throw new Error("REPORT_TARGET_MISSING");
+  return `${entry[0]}:${entry[1]}`;
+}
+
 async function checkAutoHideThreshold(
+  tx: Prisma.TransactionClient,
+  targetKey: string,
   targetPostId: string | undefined | null,
   targetCommentId: string | undefined | null,
 ) {
-  if (targetPostId) {
-    const reportCount = await prisma.report.count({
-      where: { targetPostId },
-    });
+  const reportCount = await tx.report.count({
+    where: { targetKey, status: { not: "DISMISSED" } },
+  });
+  if (reportCount < AUTO_HIDE_THRESHOLD) return;
 
-    if (reportCount >= AUTO_HIDE_THRESHOLD) {
-      // Check if post is not already hidden/deleted
-      const post = await prisma.post.findUnique({
+  if (targetPostId) {
+      const post = await tx.post.findUnique({
         where: { id: targetPostId },
-        select: { id: true, status: true, authorId: true, title: true },
+        select: { id: true, status: true, reportAutoHidden: true, authorId: true, title: true },
       });
 
-      if (post && post.status !== "DELETED") {
-        await prisma.post.update({
-          where: { id: targetPostId },
-          data: { status: "DELETED" },
+      if (post && post.status !== "DELETED" && !post.reportAutoHidden) {
+        const hidden = await tx.post.updateMany({
+          where: { id: targetPostId, status: { not: "DELETED" }, reportAutoHidden: false },
+          data: { status: "DELETED", reportAutoHidden: true },
         });
-        await prisma.notification.createMany({
+        if (hidden.count !== 1) return;
+        await tx.notification.createMany({
           data: [{
             userId: post.authorId,
             type: "SYSTEM",
@@ -300,35 +343,30 @@ async function checkAutoHideThreshold(
           }],
         });
 
-        await notifyModerators(
+        await notifyModerators(tx,
           `帖子 ${targetPostId} 被 ${reportCount} 人举报，已自动隐藏`,
           `/post/${targetPostId}`,
         );
-      }
     }
   }
 
   if (targetCommentId) {
-    const reportCount = await prisma.report.count({
-      where: { targetCommentId },
-    });
-
-    if (reportCount >= AUTO_HIDE_THRESHOLD) {
-      const comment = await prisma.comment.findUnique({
+      const comment = await tx.comment.findUnique({
         where: { id: targetCommentId },
-        select: { id: true, isDeleted: true, authorId: true, postId: true },
+        select: { id: true, isDeleted: true, reportAutoHidden: true, authorId: true, postId: true },
       });
 
-      if (comment && !comment.isDeleted) {
-        await prisma.comment.update({
-          where: { id: targetCommentId },
-          data: { isDeleted: true },
+      if (comment && !comment.isDeleted && !comment.reportAutoHidden) {
+        const hidden = await tx.comment.updateMany({
+          where: { id: targetCommentId, isDeleted: false, reportAutoHidden: false },
+          data: { isDeleted: true, reportAutoHidden: true },
         });
-        await prisma.post.update({
+        if (hidden.count !== 1) return;
+        await tx.post.update({
           where: { id: comment.postId },
           data: { commentCount: { decrement: 1 } },
         });
-        await prisma.notification.createMany({
+        await tx.notification.createMany({
           data: [{
             userId: comment.authorId,
             type: "SYSTEM",
@@ -338,11 +376,10 @@ async function checkAutoHideThreshold(
           }],
         });
 
-        await notifyModerators(
+        await notifyModerators(tx,
           `评论 ${targetCommentId} 被 ${reportCount} 人举报，已自动隐藏`,
           `/admin/moderation`,
         );
-      }
     }
   }
 }
@@ -350,14 +387,14 @@ async function checkAutoHideThreshold(
 /**
  * Send a notification to all Moderator and Admin users.
  */
-async function notifyModerators(content: string, link: string) {
-  const moderators = await prisma.user.findMany({
+async function notifyModerators(tx: Prisma.TransactionClient, content: string, link: string) {
+  const moderators = await tx.user.findMany({
     where: { role: { in: ["MODERATOR", "ADMIN", "SUPER_ADMIN"] } },
     select: { id: true },
   });
 
   if (moderators.length > 0) {
-    await prisma.notification.createMany({
+    await tx.notification.createMany({
       data: moderators.map((mod) => ({
         type: "SYSTEM" as const,
         title: "举报自动隐藏通知",

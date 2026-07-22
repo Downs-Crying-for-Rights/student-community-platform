@@ -4,6 +4,7 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
 import { evaluateDcrAdmission } from "@/lib/dcr-admission-policy";
 import { sendAdminActionMail } from "@/lib/mail";
+import { Prisma } from "@prisma/client";
 
 const applySchema = z.object({
   pledgeText: z.string().min(1, "守则声明不能为空"),
@@ -128,6 +129,12 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     return NextResponse.json({ application }, { status: 201 });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json(
+        { error: "您已有待审核的 DCR 准入申请", code: "APPLICATION_ALREADY_PENDING" },
+        { status: 409 },
+      );
+    }
     console.error("POST /api/dcr/apply error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

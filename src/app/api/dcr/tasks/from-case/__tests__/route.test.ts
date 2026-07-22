@@ -74,7 +74,7 @@ describe("POST /api/dcr/tasks/from-case", () => {
       user: { id: "user-1", role: "USER" },
       expires: new Date(Date.now() + 86400000).toISOString(),
     } as never);
-    mockUserFindUnique.mockResolvedValue({ dcrAccess: true });
+    mockUserFindUnique.mockResolvedValue({ dcrAccess: true, dcrPledgeSigned: true });
     mockCaseFindUnique.mockResolvedValue(approvedCase);
     mockTaskFindFirst.mockResolvedValue(null);
     mockTaskCreate.mockResolvedValue({ id: "task-1", status: "OPEN" });

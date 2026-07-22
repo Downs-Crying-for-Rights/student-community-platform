@@ -65,22 +65,39 @@ interface DMThread {
 function DMThreadList() {
   const [threads, setThreads] = useState<DMThread[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState("");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/dm")
-      .then((res) => res.ok ? res.json() : Promise.reject())
-      .then((data) => setThreads(data.threads ?? []))
-      .catch(() => setThreads([]))
-      .finally(() => setLoading(false));
+  const fetchThreads = useCallback(async (cursor?: string) => {
+    cursor ? setLoadingMore(true) : setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/dm${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "私信列表加载失败");
+      setThreads((current) => cursor ? [...current, ...(data.threads ?? [])] : (data.threads ?? []));
+      setNextCursor(data.pagination?.nextCursor ?? null);
+      setHasMore(Boolean(data.pagination?.hasMore));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "私信列表加载失败，请重试");
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
   }, []);
 
+  useEffect(() => { void fetchThreads(); }, [fetchThreads]);
+
   if (loading) return <ListSkeleton count={4} />;
-  if (threads.length === 0) {
+  if (threads.length === 0 && !error) {
     return <EmptyState title="暂无私信" description="可从用户主页或互助关系中发起一对一私信" actionLabel="去发现" actionHref="/discover" />;
   }
 
   return (
     <div className="space-y-2">
+      {error && <div role="alert" className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center text-sm text-destructive">{error}<div><Button className="mt-3" size="sm" variant="outline" onClick={() => void fetchThreads(nextCursor ?? undefined)}>重试</Button></div></div>}
       {threads.map((thread) => (
         <Link key={thread.id} href={`/messages/dm/${thread.id}`} className="block">
           <Card className="transition-colors hover:bg-muted/50">
@@ -97,6 +114,7 @@ function DMThreadList() {
           </Card>
         </Link>
       ))}
+      {hasMore && !error && <div className="flex justify-center pt-2"><Button size="sm" variant="outline" disabled={loadingMore} onClick={() => nextCursor && void fetchThreads(nextCursor)}>{loadingMore ? "加载中..." : "加载更多私信"}</Button></div>}
     </div>
   );
 }

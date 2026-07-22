@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import Link from "next/link";
 import { BookOpen, Lightbulb, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DEFAULT_HOME_HERO, type HomeHeroConfig } from "@/lib/home-content-config";
+import { DEFAULT_HOME_HERO, isHomeHeroConfig, type HomeHeroConfig } from "@/lib/home-content-config";
 
 type SortMode = "popular" | "latest";
 
@@ -68,11 +68,14 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [failedPage, setFailedPage] = useState<number | null>(null);
   const [hero, setHero] = useState<HomeHeroConfig>(DEFAULT_HOME_HERO);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const postRequestRef = useRef(0);
 
   const fetchPosts = useCallback(
     async (pageNum: number, currentSort: SortMode, append: boolean) => {
+      const requestId = ++postRequestRef.current;
       if (pageNum === 1) {
         setLoading(true);
       } else {
@@ -86,19 +89,35 @@ export default function HomePage() {
           pageSize: String(PAGE_SIZE),
         });
         const res = await fetch(`/api/posts?${params.toString()}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (requestId === postRequestRef.current) {
+            setError("帖子加载失败，请稍后重试");
+            setFailedPage(pageNum);
+          }
+          return false;
+        }
 
         const data: PostsResponse = await res.json();
         const mapped = data.posts.map(mapAPIPostToCardProps);
 
+        if (requestId !== postRequestRef.current) return;
         setError(null);
+        setFailedPage(null);
         setPosts((prev) => (append ? [...prev, ...mapped] : mapped));
         setHasMore(data.page * data.pageSize < data.total);
+        setPage(pageNum);
+        return true;
       } catch {
-        // Network error — silently ignore for now
+        if (requestId === postRequestRef.current) {
+          setError("网络错误，请检查连接后重试");
+          setFailedPage(pageNum);
+        }
+        return false;
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (requestId === postRequestRef.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
     [],
@@ -109,14 +128,16 @@ export default function HomePage() {
     setPosts([]);
     setPage(1);
     setHasMore(true);
-    fetchPosts(1, sort, false);
+    setError(null);
+    setFailedPage(null);
+    void fetchPosts(1, sort, false);
   }, [sort, fetchPosts]);
 
   useEffect(() => {
     fetch("/api/home-content", { cache: "no-store" })
       .then((response) => response.json())
       .then((data) => {
-        if (data.hero) setHero(data.hero);
+        if (isHomeHeroConfig(data.hero)) setHero(data.hero);
       })
       .catch(() => {});
   }, []);
@@ -128,12 +149,8 @@ export default function HomePage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
-          setPage((prev) => {
-            const next = prev + 1;
-            fetchPosts(next, sort, true);
-            return next;
-          });
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && !error) {
+          void fetchPosts(page + 1, sort, true);
         }
       },
       { rootMargin: "200px" },
@@ -141,10 +158,11 @@ export default function HomePage() {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loading, loadingMore, sort, fetchPosts]);
+  }, [error, hasMore, loading, loadingMore, page, sort, fetchPosts]);
 
   function handleSortChange(newSort: SortMode) {
     if (newSort !== sort) {
+      postRequestRef.current += 1;
       setSort(newSort);
     }
   }
@@ -219,11 +237,11 @@ export default function HomePage() {
         </div>
 
         {/* Content */}
-        {error ? (
+        {error && posts.length === 0 ? (
           <div role="alert" aria-live="polite" className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
             <p className="text-sm text-destructive">{error}</p>
             <button
-              onClick={() => { setError(null); fetchPosts(1, sort, false); }}
+              onClick={() => void fetchPosts(failedPage ?? 1, sort, false)}
               className="mt-3 rounded-full bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors"
             >
               重试
@@ -250,6 +268,13 @@ export default function HomePage() {
             {loadingMore && (
               <div className="mt-4">
                 <CardSkeleton count={2} />
+              </div>
+            )}
+
+            {error && failedPage && (
+              <div role="alert" className="mt-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center">
+                <p className="text-sm text-destructive">{error}</p>
+                <button onClick={() => void fetchPosts(failedPage, sort, true)} className="mt-2 rounded-full bg-destructive px-4 py-1.5 text-sm font-medium text-destructive-foreground">重试加载第 {failedPage} 页</button>
               </div>
             )}
 
