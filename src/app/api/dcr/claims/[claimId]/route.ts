@@ -58,20 +58,13 @@ export const POST = withAuth(async (
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${claim.targetTaskId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${claim.targetTaskId}`}))`;
       const currentClaim = await tx.helpClaim.findUnique({
         where: { id: claim.id },
         select: { status: true, requesterId: true },
       });
       if (!currentClaim || currentClaim.status !== "PENDING") throw new Error("CLAIM_ALREADY_HANDLED");
       if (currentClaim.requesterId !== req.user.id) throw new Error("CLAIM_FORBIDDEN");
-      const currentTask = await tx.mutualAidTask.findUnique({
-        where: { id: claim.targetTaskId },
-        select: { status: true },
-      });
-      if (!currentTask || !["OPEN", "CLAIMED", "IN_PROGRESS"].includes(currentTask.status)) {
-        throw new Error("TASK_NO_LONGER_ACCEPTS_CLAIMS");
-      }
       const accepted = await tx.helpClaim.updateMany({
         where: { id: claim.id, status: "PENDING" },
         data: { status: "ACCEPTED", requesterConfirmed: true },

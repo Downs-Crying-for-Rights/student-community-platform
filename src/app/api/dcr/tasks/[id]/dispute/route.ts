@@ -78,7 +78,7 @@ export const POST = withAuth(async (
 
     // Transition to DISPUTED in a transaction
     await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
       const currentTask = await tx.mutualAidTask.findUnique({ where: { id }, select: { status: true, requesterId: true } });
       const currentSession = await tx.helpSession.findUnique({
         where: { id: selected.id },

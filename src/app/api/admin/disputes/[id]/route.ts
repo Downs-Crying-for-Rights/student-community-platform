@@ -42,7 +42,7 @@ export const POST = withAuth(async (
 
     const task = disputed.task;
     const result = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${task.id}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${task.id}`}))`;
       const current = await tx.helpSession.findUnique({ where: { id: sessionId } });
       if (!current || current.status !== "DISPUTED") throw new Error("DISPUTE_ALREADY_RESOLVED");
 

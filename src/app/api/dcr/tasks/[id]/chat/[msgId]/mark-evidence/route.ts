@@ -57,7 +57,7 @@ export const POST = withAuth(async (
 
     // Transaction: mark message as evidence + create EvidenceRoom NOTE entry
     const updated = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${taskId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${taskId}`}))`;
       const current = await tx.helpSession.findUnique({ where: { id: session.id }, select: { status: true } });
       if (!current || ["DISPUTED", "COMPLETED", "CLOSED"].includes(current.status)) {
         throw new Error("SESSION_READ_ONLY");
