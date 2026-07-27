@@ -90,7 +90,7 @@ export const POST = withAuth(async (
     if (riskMatches.length > 0) riskDetected = true;
 
     const message = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`psych-session:${id}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`psych-session:${id}`}))`;
       const currentSender = await tx.user.findUnique({ where: { id: userId }, select: { psychAccess: true } });
       if (!currentSender?.psychAccess) throw new PsychSessionError(403, "心理区访问权限已失效");
       const current = await tx.confideRequest.findUnique({ where: { id } });

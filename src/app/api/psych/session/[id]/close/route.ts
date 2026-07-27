@@ -40,7 +40,7 @@ export const POST = withAuth(async (
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`psych-session:${id}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`psych-session:${id}`}))`;
       const current = await tx.confideRequest.findUnique({ where: { id } });
       if (!current) return null;
       if (current.requesterId !== userId && current.listenerId !== userId) throw new Error("SESSION_FORBIDDEN");

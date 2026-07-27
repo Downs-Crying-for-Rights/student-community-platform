@@ -263,7 +263,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       }
 
       const reviewResult = await runSerializableTransaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${id}`}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${id}`}))`;
         const caseRecord = await tx.case.findUnique({
           where: { id },
           include: {
@@ -591,7 +591,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
 
     // Update case + create timeline event + CaseHandler in transaction
     const updatedCase = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${id}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${id}`}))`;
       const lockedCase = await tx.case.findUnique({
         where: { id },
         include: { handlers: { select: { userId: true } } },
@@ -824,7 +824,7 @@ async function handleJoinAction(userId: string, userRole: string, caseId: string
 
   // Build transaction
   const joinResult = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${caseId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${caseId}`}))`;
     const lockedCase = await tx.case.findUnique({
       where: { id: caseId },
       include: { handlers: { select: { userId: true } } },
