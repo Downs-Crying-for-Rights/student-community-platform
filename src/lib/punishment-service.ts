@@ -53,7 +53,7 @@ export async function recalculatePunishmentProjection(
     return runSerializableTransaction((tx) => recalculatePunishmentProjection(userId, tx, now));
   }
   if ("$queryRaw" in db) {
-    await db.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`punishment-projection:${userId}`}))`;
+    await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punishment-projection:${userId}`}))`;
   }
   const user = await db.user.findUnique({ where: { id: userId }, select: { deactivatedAt: true } });
   if (!user) throw new Error("USER_NOT_FOUND");
@@ -90,7 +90,7 @@ export async function applyPunishment(input: {
     if (isTemporaryPunishment(input.type) && (!expiresAt || expiresAt <= now)) throw new Error("INVALID_PUNISHMENT_EXPIRY");
     if (!isTemporaryPunishment(input.type) && expiresAt) throw new Error("UNEXPECTED_PUNISHMENT_EXPIRY");
     if (isBanPunishment(input.type) && "$queryRaw" in tx) {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('punishment:last-active-super-admin'))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('punishment:last-active-super-admin'))`;
     }
     const target = await tx.user.findUnique({
       where: { id: input.userId },

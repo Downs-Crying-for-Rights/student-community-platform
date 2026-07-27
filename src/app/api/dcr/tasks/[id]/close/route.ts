@@ -98,7 +98,7 @@ export const POST = withAuth(async (
       const completionReport = generateCompletionReport(task, "force", reason);
 
       const updated = await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
         const currentTask = await tx.mutualAidTask.findUnique({ where: { id }, select: { status: true } });
         if (!currentTask || !canTransition(currentTask.status as TaskStatus, "CLOSED")) {
           throw new Error("TASK_STATE_CHANGED");
@@ -174,7 +174,7 @@ export const POST = withAuth(async (
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-task:${id}`}))`;
       const currentTask = await tx.mutualAidTask.findUnique({ where: { id }, select: { status: true } });
       const lockedSession = await tx.helpSession.findUnique({
         where: { id: selected.id },

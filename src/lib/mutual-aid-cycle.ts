@@ -223,7 +223,7 @@ export async function createCycle(input: CycleCreateInput) {
   // 创建循环 + 三段链接 (事务)
   const cycle = await prisma.$transaction(async (tx) => {
     for (const participantId of [...userIds].sort()) {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-participant:${participantId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-participant:${participantId}`}))`;
     }
     const lockedConflict = await tx.mutualAidCycle.findFirst({
       where: {
@@ -433,7 +433,7 @@ export async function respondToLink(
   return prisma.$transaction(async (tx) => {
     const initial = await tx.mutualAidLink.findUnique({ where: { id: linkId }, select: { cycleId: true } });
     if (!initial) throw new Error("链接不存在");
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${initial.cycleId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${initial.cycleId}`}))`;
     const link = await tx.mutualAidLink.findUnique({ where: { id: linkId }, include: { cycle: true } });
     if (!link) throw new Error("链接不存在");
     if (link.toUserId !== userId) throw new Error("只有接收方可以响应互助请求");
@@ -481,7 +481,7 @@ export async function updateLinkProgress(
   return prisma.$transaction(async (tx) => {
     const initial = await tx.mutualAidLink.findUnique({ where: { id: linkId }, select: { cycleId: true } });
     if (!initial) throw new Error("链接不存在");
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${initial.cycleId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${initial.cycleId}`}))`;
     const link = await tx.mutualAidLink.findUnique({ where: { id: linkId } });
     if (!link) throw new Error("链接不存在");
     if (link.fromUserId !== userId) throw new Error("只有发起方可以更新互助进度");
@@ -506,7 +506,7 @@ export async function disputeLink(linkId: string, userId: string, reason: string
   return prisma.$transaction(async (tx) => {
     const initial = await tx.mutualAidLink.findUnique({ where: { id: linkId }, select: { cycleId: true } });
     if (!initial) throw new Error("链接不存在");
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${initial.cycleId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${initial.cycleId}`}))`;
     const link = await tx.mutualAidLink.findUnique({ where: { id: linkId }, include: { cycle: true } });
     if (!link) throw new Error("链接不存在");
     if (link.fromUserId !== userId && link.toUserId !== userId) throw new Error("只有参与者可以发起争议");
@@ -552,7 +552,7 @@ export async function resolveCycleDispute(
   ) => Promise<void>,
 ) {
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${cycleId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mutual-aid-cycle:${cycleId}`}))`;
     const link = await tx.mutualAidLink.findFirst({
       where: { id: linkId, cycleId },
       include: { cycle: { include: { links: true } } },
