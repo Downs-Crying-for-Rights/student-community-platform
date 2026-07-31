@@ -94,6 +94,41 @@ if [[ "$postgres_ready" != true ]]; then
   docker compose -p "$PROJECT_NAME" logs --tail=100 postgres >&2 || true
   exit 1
 fi
+
+# Older production releases used `prisma db push`, so the live schema can be
+# current while `_prisma_migrations` has no applied records. Baseline that
+# exact legacy state once; never auto-baseline a partially migrated database.
+migration_table_present="$(docker compose -p "$PROJECT_NAME" exec -T postgres \
+  psql -U postgres -d student_community -tAc \
+  "SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL THEN 'false' ELSE 'true' END" \
+  | tr -d '[:space:]')"
+applied_migration_count=0
+if [[ "$migration_table_present" == "true" ]]; then
+  applied_migration_count="$(docker compose -p "$PROJECT_NAME" exec -T postgres \
+    psql -U postgres -d student_community -tAc \
+    'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL' \
+    | tr -d '[:space:]')"
+fi
+application_table_count="$(docker compose -p "$PROJECT_NAME" exec -T postgres \
+  psql -U postgres -d student_community -tAc \
+  "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'" \
+  | tr -d '[:space:]')"
+
+if [[ "$applied_migration_count" == "0" && "$application_table_count" != "0" ]]; then
+  echo "Legacy db-push database detected; aligning without data loss before migration baseline"
+  APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" run --rm --no-deps web \
+    node /prisma-cli/node_modules/prisma/build/index.js db push --skip-generate --schema=./prisma/schema.prisma
+  APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" run --rm --no-deps web \
+    sh -ec '
+      for migration_dir in ./prisma/migrations/*; do
+        [ -d "$migration_dir" ] || continue
+        node /prisma-cli/node_modules/prisma/build/index.js migrate resolve \
+          --applied "$(basename "$migration_dir")" \
+          --schema=./prisma/schema.prisma
+      done
+    '
+fi
+
 APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" run --rm --no-deps web \
   node /prisma-cli/node_modules/prisma/build/index.js migrate deploy --schema=./prisma/schema.prisma
 APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" up -d --no-build --remove-orphans
