@@ -96,8 +96,11 @@ if [[ "$postgres_ready" != true ]]; then
 fi
 
 # Older production releases used `prisma db push`, so the live schema can be
-# current while `_prisma_migrations` has no applied records. Baseline that
-# exact legacy state once; never auto-baseline a partially migrated database.
+# current while `_prisma_migrations` has no applied records. Production is
+# known to be on c077db0, whose migration history ended at this directory.
+# Baseline only that history, then let later migrations perform their data
+# backfills before adding required columns and constraints.
+LEGACY_BASELINE_LAST_MIGRATION="20260720223000_add_account_deletion_and_invite_dcr_contribution"
 migration_table_present="$(docker compose -p "$PROJECT_NAME" exec -T postgres \
   psql -U postgres -d student_community -tAc \
   "SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL THEN 'false' ELSE 'true' END" \
@@ -115,18 +118,26 @@ application_table_count="$(docker compose -p "$PROJECT_NAME" exec -T postgres \
   | tr -d '[:space:]')"
 
 if [[ "$applied_migration_count" == "0" && "$application_table_count" != "0" ]]; then
-  echo "Legacy db-push database detected; aligning without data loss before migration baseline"
+  echo "Legacy db-push database detected; baselining through $LEGACY_BASELINE_LAST_MIGRATION"
   APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" run --rm --no-deps web \
-    node /prisma-cli/node_modules/prisma/build/index.js db push --skip-generate --schema=./prisma/schema.prisma
-  APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" run --rm --no-deps web \
-    sh -ec '
+    sh -ec "
+      baseline_found=false
       for migration_dir in ./prisma/migrations/*; do
-        [ -d "$migration_dir" ] || continue
+        [ -d \"\$migration_dir\" ] || continue
+        migration_name=\"\$(basename \"\$migration_dir\")\"
         node /prisma-cli/node_modules/prisma/build/index.js migrate resolve \
-          --applied "$(basename "$migration_dir")" \
+          --applied \"\$migration_name\" \
           --schema=./prisma/schema.prisma
+        if [ \"\$migration_name\" = \"$LEGACY_BASELINE_LAST_MIGRATION\" ]; then
+          baseline_found=true
+          break
+        fi
       done
-    '
+      [ \"\$baseline_found\" = true ] || {
+        echo \"Legacy baseline migration is missing: $LEGACY_BASELINE_LAST_MIGRATION\" >&2
+        exit 1
+      }
+    "
 fi
 
 APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" run --rm --no-deps web \
