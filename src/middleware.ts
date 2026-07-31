@@ -89,5 +89,5 @@ export default async function middleware(req: NextRequest) {
  * 匹配所有页面路由
  */
 export const config = {
-  matcher: ["/((?!api(?:/|$)|_next(?:/|$)|.*\\..*).*)"],
+  matcher: ["/((?!api(?:/|$)|_next(?:/|$)|VERSION(?:/|$)|DEPLOYMENT(?:/|$)|.*\\..*).*)"],
 };
