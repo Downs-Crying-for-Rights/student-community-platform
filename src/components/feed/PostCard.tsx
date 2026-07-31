@@ -85,7 +85,7 @@ export function PostCard({
               src={coverImage}
               alt={`${title} 封面图`}
               fill
-              className="object-cover"
+              className="object-contain"
               sizes={compact
                 ? "(max-width: 767px) 50vw, (max-width: 1279px) 33vw, 25vw"
                 : "(max-width: 768px) 100vw, 50vw"}

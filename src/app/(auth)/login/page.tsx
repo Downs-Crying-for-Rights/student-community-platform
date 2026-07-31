@@ -39,6 +39,7 @@ import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required";
 import { verificationCodeSchema } from "@/lib/validators";
 import { LOGIN_POLICIES, REGISTRATION_POLICY_KEYS, type LoginPolicyId } from "@/lib/login-policies";
+import { DEFAULT_REGISTRATION_ACCESS_POLICY, type RegistrationAccessPolicy } from "@/lib/phone-policy-shared";
 
 type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
 export type LoginTab = "email" | "password";
@@ -140,6 +141,11 @@ function LoginContent() {
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regNickname, setRegNickname] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [regCode, setRegCode] = useState("");
+  const [regCountdown, setRegCountdown] = useState(0);
+  const regCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [registrationPolicy, setRegistrationPolicy] = useState<RegistrationAccessPolicy>(DEFAULT_REGISTRATION_ACCESS_POLICY);
   const qqPollInFlightRef = useRef(false);
   const qqPollCompletedRef = useRef(false);
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
@@ -150,6 +156,15 @@ function LoginContent() {
   const [agreementTitle, setAgreementTitle] = useState("");
   const [agreementContent, setAgreementContent] = useState("");
   const [allKeys, setAllKeys] = useState<{ key: string; title: string; revision: number }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/access-policy", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.registration) setRegistrationPolicy(data.registration);
+      })
+      .catch(() => {});
+  }, []);
 
   // Login and registration share the same database-managed agreements.
   useEffect(() => {
@@ -185,6 +200,7 @@ function LoginContent() {
   useEffect(() => {
     return () => {
       if (resetCountdownRef.current) clearInterval(resetCountdownRef.current);
+      if (regCountdownRef.current) clearInterval(regCountdownRef.current);
     };
   }, []);
 
@@ -461,13 +477,64 @@ function LoginContent() {
   }
 
   // ===== Registration =====
+  async function handleRegistrationSendCode() {
+    const parsed = phoneSchema.safeParse(regPhone.trim());
+    if (!parsed.success) {
+      setRegErrors((current) => ({ ...current, phone: parsed.error.issues[0].message }));
+      return;
+    }
+    setLoading(true);
+    setRegErrors((current) => ({ ...current, phone: "", code: "" }));
+    try {
+      const response = await fetch("/api/sms/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: regPhone.trim(), purpose: "register" }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setRegErrors((current) => ({ ...current, phone: data.error || "验证码发送失败" }));
+        return;
+      }
+      setRegCountdown(60);
+      if (regCountdownRef.current) clearInterval(regCountdownRef.current);
+      regCountdownRef.current = setInterval(() => {
+        setRegCountdown((previous) => {
+          if (previous <= 1) {
+            if (regCountdownRef.current) clearInterval(regCountdownRef.current);
+            regCountdownRef.current = null;
+            return 0;
+          }
+          return previous - 1;
+        });
+      }, 1000);
+    } catch {
+      setRegErrors((current) => ({ ...current, phone: "网络错误，请稍后重试" }));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleRegisterSubmit(e: React.FormEvent) {
     e.preventDefault();
     setRegErrors({});
     setInviteErrors({});
     setErrorMessage("");
 
+    if (regMethod === "email" && showInvite && !registrationPolicy.inviteEnabled) {
+      setErrorMessage("邀请码注册当前已关闭");
+      return;
+    }
+    if (regMethod === "email" && !showInvite && !registrationPolicy.emailEnabled) {
+      setErrorMessage("邮箱注册当前已关闭，请使用其他开放的注册方式");
+      return;
+    }
+
     if (regMethod === "qq") {
+      if (!registrationPolicy.qqEnabled || registrationPolicy.phoneRequired) {
+        setErrorMessage("QQ 机器人注册当前已关闭");
+        return;
+      }
       const registrationData = {
         username: regNickname.trim(),
         password: regPassword,
@@ -508,6 +575,7 @@ function LoginContent() {
       email: regEmail.trim(),
       password: regPassword,
       nickname: regNickname.trim(),
+      ...(registrationPolicy.phoneRequired ? { phone: regPhone.trim(), code: regCode.trim() } : {}),
       ...(showInvite ? { inviteCode: inviteCode.trim() } : {}),
     };
     const result = (showInvite ? inviteRegisterSchema : registerSchema).safeParse(registrationData);
@@ -748,11 +816,11 @@ function LoginContent() {
             )}
 
             <div className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-              使用邮箱直接注册，手机号可在注册后按需绑定；也可以通过个人 QQ 机器人完成注册。
+              {registrationPolicy.phoneRequired ? "当前注册必须完成手机号验证。" : "手机号可在注册后按需绑定。"}
             </div>
             <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
-              <Button type="button" variant={regMethod === "email" ? "secondary" : "ghost"} onClick={() => { setRegMethod("email"); setQQRegistration(null); setErrorMessage(""); }}>邮箱注册</Button>
-              <Button type="button" variant={regMethod === "qq" ? "secondary" : "ghost"} onClick={() => { setRegMethod("qq"); setShowInvite(false); setQQRegistration(null); setErrorMessage(""); }}><Bot className="mr-2 h-4 w-4" />QQ 机器人验证</Button>
+              <Button type="button" disabled={!registrationPolicy.emailEnabled && !registrationPolicy.inviteEnabled} variant={regMethod === "email" ? "secondary" : "ghost"} onClick={() => { setRegMethod("email"); setQQRegistration(null); setErrorMessage(""); }}>邮箱注册</Button>
+              <Button type="button" disabled={!registrationPolicy.qqEnabled || registrationPolicy.phoneRequired} variant={regMethod === "qq" ? "secondary" : "ghost"} onClick={() => { setRegMethod("qq"); setShowInvite(false); setQQRegistration(null); setErrorMessage(""); }}><Bot className="mr-2 h-4 w-4" />QQ 机器人验证</Button>
             </div>
             {qqRegistration ? (
               <div className="space-y-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
@@ -812,6 +880,50 @@ function LoginContent() {
                   </p>
                 )}
               </div>}
+
+              {regMethod === "email" && registrationPolicy.phoneRequired && (
+                <div className="space-y-4 rounded-md border p-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-phone">手机号</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="reg-phone"
+                        type="tel"
+                        inputMode="numeric"
+                        placeholder="11 位大陆手机号"
+                        value={regPhone}
+                        onChange={(event) => {
+                          setRegPhone(event.target.value.replace(/\D/g, "").slice(0, 11));
+                          if (regErrors.phone) setRegErrors((current) => ({ ...current, phone: "" }));
+                        }}
+                        autoComplete="tel"
+                        disabled={loading}
+                        aria-invalid={Boolean(regErrors.phone)}
+                      />
+                      <Button type="button" variant="outline" className="shrink-0" disabled={loading || regCountdown > 0} onClick={() => void handleRegistrationSendCode()}>
+                        {regCountdown > 0 ? `${regCountdown}s` : "发送验证码"}
+                      </Button>
+                    </div>
+                    {regErrors.phone && <p className="text-xs text-red-500" role="alert">{regErrors.phone}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-sms-code">短信验证码</Label>
+                    <Input
+                      id="reg-sms-code"
+                      inputMode="numeric"
+                      placeholder="6 位验证码"
+                      value={regCode}
+                      onChange={(event) => {
+                        setRegCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                        if (regErrors.code) setRegErrors((current) => ({ ...current, code: "" }));
+                      }}
+                      disabled={loading}
+                      aria-invalid={Boolean(regErrors.code)}
+                    />
+                    {regErrors.code && <p className="text-xs text-red-500" role="alert">{regErrors.code}</p>}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="reg-password">密码</Label>
@@ -903,7 +1015,7 @@ function LoginContent() {
             </form>
             )}
 
-            {regMethod === "email" && <Button
+            {regMethod === "email" && registrationPolicy.inviteEnabled && <Button
               type="button"
               variant="ghost"
               className="w-full"

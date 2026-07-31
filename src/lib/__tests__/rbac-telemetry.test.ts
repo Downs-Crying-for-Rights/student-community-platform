@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 const getServerSession = vi.hoisted(() => vi.fn());
 vi.mock("next-auth/next", () => ({ getServerSession }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
+vi.mock("@/lib/system-config", () => ({ isPhoneRequiredForArea: vi.fn().mockResolvedValue(false) }));
 
 import { recordCompletedRequest } from "@/lib/telemetry";
 import { withAuth, withOptionalAuth } from "@/lib/rbac";

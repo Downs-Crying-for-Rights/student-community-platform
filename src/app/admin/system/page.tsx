@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { SystemMaintenancePanel } from "./SystemMaintenancePanel";
 import { SmsVerificationPanel } from "./SmsVerificationPanel";
+import { PhoneAccessPolicyPanel } from "./PhoneAccessPolicyPanel";
 
 export default async function SystemMaintenancePage() {
   const session = await getServerSession(authOptions);
@@ -17,6 +18,7 @@ export default async function SystemMaintenancePage() {
         <p className="mt-1 text-sm text-muted-foreground">管理认证策略、缓存刷新和应用重启。</p>
       </div>
       <SmsVerificationPanel />
+      <PhoneAccessPolicyPanel />
       <SystemMaintenancePanel />
     </div>
   );

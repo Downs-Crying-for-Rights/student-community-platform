@@ -1,11 +1,12 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { phoneGateAreaForPage, type PublicAccessPolicy } from "@/lib/phone-policy-shared";
 
 /**
  * 会员区路径 — 这些路径下的所有页面自动获得 TopBar + Sidebar + BottomNav 导航壳。
@@ -46,10 +47,30 @@ interface MemberShellProps {
  */
 export function MemberShell({ children }: MemberShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const memberPath = isMemberPath(pathname);
   const { data: session, status } = useSession();
   const userId = (session?.user as { id?: string } | undefined)?.id;
+  const phone = session?.user?.phone;
   const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const area = phoneGateAreaForPage(pathname);
+    if (status !== "authenticated" || phone !== null || !area) return;
+    let cancelled = false;
+    fetch("/api/access-policy", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json() as Promise<PublicAccessPolicy>;
+      })
+      .then((policy) => {
+        if (!cancelled && policy?.phoneRequiredAreas[area] && !policy.phoneVerified) {
+          router.replace(`/bindphone?callbackUrl=${encodeURIComponent(pathname)}`);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [pathname, phone, router, status]);
 
   useEffect(() => {
     if (!memberPath || status !== "authenticated" || !userId) {

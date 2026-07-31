@@ -308,8 +308,13 @@ model IdentityVerificationRevocationRequest {
 }
 
 model SystemConfig {
-  id                     String   @id @default("default")
-  smsVerificationEnabled Boolean  @default(true)
+  id                        String   @id @default("default")
+  smsVerificationEnabled    Boolean  @default(true)
+  emailRegistrationEnabled  Boolean  @default(true)
+  inviteRegistrationEnabled Boolean  @default(true)
+  qqRegistrationEnabled     Boolean  @default(true)
+  registrationPhoneRequired Boolean  @default(false)
+  phoneRequiredAreas        Json     @default("{}")
   homeHeroTitle          String   @default("电子扫盲 · 学习交流")
   homeHeroDescription    String   @default("学生交流社区 — 从认知开始，拒绝信息差。浏览电子扫盲知识、学术讨论与娱乐分享。")
   homeHeroLinks          Json?

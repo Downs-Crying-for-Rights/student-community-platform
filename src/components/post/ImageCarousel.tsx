@@ -77,7 +77,7 @@ export function ImageCarousel({
         {images.map((src, idx) => (
           <div
             key={src + idx}
-            className="relative aspect-square w-full flex-shrink-0"
+            className="relative aspect-square w-full flex-shrink-0 bg-muted"
             role="group"
             aria-roledescription="slide"
             aria-label={`${alt} ${idx + 1}/${total}`}
@@ -86,7 +86,7 @@ export function ImageCarousel({
               src={src}
               alt={`${alt} ${idx + 1}`}
               fill
-              className="object-cover"
+              className="object-contain"
               placeholder="blur"
               blurDataURL={BLUR_DATA_URL}
               sizes="(max-width: 768px) 100vw, 672px"

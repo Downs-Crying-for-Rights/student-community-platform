@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth/register-helpers";
 import { verifyCode } from "@/lib/sms/verification";
 import { withTelemetry } from "@/lib/telemetry";
+import { getSystemAccessPolicy } from "@/lib/system-config";
 
 const post = async (request: NextRequest) => {
   try {
@@ -21,6 +22,13 @@ const post = async (request: NextRequest) => {
     }
 
     const { email, password, nickname, phone, code } = parsed.data;
+    const { registration } = await getSystemAccessPolicy();
+    if (!registration.emailEnabled) {
+      return NextResponse.json({ error: "邮箱注册当前已关闭" }, { status: 403 });
+    }
+    if (registration.phoneRequired && (!phone || !code)) {
+      return NextResponse.json({ error: "注册必须完成手机号验证", phoneVerificationRequired: true }, { status: 400 });
+    }
 
     // 校验 nickname 非空
     const nicknameError = validateNickname(nickname);

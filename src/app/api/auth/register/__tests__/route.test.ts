@@ -9,6 +9,7 @@ vi.mock("@/lib/prisma", () => {
       findFirst: vi.fn(),
       create: vi.fn(),
     },
+    systemConfig: { findUnique: vi.fn() },
   };
   client.$transaction = vi.fn((callback) => callback(client));
   return { prisma: client, default: client };
@@ -42,7 +43,42 @@ const validBody = {
 describe("POST /api/auth/register", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.systemConfig.findUnique).mockResolvedValue(null);
     vi.mocked(verifyCode).mockResolvedValue(true);
+  });
+
+  it("开启注册手机号要求后拒绝缺少手机号的请求", async () => {
+    vi.mocked(prisma.systemConfig.findUnique).mockResolvedValue({
+      emailRegistrationEnabled: true,
+      inviteRegistrationEnabled: true,
+      qqRegistrationEnabled: false,
+      registrationPhoneRequired: true,
+      phoneRequiredAreas: {},
+    } as never);
+
+    const res = await POST(makeRequest({
+      email: "phone-required@example.com",
+      password: "password123",
+      nickname: "测试用户",
+    }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ phoneVerificationRequired: true });
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it("关闭邮箱注册后拒绝直接调用注册接口", async () => {
+    vi.mocked(prisma.systemConfig.findUnique).mockResolvedValue({
+      emailRegistrationEnabled: false,
+      inviteRegistrationEnabled: true,
+      qqRegistrationEnabled: true,
+      registrationPhoneRequired: false,
+      phoneRequiredAreas: {},
+    } as never);
+
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(403);
+    expect(prisma.user.create).not.toHaveBeenCalled();
   });
 
   it("应拒绝无效参数", async () => {

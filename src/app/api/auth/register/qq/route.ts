@@ -8,6 +8,7 @@ import { qqRegistrationSchema } from "@/lib/validators";
 import prisma from "@/lib/prisma";
 import { LOGIN_POLICIES, REGISTRATION_POLICY_KEYS } from "@/lib/login-policies";
 import { withTelemetry } from "@/lib/telemetry";
+import { getSystemAccessPolicy } from "@/lib/system-config";
 
 
 export const runtime = "nodejs";
@@ -30,6 +31,13 @@ const post = async (request: Request) => {
   if (!allowed) return noStore(NextResponse.json({ error: "请求过于频繁，请稍后再试" }, { status: 429 }));
 
   try {
+    const { registration } = await getSystemAccessPolicy();
+    if (!registration.qqEnabled) {
+      return noStore(NextResponse.json({ error: "QQ 机器人注册当前已关闭" }, { status: 403 }));
+    }
+    if (registration.phoneRequired) {
+      return noStore(NextResponse.json({ error: "当前注册必须验证手机号，请使用邮箱注册" }, { status: 403 }));
+    }
     await Promise.all(REGISTRATION_POLICY_KEYS.map((key) => prisma.siteContent.upsert({
       where: { key },
       update: {},

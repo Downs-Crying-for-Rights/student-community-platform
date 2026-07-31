@@ -515,7 +515,7 @@ export default function CreatePage() {
                     <img
                       src={img.url}
                       alt={`上传图片 ${index + 1}`}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-contain"
                     />
                     {/* Upload status overlay */}
                     {img.uploading && (

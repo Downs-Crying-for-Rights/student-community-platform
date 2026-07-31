@@ -214,6 +214,7 @@ describe("全局路由与导航集成", () => {
       ]);
       expect(bottomMoreNavItems.map((item) => item.href)).toEqual([
         "/u/me",
+        "/settings/profile",
         "/messages?tab=chat",
         "/dcr",
         "/support",

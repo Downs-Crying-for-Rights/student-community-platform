@@ -5,6 +5,8 @@ import type { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { recordCompletedRequest } from "@/lib/telemetry";
 import { isCommunicationWrite, punishmentRouteAllowsBanned } from "@/lib/punishment-policy";
+import { phoneGateAreaForApi } from "@/lib/phone-policy-shared";
+import { isPhoneRequiredForArea } from "@/lib/system-config";
 
 // ==================== Action & Resource Types ====================
 
@@ -173,6 +175,20 @@ type AuthenticatedHandler = (
   context: { params: Record<string, string> },
 ) => Promise<NextResponse> | NextResponse;
 
+async function phoneGateResponse(req: NextRequest, phone: string | null | undefined): Promise<NextResponse | null> {
+  // `undefined` keeps compatibility with older/test sessions. Production sessions always carry null or a number.
+  if (phone !== null) return null;
+  const area = phoneGateAreaForApi(new URL(req.url).pathname, req.method);
+  if (!area || !(await isPhoneRequiredForArea(area))) return null;
+  return NextResponse.json({
+    error: "该功能需要先完成手机号验证",
+    code: "PHONE_VERIFICATION_REQUIRED",
+    phoneVerificationRequired: true,
+    bindUrl: "/bindphone",
+    area,
+  }, { status: 403 });
+}
+
 /**
  * Wrap an API route handler with authentication and optional role check.
  *
@@ -216,11 +232,14 @@ export function withAuth(
             muteUntil: sessionUser?.muteUntil ?? null,
           }, { status: 403 });
         } else {
+        const phoneGate = await phoneGateResponse(req, sessionUser?.phone);
         const profileCompletionAllowed = pathname.startsWith("/api/users/")
           || pathname === "/api/upload"
           || /^\/api\/announcements\/[^/]+\/dismiss$/.test(pathname);
         const userRole = (sessionUser?.role ?? "USER") as Role;
-        if (sessionUser?.profileCompletionRequired && !profileCompletionAllowed) {
+        if (phoneGate) {
+          response = phoneGate;
+        } else if (sessionUser?.profileCompletionRequired && !profileCompletionAllowed) {
           response = NextResponse.json(
             { error: "请先补齐昵称、头像和QQ号", profileCompletionRequired: true },
             { status: 403 },
@@ -274,6 +293,12 @@ export function withOptionalAuth(handler: OptionalAuthHandler): RouteHandler {
       if (session?.user?.id) {
         userId = session.user.id;
         if (!session.user.isBanned) {
+          const phoneGate = await phoneGateResponse(req, session.user.phone);
+          if (phoneGate) {
+            phoneGate.headers.set("X-Request-Id", requestId);
+            recordCompletedRequest(req, phoneGate, startedAt, { requestId, userId, params: context.params });
+            return phoneGate;
+          }
           optReq.user = { id: userId, role: (session.user.role ?? "USER") as Role };
         }
       }

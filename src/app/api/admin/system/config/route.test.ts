@@ -75,4 +75,42 @@ describe("admin system config", () => {
     expect(response.status).toBe(400);
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
+
+  it("rejects enabling mandatory registration phone while QQ registration remains enabled", async () => {
+    mocks.session.mockResolvedValue({ user: { id: "root", role: "SUPER_ADMIN" } });
+    mocks.findUnique.mockResolvedValue({ qqRegistrationEnabled: true });
+    const { PATCH } = await import("./route");
+    const response = await PATCH(new NextRequest(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ registrationPhoneRequired: true }),
+    }), { params: {} });
+    expect(response.status).toBe(400);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+
+  it("accepts a complete typed area policy", async () => {
+    mocks.session.mockResolvedValue({ user: { id: "root", role: "SUPER_ADMIN" } });
+    const areas = {
+      communityBrowse: false,
+      contentCreate: true,
+      communityInteract: true,
+      messages: true,
+      groupChat: true,
+      psychology: false,
+      support: false,
+      profile: false,
+    };
+    mocks.upsert.mockResolvedValue({ phoneRequiredAreas: areas, revision: 3 });
+    const { PATCH } = await import("./route");
+    const response = await PATCH(new NextRequest(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneRequiredAreas: areas }),
+    }), { params: {} });
+    expect(response.status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ phoneRequiredAreas: areas }),
+    }));
+  });
 });
