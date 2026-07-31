@@ -6,6 +6,7 @@ vi.mock("next-auth/jwt", () => ({ getToken }));
 
 import middleware, {
   config,
+  isPublicBuildInfoPath,
   PHONE_REQUIRED_PAGE_PATHS,
   isPhoneRequiredPageAllowed,
 } from "../middleware";
@@ -24,6 +25,21 @@ describe("authentication middleware", () => {
     expect(isPhoneRequiredPageAllowed("/bindphone")).toBe(true);
     expect(isPhoneRequiredPageAllowed("/bindphone/extra")).toBe(false);
     expect(isPhoneRequiredPageAllowed("/bindphone-impersonation")).toBe(false);
+  });
+
+  it("keeps exact build information files public without widening the exception", async () => {
+    getToken.mockResolvedValue(null);
+
+    for (const path of ["/DEPLOYMENT", "/VERSION"]) {
+      expect(isPublicBuildInfoPath(path)).toBe(true);
+      const response = await middleware(request(path));
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("cache-control")).toContain("no-store");
+    }
+
+    expect(isPublicBuildInfoPath("/DEPLOYMENT/history")).toBe(false);
+    expect(isPublicBuildInfoPath("/VERSION-preview")).toBe(false);
+    expect(getToken).not.toHaveBeenCalled();
   });
 
   it.each(["/", "/admin/users", "/future-feature", "/login"])(

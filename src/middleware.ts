@@ -17,6 +17,11 @@ export function isPhoneRequiredPageAllowed(pathname: string): boolean {
 }
 
 const PUBLIC_AUTH_PAGE_PATHS = ["/login", "/ban-appeal"] as const;
+const PUBLIC_BUILD_INFO_PATHS = ["/DEPLOYMENT", "/VERSION"] as const;
+
+export function isPublicBuildInfoPath(pathname: string): boolean {
+  return PUBLIC_BUILD_INFO_PATHS.includes(pathname as (typeof PUBLIC_BUILD_INFO_PATHS)[number]);
+}
 
 /**
  * 认证中间件 — 纯 JWT 检测（无 DB 查询，兼容 Edge Runtime）
@@ -28,8 +33,15 @@ const PUBLIC_AUTH_PAGE_PATHS = ["/login", "/ban-appeal"] as const;
  * 用户更新个人资料后，前端需调用 session.update() 刷新 JWT。
  */
 export default async function middleware(req: NextRequest) {
-  const token = await getToken({ req });
   const pathname = req.nextUrl.pathname;
+
+  if (isPublicBuildInfoPath(pathname)) {
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "public, no-store, no-cache, must-revalidate, max-age=0");
+    return response;
+  }
+
+  const token = await getToken({ req });
 
   // 未认证 → 重定向至登录页
   if (!token) {
