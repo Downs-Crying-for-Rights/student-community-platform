@@ -18,4 +18,9 @@ describe("UserAvatar", () => {
   it("never exposes a real avatar for an anonymous user", () => {
     expect(renderToStaticMarkup(<UserAvatar src="https://example.com/avatar.png" name="匿名用户" anonymous />)).not.toContain("avatar.png");
   });
+
+  it("shows an administrator verification mark without exposing it anonymously", () => {
+    expect(renderToStaticMarkup(<UserAvatar name="管理员" administratorVerified />)).toContain("平台管理员认证");
+    expect(renderToStaticMarkup(<UserAvatar name="管理员" administratorVerified anonymous />)).not.toContain("平台管理员认证");
+  });
 });

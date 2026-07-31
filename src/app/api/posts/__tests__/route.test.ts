@@ -120,7 +120,7 @@ describe("GET /api/posts", () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data.posts).toEqual(posts.map((post) => ({ ...post, author: { ...post.author, isVerified: false } })));
+    expect(data.posts).toEqual(posts.map((post) => ({ ...post, author: { ...post.author, isAdministrator: false, isVerified: false } })));
     expect(data.total).toBe(1);
     expect(data.page).toBe(1);
     expect(data.pageSize).toBe(20);
@@ -324,7 +324,7 @@ describe("POST /api/posts", () => {
     const data = await res.json();
 
     expect(res.status).toBe(201);
-    expect(data.post).toEqual({ ...createdPost, author: { ...createdPost.author, isVerified: false } });
+    expect(data.post).toEqual({ ...createdPost, author: { ...createdPost.author, isAdministrator: false, isVerified: false } });
     expect(mockPostCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

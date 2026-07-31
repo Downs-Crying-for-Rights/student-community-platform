@@ -23,6 +23,7 @@ export interface CommentAuthor {
   id: string;
   nickname: string | null;
   avatar: string | null;
+  isAdministrator?: boolean;
   isVerified?: boolean;
 }
 
@@ -67,7 +68,7 @@ export function flattenComments(comments: CommentData[]): CommentData[] {
 
 function CommentAvatar({ comment }: { comment: CommentData }) {
   const name = getDisplayName(comment);
-  const avatar = <UserAvatar src={comment.author.avatar} name={name} size={32} anonymous={comment.isAnonymous} />;
+  const avatar = <UserAvatar src={comment.author.avatar} name={name} size={32} anonymous={comment.isAnonymous} administratorVerified={comment.author.isAdministrator} />;
   if (comment.isAnonymous) return avatar;
   return <Link href={`/u/${comment.author.id}`} aria-label={`查看 ${name} 的主页`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{avatar}</Link>;
 }

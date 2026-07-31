@@ -278,17 +278,33 @@ export const setPasswordSchema = z.object({
   password: passwordSchema,
 });
 
-export const registerSchema = z.object({
+const registrationFields = {
   email: emailSchema,
   password: passwordSchema,
   nickname: nicknameSchema,
-  phone: phoneSchema,
-  code: verificationCodeSchema,
-});
+  phone: phoneSchema.optional(),
+  code: verificationCodeSchema.optional(),
+};
 
-export const inviteRegisterSchema = registerSchema.extend({
+function validateOptionalRegistrationPhone(
+  data: { phone?: string; code?: string },
+  context: z.RefinementCtx,
+) {
+  if (Boolean(data.phone) !== Boolean(data.code)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [data.phone ? "code" : "phone"],
+      message: "手机号和验证码必须同时填写",
+    });
+  }
+}
+
+export const registerSchema = z.object(registrationFields).superRefine(validateOptionalRegistrationPhone);
+
+export const inviteRegisterSchema = z.object({
+  ...registrationFields,
   inviteCode: inviteCodeSchema,
-});
+}).superRefine(validateOptionalRegistrationPhone);
 
 // ==================== DCR 委托表相关 ====================
 

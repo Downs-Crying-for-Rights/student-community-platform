@@ -8,8 +8,6 @@ import middleware, {
   config,
   isInternalApiPath,
   isPublicBuildInfoPath,
-  PHONE_REQUIRED_PAGE_PATHS,
-  isPhoneRequiredPageAllowed,
 } from "../middleware";
 
 const request = (path: string) => new NextRequest(`https://example.test${path}`);
@@ -34,13 +32,6 @@ describe("authentication middleware", () => {
     expect(getToken).not.toHaveBeenCalled();
   });
 
-  it("uses an exact phone-binding page exception", () => {
-    expect(PHONE_REQUIRED_PAGE_PATHS).toEqual(["/bindphone"]);
-    expect(isPhoneRequiredPageAllowed("/bindphone")).toBe(true);
-    expect(isPhoneRequiredPageAllowed("/bindphone/extra")).toBe(false);
-    expect(isPhoneRequiredPageAllowed("/bindphone-impersonation")).toBe(false);
-  });
-
   it("keeps exact build information files public without widening the exception", async () => {
     getToken.mockResolvedValue(null);
 
@@ -56,28 +47,17 @@ describe("authentication middleware", () => {
     expect(getToken).not.toHaveBeenCalled();
   });
 
-  it.each(["/", "/admin/users", "/future-feature", "/login"])(
-    "redirects a phone-less authenticated user from %s",
-    async (path) => {
-      getToken.mockResolvedValue({ id: "user-1", role: "SUPER_ADMIN", phone: null });
-      const response = await middleware(request(path));
-      const location = new URL(response.headers.get("location")!);
-      expect(response.status).toBe(307);
-      expect(location.pathname).toBe("/bindphone");
-      expect(location.searchParams.get("callbackUrl")).toBe(path);
-    },
-  );
-
-  it("allows the exact binding page before profile and onboarding gates", async () => {
+  it("does not require a phone before the existing profile and onboarding gates", async () => {
     getToken.mockResolvedValue({
       id: "user-1",
       phone: null,
-      nickname: null,
-      profileCompletionRequired: true,
-      onboardingDone: false,
+      nickname: "member",
+      profileCompletionRequired: false,
+      onboardingDone: true,
     });
-    const response = await middleware(request("/bindphone?callbackUrl=%2Fadmin"));
+    const response = await middleware(request("/discover"));
     expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("cache-control")).toContain("private");
   });
 
   it("keeps anonymous login available and redirects other anonymous pages safely", async () => {

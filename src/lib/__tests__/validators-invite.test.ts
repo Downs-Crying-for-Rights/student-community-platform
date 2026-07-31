@@ -34,7 +34,9 @@ describe("inviteRegisterSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("要求手机号和短信验证码", () => {
+  it("允许不填写手机号，但手机号和验证码必须成对填写", () => {
+    const { phone, code, ...withoutPhone } = validInput;
+    expect(inviteRegisterSchema.safeParse(withoutPhone).success).toBe(true);
     expect(inviteRegisterSchema.safeParse({ ...validInput, phone: undefined }).success).toBe(false);
     expect(inviteRegisterSchema.safeParse({ ...validInput, code: undefined }).success).toBe(false);
   });

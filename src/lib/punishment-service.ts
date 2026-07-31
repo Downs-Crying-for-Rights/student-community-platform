@@ -108,6 +108,10 @@ export async function applyPunishment(input: {
       data: { ...input, startsAt: now, expiresAt, action: "APPLIED" },
     });
     await recalculatePunishmentProjection(input.userId, tx, now);
+    await tx.user.update({
+      where: { id: input.userId },
+      data: { violationCount: { increment: 1 } },
+    });
     await tx.notification.create({
       data: {
         userId: input.userId,
@@ -134,6 +138,10 @@ export async function revokePunishment(input: { punishmentId: string; operatorId
     if (revoked.count !== 1) throw new Error("PUNISHMENT_ALREADY_REVOKED");
     const punishment = await tx.userPunishment.findUniqueOrThrow({ where: { id: existing.id } });
     await recalculatePunishmentProjection(existing.userId, tx);
+    await tx.user.updateMany({
+      where: { id: existing.userId, violationCount: { gt: 0 } },
+      data: { violationCount: { decrement: 1 } },
+    });
     await tx.notification.create({
       data: { userId: existing.userId, type: "SYSTEM", title: "账户处罚已解除", content: `处罚已解除。说明：${input.reason}`, link: "/support" },
     });

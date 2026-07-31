@@ -5,7 +5,7 @@ import type { Prisma } from "@prisma/client";
 export interface CreateUserParams {
   email: string;
   password: string;
-  phone: string;
+  phone?: string;
   nickname: string;
   /** Additional fields to set on the user record (e.g. dcrAccess, dcrPledgeSigned) */
   extraData?: Record<string, unknown>;
@@ -75,9 +75,11 @@ export async function createUserWithSession({
     return { success: false, ...emailError };
   }
 
-  const phoneError = await checkPhoneUnique(phone);
-  if (phoneError) {
-    return { success: false, ...phoneError };
+  if (phone) {
+    const phoneError = await checkPhoneUnique(phone);
+    if (phoneError) {
+      return { success: false, ...phoneError };
+    }
   }
 
   // 密码哈希
@@ -89,7 +91,7 @@ export async function createUserWithSession({
       data: {
         email,
         passwordHash,
-        phone,
+        ...(phone ? { phone } : {}),
         nickname,
         ...extraData,
         profileCompletionRequired: true,

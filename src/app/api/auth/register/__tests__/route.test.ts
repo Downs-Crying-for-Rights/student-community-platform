@@ -86,6 +86,26 @@ describe("POST /api/auth/register", () => {
     });
   });
 
+  it("无需手机号即可使用邮箱注册", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.create).mockResolvedValue({ id: "email-user-id" } as never);
+
+    const { phone, code, ...emailBody } = validBody;
+    const res = await POST(makeRequest(emailBody));
+
+    expect(res.status).toBe(201);
+    expect(verifyCode).not.toHaveBeenCalled();
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data: {
+        email: "test@example.com",
+        passwordHash: "hashed_password",
+        nickname: "测试用户",
+        profileCompletionRequired: true,
+      },
+    });
+  });
+
   it("验证码错误时不创建账号", async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.user.findFirst).mockResolvedValue(null);

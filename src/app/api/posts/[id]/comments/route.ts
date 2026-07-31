@@ -14,12 +14,12 @@ type CommentWithVerificationSource = {
   id: string;
   authorId?: string;
   anonymousId?: string | null;
-  author: { id: string; nickname: string | null; avatar: string | null; realVerifiedAt: Date | null; studentVerifiedAt: Date | null };
+  author: { id: string; nickname: string | null; avatar: string | null; role: string; realVerifiedAt: Date | null; studentVerifiedAt: Date | null };
   replies?: CommentWithVerificationSource[];
 };
 
 type PublicComment = Omit<CommentWithVerificationSource, "author" | "replies"> & {
-  author: { id: string; nickname: string | null; avatar: string | null; isVerified: boolean };
+  author: { id: string; nickname: string | null; avatar: string | null; isAdministrator: boolean; isVerified: boolean };
   replies?: PublicComment[];
 };
 

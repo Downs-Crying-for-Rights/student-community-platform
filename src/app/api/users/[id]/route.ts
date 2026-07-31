@@ -52,6 +52,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
     const { passwordHash, ...rest } = user;
     return NextResponse.json({ user: {
       ...rest,
+      isAdministrator: rest.role === "ADMIN" || rest.role === "SUPER_ADMIN",
       realVerified: Boolean(rest.realVerifiedAt),
       studentVerified: Boolean(rest.studentVerifiedAt),
       isVerified: Boolean(rest.realVerifiedAt || rest.studentVerifiedAt),

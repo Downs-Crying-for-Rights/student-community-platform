@@ -138,7 +138,7 @@ describe("GET /api/search", () => {
       const data = await res.json();
 
       expect(res.status).toBe(200);
-      expect(data.results).toEqual(posts.map((post) => ({ ...post, author: { ...post.author, isVerified: false } })));
+      expect(data.results).toEqual(posts.map((post) => ({ ...post, author: { ...post.author, isAdministrator: false, isVerified: false } })));
       expect(data.total).toBe(1);
       expect(data.page).toBe(1);
       expect(data.pageSize).toBe(20);
@@ -355,7 +355,7 @@ describe("GET /api/search", () => {
       setSession("user1", "USER");
 
       const users = [
-        { id: "u1", nickname: "测试用户", avatar: null, createdAt: "2025-01-01T00:00:00.000Z", _count: { posts: 5 } },
+        { id: "u1", nickname: "测试用户", avatar: null, role: "ADMIN", createdAt: "2025-01-01T00:00:00.000Z", _count: { posts: 5 } },
       ];
       mockUserFindMany.mockResolvedValue(users);
       mockUserCount.mockResolvedValue(1);
@@ -368,7 +368,15 @@ describe("GET /api/search", () => {
       const data = await res.json();
 
       expect(res.status).toBe(200);
-      expect(data.results).toEqual(users.map((user) => ({ ...user, isVerified: false })));
+      expect(data.results).toEqual([{
+        id: "u1",
+        nickname: "测试用户",
+        avatar: null,
+        createdAt: "2025-01-01T00:00:00.000Z",
+        _count: { posts: 5 },
+        isAdministrator: true,
+        isVerified: false,
+      }]);
       expect(data.total).toBe(1);
     });
 
@@ -409,6 +417,7 @@ describe("GET /api/search", () => {
             id: true,
             nickname: true,
             avatar: true,
+            role: true,
             realVerifiedAt: true,
             studentVerifiedAt: true,
             createdAt: true,

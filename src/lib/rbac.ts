@@ -168,16 +168,6 @@ export interface AuthenticatedRequest extends NextRequest {
   user: { id: string; role: Role };
 }
 
-export const PHONE_REQUIRED_RESPONSE = {
-  error: "请先绑定手机号",
-  code: "PHONE_REQUIRED",
-  next: "/bindphone",
-} as const;
-
-function phoneRequiredResponse(): NextResponse {
-  return NextResponse.json(PHONE_REQUIRED_RESPONSE, { status: 403 });
-}
-
 type AuthenticatedHandler = (
   req: AuthenticatedRequest,
   context: { params: Record<string, string> },
@@ -225,8 +215,6 @@ export function withAuth(
             code: "ACCOUNT_MUTED",
             muteUntil: sessionUser?.muteUntil ?? null,
           }, { status: 403 });
-        } else if (sessionUser?.phone === null) {
-          response = phoneRequiredResponse();
         } else {
         const profileCompletionAllowed = pathname.startsWith("/api/users/")
           || pathname === "/api/upload"
@@ -285,12 +273,6 @@ export function withOptionalAuth(handler: OptionalAuthHandler): RouteHandler {
       const optReq = req as OptionalAuthRequest;
       if (session?.user?.id) {
         userId = session.user.id;
-        if (session.user.phone === null) {
-          const response = phoneRequiredResponse();
-          response.headers.set("X-Request-Id", requestId);
-          recordCompletedRequest(req, response, startedAt, { requestId, userId, params: context.params });
-          return response;
-        }
         if (!session.user.isBanned) {
           optReq.user = { id: userId, role: (session.user.role ?? "USER") as Role };
         }

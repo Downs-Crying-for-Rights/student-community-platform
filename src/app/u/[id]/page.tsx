@@ -41,7 +41,7 @@ export interface ProfilePost {
   anonymousId: string | null;
   likeCount: number;
   createdAt: string;
-  author: { id: string; nickname: string | null; avatar: string | null; isVerified?: boolean };
+  author: { id: string; nickname: string | null; avatar: string | null; isAdministrator?: boolean; isVerified?: boolean };
   board: { id: string; name: string; zone: string };
   tags: { tag: { id: string; name: string } }[];
 }
@@ -70,6 +70,7 @@ export function mapPostToCardProps(post: ProfilePost): PostCardProps {
       id: post.author.id,
       nickname: post.author.nickname,
       avatar: post.author.avatar,
+      isAdministrator: post.author.isAdministrator,
       isVerified: post.author.isVerified,
     },
     board: {
@@ -275,7 +276,7 @@ export default function ProfilePage() {
           </div>
         ) : user ? (
           <div className="mb-6 flex flex-col items-center gap-3 py-8">
-            <UserAvatar src={user.avatar} name={user.nickname} size={80} />
+            <UserAvatar src={user.avatar} name={user.nickname} size={80} administratorVerified={user.isAdministrator} />
             <h1 className="text-xl font-bold text-foreground">
               {user.nickname ?? "未命名用户"}
             </h1>

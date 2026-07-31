@@ -147,6 +147,7 @@ export function TopBar({ unreadCount = 0 }: TopBarProps) {
                   src={`/api/users/${session.user.id}/avatar`}
                   name={session.user.nickname || session.user.name || session.user.email}
                   size={32}
+                  administratorVerified={userRole === "ADMIN" || userRole === "SUPER_ADMIN"}
                 />
                 {unreadCount > 0 && (
                   <span

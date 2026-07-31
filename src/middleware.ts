@@ -9,13 +9,6 @@ const SET_USERNAME_PATHS = ["/set-username", "/api/auth/username"];
 const isSetUsernamePath = (pathname: string) =>
   SET_USERNAME_PATHS.some((p) => pathname.startsWith(p));
 
-/** Authenticated users without a phone may only visit the binding page. */
-export const PHONE_REQUIRED_PAGE_PATHS = ["/bindphone"] as const;
-
-export function isPhoneRequiredPageAllowed(pathname: string): boolean {
-  return PHONE_REQUIRED_PAGE_PATHS.includes(pathname as "/bindphone");
-}
-
 const PUBLIC_AUTH_PAGE_PATHS = ["/login", "/ban-appeal"] as const;
 const PUBLIC_BUILD_INFO_PATHS = ["/DEPLOYMENT", "/VERSION"] as const;
 const INTERNAL_API_PREFIX = "/v1/internal/";
@@ -62,17 +55,6 @@ export default async function middleware(req: NextRequest) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", `${req.nextUrl.pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
-  }
-
-  // This Edge check gives immediate page redirects. API wrappers repeat the
-  // check against the server-refreshed session and remain authoritative.
-  if (!(token as any).phone && !isPhoneRequiredPageAllowed(pathname)) {
-    const bindPhoneUrl = new URL("/bindphone", req.url);
-    bindPhoneUrl.searchParams.set("callbackUrl", `${req.nextUrl.pathname}${req.nextUrl.search}`);
-    return NextResponse.redirect(bindPhoneUrl);
-  }
-  if (!(token as any).phone) {
-    return NextResponse.next();
   }
 
   // 新账号必须先在一个页面补齐昵称、头像和 QQ 号。

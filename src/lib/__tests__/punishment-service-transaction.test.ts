@@ -6,22 +6,32 @@ const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
   userCount: vi.fn(),
   punishmentCreate: vi.fn(),
+  punishmentFindUnique: vi.fn(),
+  punishmentFindUniqueOrThrow: vi.fn(),
   punishmentFindMany: vi.fn(),
+  punishmentUpdateMany: vi.fn(),
   userUpdate: vi.fn(),
+  userUpdateMany: vi.fn(),
   notificationCreate: vi.fn(),
 }));
 
 const tx = {
   $executeRaw: mocks.executeRaw,
-  user: { findUnique: mocks.userFindUnique, count: mocks.userCount, update: mocks.userUpdate },
-  userPunishment: { create: mocks.punishmentCreate, findMany: mocks.punishmentFindMany },
+  user: { findUnique: mocks.userFindUnique, count: mocks.userCount, update: mocks.userUpdate, updateMany: mocks.userUpdateMany },
+  userPunishment: {
+    create: mocks.punishmentCreate,
+    findUnique: mocks.punishmentFindUnique,
+    findUniqueOrThrow: mocks.punishmentFindUniqueOrThrow,
+    findMany: mocks.punishmentFindMany,
+    updateMany: mocks.punishmentUpdateMany,
+  },
   notification: { create: mocks.notificationCreate },
 };
 
 vi.mock("@/lib/prisma", () => ({ default: { $transaction: mocks.transaction } }));
 
 import prisma from "@/lib/prisma";
-import { applyPunishment } from "@/lib/punishment-service";
+import { applyPunishment, revokePunishment } from "@/lib/punishment-service";
 
 describe("punishment mutation transaction", () => {
   beforeEach(() => {
@@ -49,6 +59,10 @@ describe("punishment mutation transaction", () => {
     expect(mocks.executeRaw).toHaveBeenCalledTimes(2);
     expect(mocks.userCount).toHaveBeenCalledAfter(mocks.executeRaw);
     expect(mocks.punishmentCreate).toHaveBeenCalledAfter(mocks.userCount);
+    expect(mocks.userUpdate).toHaveBeenCalledWith({
+      where: { id: "admin-1" },
+      data: { violationCount: { increment: 1 } },
+    });
   });
 
   it("locks before enforcing the global last-super-admin invariant", async () => {
@@ -63,5 +77,21 @@ describe("punishment mutation transaction", () => {
 
     expect(mocks.executeRaw).toHaveBeenCalledTimes(1);
     expect(mocks.punishmentCreate).not.toHaveBeenCalled();
+  });
+
+  it("decrements the violation count when a punishment is revoked", async () => {
+    mocks.punishmentFindUnique.mockResolvedValue({ id: "punishment-1", userId: "user-1", action: "APPLIED", revokedAt: null });
+    mocks.punishmentUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.punishmentFindUniqueOrThrow.mockResolvedValue({ id: "punishment-1", userId: "user-1" });
+    mocks.userUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.userFindUnique.mockReset();
+    mocks.userFindUnique.mockResolvedValue({ deactivatedAt: null });
+
+    await revokePunishment({ punishmentId: "punishment-1", operatorId: "admin-1", reason: "误判" });
+
+    expect(mocks.userUpdateMany).toHaveBeenCalledWith({
+      where: { id: "user-1", violationCount: { gt: 0 } },
+      data: { violationCount: { decrement: 1 } },
+    });
   });
 });

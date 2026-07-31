@@ -50,26 +50,22 @@ describe("RBAC request completion telemetry", () => {
     expect(completed).toHaveBeenCalledOnce();
   });
 
-  it.each(["USER", "ADMIN", "SUPER_ADMIN"])("blocks a phone-less %s before withAuth handlers", async (role) => {
+  it.each(["USER", "ADMIN", "SUPER_ADMIN"])("allows a phone-less %s through withAuth", async (role) => {
     getServerSession.mockResolvedValue({ user: { id: "user-1", role, phone: null } });
     const handler = vi.fn(async () => NextResponse.json({ ok: true }));
     const response = await withAuth(handler)(request(), { params: {} });
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({
-      error: "请先绑定手机号",
-      code: "PHONE_REQUIRED",
-      next: "/bindphone",
-    });
-    expect(handler).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(handler).toHaveBeenCalledOnce();
   });
 
-  it("blocks an authenticated phone-less user from optional-auth handlers", async () => {
+  it("attaches an authenticated phone-less user in optional-auth handlers", async () => {
     getServerSession.mockResolvedValue({ user: { id: "user-1", role: "USER", phone: null } });
-    const handler = vi.fn(async () => NextResponse.json({ ok: true }));
+    const handler = vi.fn(async (req) => NextResponse.json({ userId: req.user?.id }));
     const response = await withOptionalAuth(handler)(request(), { params: {} });
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({ code: "PHONE_REQUIRED", next: "/bindphone" });
-    expect(handler).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ userId: "user-1" });
+    expect(handler).toHaveBeenCalledOnce();
     expect(completed).toHaveBeenCalledWith(expect.anything(), response, expect.any(Number), expect.objectContaining({
       userId: "user-1",
     }));

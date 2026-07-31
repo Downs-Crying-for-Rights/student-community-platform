@@ -28,12 +28,12 @@ const post = async (request: NextRequest) => {
       return NextResponse.json({ error: nicknameError.error }, { status: nicknameError.status });
     }
 
-    const identityError = await checkEmailUnique(email) ?? await checkPhoneUnique(phone);
+    const identityError = await checkEmailUnique(email) ?? (phone ? await checkPhoneUnique(phone) : null);
     if (identityError) {
       return NextResponse.json({ error: identityError.error }, { status: identityError.status });
     }
 
-    if (!(await verifyCode(phone, code, "register"))) {
+    if (phone && code && !(await verifyCode(phone, code, "register"))) {
       return NextResponse.json({ error: "验证码错误或已过期" }, { status: 400 });
     }
 
