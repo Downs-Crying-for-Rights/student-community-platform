@@ -93,6 +93,32 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  qq-official-bot:
+    profiles: ["qq-official"]
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    command: ["node", "dist/src/official-index.js"]
+    environment:
+      - QQ_OFFICIAL_BOT_APP_ID=${QQ_OFFICIAL_BOT_APP_ID}
+      - QQ_OFFICIAL_BOT_CLIENT_SECRET=${QQ_OFFICIAL_BOT_CLIENT_SECRET}
+      - INTERNAL_API_BASE_URL=http://web:3000
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+      - HEALTH_HOST=0.0.0.0
+      - HEALTH_PORT=8082
+      - RECONNECT_MIN_MS=1000
+      - RECONNECT_MAX_MS=30000
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8082/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+    depends_on:
+      web:
+        condition: service_started
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:

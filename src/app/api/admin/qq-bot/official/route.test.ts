@@ -51,13 +51,15 @@ describe("/api/admin/qq-bot/official", () => {
     expect(mocks.config).not.toHaveBeenCalled();
   });
 
-  it("returns only masked configuration and the callback URL", async () => {
+  it("returns only masked configuration and the WebSocket mode", async () => {
     mocks.session.mockResolvedValue({ user: { id: "root-1", role: "SUPER_ADMIN" } });
     const { GET } = await import("./route");
     const response = await GET(request(), { params: {} });
     const serialized = JSON.stringify(await response.json());
     expect(serialized).toContain("1905****46");
-    expect(serialized).toContain("https://forum.example/api/qq-official/events");
+    expect(serialized).toContain('"connectionMode":"websocket"');
+    expect(serialized).toContain("https://api.sgroup.qq.com/gateway/bot");
+    expect(serialized).not.toContain("callbackUrl");
     expect(serialized).not.toContain("never-return-this");
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
   });

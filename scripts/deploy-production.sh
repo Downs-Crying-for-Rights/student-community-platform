@@ -209,6 +209,38 @@ if [[ "$healthy" != true ]]; then
   exit 1
 fi
 
+official_bot_enabled="$(sed -n 's/^QQ_OFFICIAL_BOT_ENABLED=//p' "$RELEASE_DIR/.env" \
+  | tail -n 1 | tr -d '\r\"' | sed "s/^'//;s/'$//" || true)"
+case "${official_bot_enabled:-false}" in
+  true|1)
+    if ! APP_RELEASE="$RELEASE_SHA" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" \
+      -p "$PROJECT_NAME" --profile qq-official up -d --build --no-deps qq-official-bot; then
+      echo "QQ official Gateway worker deployment failed" >&2
+      exit 1
+    fi
+    official_worker_ready=false
+    for attempt in {1..20}; do
+      if docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" \
+        --profile qq-official exec -T qq-official-bot wget -q -O /dev/null http://127.0.0.1:8082/healthz; then
+        official_worker_ready=true
+        break
+      fi
+      echo "QQ official Gateway readiness attempt $attempt/20 failed; retrying in 3 seconds"
+      sleep 3
+    done
+    if [[ "$official_worker_ready" != true ]]; then
+      echo "QQ official Gateway worker readiness check failed" >&2
+      docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" \
+        --profile qq-official logs --tail=100 qq-official-bot >&2 || true
+      exit 1
+    fi
+    ;;
+  false|0|"")
+    docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" \
+      --profile qq-official rm -sf qq-official-bot >/dev/null 2>&1 || true
+    ;;
+esac
+
 ln -sfn "$RELEASE_DIR" "$CURRENT_LINK.new"
 mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
 

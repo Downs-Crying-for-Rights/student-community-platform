@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, CheckCircle2, Copy, RefreshCw, ShieldCheck } from "lucide-react";
+import { Bot, CheckCircle2, RefreshCw, Radio, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -9,7 +9,8 @@ interface Status {
   enabled: boolean;
   configured: boolean;
   appId: string | null;
-  callbackUrl: string | null;
+  connectionMode: "websocket";
+  gatewayEndpoint: string;
   lastEvent: { eventType: string; receivedAt: string } | null;
 }
 
@@ -54,7 +55,7 @@ export function QQOfficialBotPanel() {
     <main className="mx-auto max-w-screen-xl space-y-5 px-4 py-6">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold"><Bot className="h-6 w-6" />QQ 官方机器人</h1>
-        <p className="mt-1 text-sm text-muted-foreground">腾讯 QQ 开放平台 Webhook 接入，与个人 QQ / NapCat 机器人相互独立。</p>
+        <p className="mt-1 text-sm text-muted-foreground">腾讯 QQ 开放平台 Gateway WebSocket 接入，与个人 QQ / NapCat 机器人相互独立。</p>
       </div>
 
       {error && <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
@@ -67,13 +68,13 @@ export function QQOfficialBotPanel() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg"><ShieldCheck className="h-5 w-5" />开放平台回调</CardTitle>
-          <CardDescription>在 QQ 开放平台的开发设置中填写该 HTTPS 地址，并订阅单聊和群聊 @ 消息事件。</CardDescription>
+          <CardTitle className="flex items-center gap-2 text-lg"><Radio className="h-5 w-5" />Gateway WebSocket</CardTitle>
+          <CardDescription>服务器主动连接 QQ 官方 Gateway，并自动完成鉴权、心跳、断线重连和会话恢复，无需配置公网回调地址。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center">
-            <code className="min-w-0 flex-1 break-all text-sm">{status?.callbackUrl || "正在读取..."}</code>
-            <Button type="button" variant="outline" size="sm" disabled={!status?.callbackUrl} onClick={() => void navigator.clipboard.writeText(status?.callbackUrl ?? "")}><Copy />复制</Button>
+          <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
+            <ShieldCheck className="h-5 w-5 text-emerald-600" />
+            <code className="min-w-0 flex-1 break-all text-sm">{status?.gatewayEndpoint || "正在读取..."}</code>
           </div>
           <p className="text-sm text-muted-foreground">最近事件：{status?.lastEvent ? `${status.lastEvent.eventType} · ${new Date(status.lastEvent.receivedAt).toLocaleString("zh-CN", { hour12: false })}` : "尚未收到"}</p>
         </CardContent>

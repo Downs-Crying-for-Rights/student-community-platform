@@ -31,6 +31,12 @@ if docker inspect forum-dcr2026-qq-worker >/dev/null 2>&1; then
   children+=("$!")
 fi
 
+if docker inspect forum-dcr2026-qq-official-bot-1 >/dev/null 2>&1; then
+  docker logs --timestamps --follow --tail=300 forum-dcr2026-qq-official-bot-1 \
+    >>"$LOG_DIR/services.log" 2>&1 &
+  children+=("$!")
+fi
+
 tail_source() {
   local source="$1"
   local destination="$2"

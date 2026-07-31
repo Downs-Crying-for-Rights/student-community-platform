@@ -16,25 +16,14 @@ const actionSchema = z.object({
   confirmation: z.literal("CONFIRM"),
 }).strict();
 
-function callbackUrl(): string | null {
-  try {
-    const url = new URL(process.env.NEXTAUTH_URL ?? "");
-    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
-      return null;
-    }
-    return `${url.origin}/api/qq-official/events`;
-  } catch {
-    return null;
-  }
-}
-
 export const GET = withAuth(async () => {
   const config = getQQOfficialConfig();
   return NextResponse.json({
     enabled: config.enabled,
     configured: config.configured,
     appId: config.appId ? `${config.appId.slice(0, 4)}****${config.appId.slice(-2)}` : null,
-    callbackUrl: callbackUrl(),
+    connectionMode: "websocket",
+    gatewayEndpoint: "https://api.sgroup.qq.com/gateway/bot",
     lastEvent: await getQQOfficialLastEvent(),
   }, { headers: { "Cache-Control": "private, no-store" } });
 }, "SUPER_ADMIN");
