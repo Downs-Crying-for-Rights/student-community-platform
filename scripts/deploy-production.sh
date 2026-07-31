@@ -213,14 +213,14 @@ ln -sfn "$RELEASE_DIR" "$CURRENT_LINK.new"
 mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
 
 if [[ -f "$BOT_DIR/docker-compose.yml" ]]; then
-  if ! (cd "$BOT_DIR" && docker compose up -d --build --no-deps worker); then
+  if ! (cd "$BOT_DIR" && docker compose up -d napcat && docker compose up -d --build --no-deps worker); then
     echo "QQ bot Worker deployment failed" >&2
     if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" ]]; then
       ln -sfn "$PREVIOUS_RELEASE" "$CURRENT_LINK.new"
       mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
       rollback_failed=false
       (cd "$PREVIOUS_RELEASE" && APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" up -d --build --remove-orphans) || rollback_failed=true
-      (cd "$BOT_DIR" && docker compose up -d --build --no-deps worker) || rollback_failed=true
+      (cd "$BOT_DIR" && docker compose up -d napcat && docker compose up -d --build --no-deps worker) || rollback_failed=true
       if [[ "$rollback_failed" == true ]]; then echo "QQ bot rollback failed" >&2; fi
     fi
     exit 1
@@ -241,7 +241,7 @@ if [[ -f "$BOT_DIR/docker-compose.yml" ]]; then
       mv -Tf "$CURRENT_LINK.new" "$CURRENT_LINK"
       rollback_failed=false
       (cd "$PREVIOUS_RELEASE" && APP_RELEASE="$(basename "$PREVIOUS_RELEASE")" docker compose -f docker-compose.yml -f "$DEPLOY_OVERRIDE" -p "$PROJECT_NAME" up -d --build --remove-orphans) || rollback_failed=true
-      (cd "$BOT_DIR" && docker compose up -d --build --no-deps worker) || rollback_failed=true
+      (cd "$BOT_DIR" && docker compose up -d napcat && docker compose up -d --build --no-deps worker) || rollback_failed=true
       if [[ "$rollback_failed" == true ]]; then echo "QQ bot rollback failed" >&2; fi
     fi
     exit 1

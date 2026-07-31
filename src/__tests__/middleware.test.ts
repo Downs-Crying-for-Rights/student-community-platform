@@ -6,6 +6,7 @@ vi.mock("next-auth/jwt", () => ({ getToken }));
 
 import middleware, {
   config,
+  isInternalApiPath,
   isPublicBuildInfoPath,
   PHONE_REQUIRED_PAGE_PATHS,
   isPhoneRequiredPageAllowed,
@@ -17,7 +18,20 @@ describe("authentication middleware", () => {
   beforeEach(() => getToken.mockReset());
 
   it("matches every page while excluding APIs, internals, and static files", () => {
-    expect(config.matcher).toEqual(["/((?!api(?:/|$)|_next(?:/|$)|.*\\..*).*)"]);
+    expect(config.matcher).toEqual([
+      "/((?!api(?:/|$)|v1/internal(?:/|$)|_next(?:/|$)|.*\\..*).*)",
+    ]);
+  });
+
+  it("leaves bearer-authenticated internal APIs outside session redirects", async () => {
+    getToken.mockResolvedValue(null);
+
+    expect(isInternalApiPath("/v1/internal/onebot/outbox/claim")).toBe(true);
+    expect(isInternalApiPath("/v1/public")).toBe(false);
+    const response = await middleware(request("/v1/internal/onebot/outbox/claim"));
+
+    expect(response.headers.get("location")).toBeNull();
+    expect(getToken).not.toHaveBeenCalled();
   });
 
   it("uses an exact phone-binding page exception", () => {

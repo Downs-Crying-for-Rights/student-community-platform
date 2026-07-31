@@ -18,6 +18,11 @@ export function isPhoneRequiredPageAllowed(pathname: string): boolean {
 
 const PUBLIC_AUTH_PAGE_PATHS = ["/login", "/ban-appeal"] as const;
 const PUBLIC_BUILD_INFO_PATHS = ["/DEPLOYMENT", "/VERSION"] as const;
+const INTERNAL_API_PREFIX = "/v1/internal/";
+
+export function isInternalApiPath(pathname: string): boolean {
+  return pathname.startsWith(INTERNAL_API_PREFIX);
+}
 
 export function isPublicBuildInfoPath(pathname: string): boolean {
   return PUBLIC_BUILD_INFO_PATHS.includes(pathname as (typeof PUBLIC_BUILD_INFO_PATHS)[number]);
@@ -34,6 +39,12 @@ export function isPublicBuildInfoPath(pathname: string): boolean {
  */
 export default async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
+
+  // Internal services authenticate with their own bearer tokens in Route
+  // Handlers. Redirecting them to the session login page breaks the protocol.
+  if (isInternalApiPath(pathname)) {
+    return NextResponse.next();
+  }
 
   if (isPublicBuildInfoPath(pathname)) {
     const response = NextResponse.next();
@@ -101,5 +112,5 @@ export default async function middleware(req: NextRequest) {
  * 匹配所有页面路由
  */
 export const config = {
-  matcher: ["/((?!api(?:/|$)|_next(?:/|$)|.*\\..*).*)"],
+  matcher: ["/((?!api(?:/|$)|v1/internal(?:/|$)|_next(?:/|$)|.*\\..*).*)"],
 };
