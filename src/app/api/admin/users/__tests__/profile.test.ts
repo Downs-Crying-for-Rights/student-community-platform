@@ -116,6 +116,18 @@ describe("PATCH /api/admin/users/[id]/profile", () => {
     expect(mocks.userUpdate).not.toHaveBeenCalled();
   });
 
+  it("拒绝管理员写入任意外链头像", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "super1", role: "SUPER_ADMIN" } } as never);
+    mocks.userFindUnique.mockResolvedValue({
+      id: "user1", nickname: "旧昵称", bio: null, avatar: null, email: null, phone: null,
+    });
+
+    const response = await PATCH(request({ avatar: "https://attacker.example/avatar.png" }), { params: { id: "user1" } });
+
+    expect(response.status).toBe(400);
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["reason", { nickname: "新昵称", reason: undefined }],
     ["ticketId", { nickname: "新昵称", ticketId: undefined }],

@@ -328,14 +328,9 @@ export default function SettingsProfilePage() {
                       aria-label="选择头像图片"
                     />
                   </div>
-                  <div className="flex-1">
-                    <Label htmlFor="avatar">头像 URL</Label>
-                    <Input
-                      id="avatar"
-                      value={form.avatar}
-                      onChange={(e) => handleChange("avatar", e.target.value)}
-                      placeholder="点击头像上传，或手动输入 URL"
-                    />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">头像</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">{avatarUploading ? "正在上传..." : "点击相机按钮更换"}</p>
                     {errors.avatar && (
                       <p className="mt-1 text-sm text-destructive">{errors.avatar}</p>
                     )}

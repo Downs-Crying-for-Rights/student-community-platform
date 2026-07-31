@@ -12,6 +12,7 @@ import { anonymizePsychologyPost, checkPostZoneAccess, dcrMatchedParticipantWher
 import { sendAdminActionMail } from "@/lib/mail";
 import { canCreateDcrPost } from "@/lib/dcr-capabilities";
 import { publicUserSelect, toPublicUser } from "@/lib/public-user";
+import { createPrivateMediaUrl, parsePrivateMediaUrl } from "@/lib/oss";
 
 // Query params schema for GET
 const listQuerySchema = paginationSchema.extend({
@@ -221,6 +222,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
 
     const { title, content, summary, boardId, tagIds, tagNames, images, visibility, dcrCategory, caseId, isAnonymous } = parsed.data;
+    const imageKeys = images?.map(parsePrivateMediaUrl);
+    if (imageKeys?.some((key) => !key)) {
+      return NextResponse.json({ error: "图片必须通过平台上传接口提交" }, { status: 400 });
+    }
+    const normalizedImages = imageKeys?.map((key) => createPrivateMediaUrl(key!));
     const userId = req.user.id;
 
     // Fetch user attributes for ABAC check
@@ -377,7 +383,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         title,
         content,
         summary: finalSummary,
-        images: images ?? [],
+        images: normalizedImages ?? [],
         status,
         visibility: visibility ?? "PUBLIC",
         isAnonymous: finalIsAnonymous,

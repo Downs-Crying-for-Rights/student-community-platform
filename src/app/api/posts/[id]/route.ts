@@ -7,6 +7,7 @@ import { logAudit, AuditTargetType } from "@/lib/audit";
 import { anonymizePsychologyPost, checkPostAccess } from "@/lib/post-access";
 import { sendAdminActionMail } from "@/lib/mail";
 import { publicUserSelect, toPublicUser } from "@/lib/public-user";
+import { createPrivateMediaUrl, parsePrivateMediaUrl } from "@/lib/oss";
 
 async function canManageOwnContributionPost(userId: string, post: { authorId: string; board: { zone: string } }) {
   if (post.board.zone !== "DCR" || post.authorId !== userId) return false;
@@ -156,6 +157,11 @@ export const PATCH = withAuth(async (
     }
 
     const { title, content, summary, tagIds, images, visibility } = parsed.data;
+    const imageKeys = images?.map(parsePrivateMediaUrl);
+    if (imageKeys?.some((key) => !key)) {
+      return NextResponse.json({ error: "图片必须通过平台上传接口提交" }, { status: 400 });
+    }
+    const normalizedImages = imageKeys?.map((key) => createPrivateMediaUrl(key!));
 
     if (existing.board.zone === "PSYCHOLOGY" && visibility === "MATCHED") {
       return NextResponse.json({ error: "心理区暂不支持匹配可见帖子" }, { status: 400 });
@@ -185,7 +191,7 @@ export const PATCH = withAuth(async (
       title: title ?? existing.title,
       content: content ?? existing.content,
       summary: summary !== undefined ? summary : existing.summary,
-      images: images ?? existing.images ?? [],
+      images: normalizedImages ?? existing.images ?? [],
       visibility: visibility ?? existing.visibility,
       tagIds: [...new Set(nextTagIds)],
     };

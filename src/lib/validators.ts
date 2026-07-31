@@ -101,7 +101,7 @@ export const createPostSchema = z.object({
   boardId: z.string().min(1, "板块 ID 不能为空"),
   tagIds: z.array(z.string().cuid()).max(5, "最多选择 5 个标签").optional(),
   tagNames: z.array(z.string().min(1).max(30)).max(5, "最多 5 个标签").optional(),
-  images: z.array(z.string()).max(9, "最多上传 9 张图片").optional(),
+  images: z.array(z.string().url()).max(9, "最多上传 9 张图片").optional(),
   visibility: postVisibilitySchema.optional(),
   dcrCategory: dcrCategorySchema.optional(),
   caseId: z.string().cuid("无效的工单 ID").optional(),

@@ -136,6 +136,21 @@ export function verifyMediaSignature(key: string, signature: string): boolean {
     && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
+/** Parse only application-owned, correctly signed public media URLs. */
+export function parsePrivateMediaUrl(value: string): string | null {
+  try {
+    const appUrl = new URL(process.env.NEXTAUTH_URL || "http://localhost:3000");
+    const url = new URL(value);
+    const key = url.searchParams.get("key") || "";
+    const signature = url.searchParams.get("sig") || "";
+    if (url.origin !== appUrl.origin || url.pathname !== "/api/media") return null;
+    if (url.searchParams.has("scope") || url.searchParams.has("resourceId") || url.searchParams.has("exp")) return null;
+    return isMediaObjectKey(key) && verifyMediaSignature(key, signature) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
 export type ProtectedMediaScope = "CASE" | "EVIDENCE" | "DCR_CHAT";
 
 const MEDIA_KEY = /^uploads\/\d{4}\/\d{2}\/[a-f0-9]{32}\.(webp|gif|jpg|png|webm|ogg|mp3|m4a|wav|pdf|txt|doc|docx|xls|xlsx|zip)$/;

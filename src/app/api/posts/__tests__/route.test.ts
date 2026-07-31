@@ -248,6 +248,23 @@ describe("POST /api/posts", () => {
     expect(res.status).toBe(404);
   });
 
+  it("拒绝把任意外链作为帖子图片", async () => {
+    setSession("user1", "USER");
+    const { POST } = await import("../route");
+    const res = await POST(
+      makeRequest("POST", undefined, {
+        title: "测试帖子",
+        content: "测试内容",
+        boardId: "clxxxxxxxxxxxxxxxxxx001",
+        images: ["https://attacker.example/tracker.png"],
+      }),
+      { params: {} },
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockPostCreate).not.toHaveBeenCalled();
+  });
+
   it("应返回 403 当 ABAC 发帖频率限制触发", async () => {
     setSession("user1", "USER");
     mockUserFindUnique.mockResolvedValue({

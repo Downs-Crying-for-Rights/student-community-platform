@@ -42,6 +42,7 @@ import {
   createProtectedMediaUrl,
   getMediaKey,
   getStoredMediaKey,
+  parsePrivateMediaUrl,
   parseProtectedMediaUrl,
   uploadToOSS,
   verifyMediaSignature,
@@ -207,6 +208,18 @@ describe("private media URLs", () => {
     expect(url.origin).toBe("http://localhost:3000");
     expect(url.searchParams.get("key")).toBe(key);
     expect(verifyMediaSignature(key, url.searchParams.get("sig") || "")).toBe(true);
+    expect(parsePrivateMediaUrl(url.toString())).toBe(key);
+  });
+
+  it("rejects external, tampered, and protected URLs as public media", () => {
+    const key = "uploads/2026/07/d615317cea51e56e394ea36378aa1497.webp";
+    const url = createPrivateMediaUrl(key);
+    const tampered = new URL(url);
+    tampered.searchParams.set("key", "uploads/2026/07/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp");
+
+    expect(parsePrivateMediaUrl(url.replace("http://localhost:3000", "https://attacker.example"))).toBeNull();
+    expect(parsePrivateMediaUrl(tampered.toString())).toBeNull();
+    expect(parsePrivateMediaUrl(createProtectedMediaUrl(key, "CASE", "case-1"))).toBeNull();
   });
 
   it("accepts only same-origin, unexpired URLs for the expected scope and resource", () => {

@@ -5,6 +5,7 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { updateProfileSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { isProfileComplete } from "@/lib/profile-completion";
+import { createPrivateMediaUrl, parsePrivateMediaUrl } from "@/lib/oss";
 
 // ==================== GET — 获取用户资料 ====================
 
@@ -154,16 +155,25 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     return NextResponse.json({ error: "用户不存在" }, { status: 404 });
   }
 
+  let normalizedAvatar = avatar;
+  if (avatar !== undefined && avatar !== existing.avatar) {
+    const avatarKey = parsePrivateMediaUrl(avatar);
+    if (!avatarKey) {
+      return NextResponse.json({ error: "头像必须通过平台上传接口提交" }, { status: 400 });
+    }
+    normalizedAvatar = createPrivateMediaUrl(avatarKey);
+  }
+
   // 构建更新数据（仅包含提供的字段）
   const updateData: Record<string, string | undefined> = {};
   if (nickname !== undefined) updateData.nickname = nickname;
-  if (avatar !== undefined) updateData.avatar = avatar;
+  if (normalizedAvatar !== undefined) updateData.avatar = normalizedAvatar;
   if (bio !== undefined) updateData.bio = bio;
   if (qqNumber !== undefined) updateData.qqNumber = qqNumber;
 
   const nextProfile = {
     nickname: nickname ?? existing.nickname,
-    avatar: avatar ?? existing.avatar,
+    avatar: normalizedAvatar ?? existing.avatar,
     qqNumber: qqNumber ?? existing.qqNumber,
   };
   if (existing.profileCompletionRequired && !isProfileComplete(nextProfile)) {

@@ -31,7 +31,13 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 import { getServerSession } from "next-auth/next";
+import { createPrivateMediaUrl } from "@/lib/oss";
 const mockGetServerSession = vi.mocked(getServerSession);
+
+beforeEach(() => {
+  process.env.NEXTAUTH_SECRET = "user-route-test-secret";
+  process.env.NEXTAUTH_URL = "http://localhost:3000";
+});
 
 // ==================== Helpers ====================
 
@@ -235,11 +241,12 @@ describe("PATCH /api/users/[id]", () => {
 
   it("应成功更新头像和简介（不触发敏感词检测）", async () => {
     setSession("user1", "USER");
+    const avatar = createPrivateMediaUrl("uploads/2026/07/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp");
     mockUserFindUnique.mockResolvedValue({ id: "user1" });
     mockUserUpdate.mockResolvedValue({
       id: "user1",
       nickname: "测试用户",
-      avatar: "https://example.com/new-avatar.png",
+      avatar,
       bio: "新的简介",
       role: "USER",
       createdAt: new Date("2024-01-01"),
@@ -248,7 +255,7 @@ describe("PATCH /api/users/[id]", () => {
     const { PATCH } = await import("../../users/[id]/route");
     const res = await PATCH(
       makeRequest("PATCH", "http://localhost:3000/api/users/user1", {
-        avatar: "https://example.com/new-avatar.png",
+        avatar,
         bio: "新的简介",
       }),
       { params: { id: "user1" } } as never,
@@ -256,10 +263,26 @@ describe("PATCH /api/users/[id]", () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data.user.avatar).toBe("https://example.com/new-avatar.png");
+    expect(data.user.avatar).toBe(avatar);
     expect(data.user.bio).toBe("新的简介");
     // 没有更新昵称，不应调用敏感词检测
     expect(mockScanContent).not.toHaveBeenCalled();
+  });
+
+  it("拒绝把任意外链设置为头像", async () => {
+    setSession("user1", "USER");
+    mockUserFindUnique.mockResolvedValue({ id: "user1", avatar: null });
+
+    const { PATCH } = await import("../../users/[id]/route");
+    const res = await PATCH(
+      makeRequest("PATCH", "http://localhost:3000/api/users/user1", {
+        avatar: "https://attacker.example/avatar.png",
+      }),
+      { params: { id: "user1" } } as never,
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 
   it("应返回 404 当用户不存在", async () => {

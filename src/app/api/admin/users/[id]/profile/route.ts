@@ -6,6 +6,7 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { nicknameSchema, emailSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
+import { createPrivateMediaUrl, parsePrivateMediaUrl } from "@/lib/oss";
 
 const profileSchema = z.object({
   nickname: nicknameSchema.nullable().optional(),
@@ -37,7 +38,16 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     });
     if (!existing) return NextResponse.json({ error: "用户不存在" }, { status: 404 });
 
-    const text = [parsed.data.nickname, parsed.data.bio].filter(Boolean).join(" ");
+    const profileData = { ...parsed.data };
+    if (profileData.avatar && profileData.avatar !== existing.avatar) {
+      const avatarKey = parsePrivateMediaUrl(profileData.avatar);
+      if (!avatarKey) {
+        return NextResponse.json({ error: "头像必须通过平台上传接口提交" }, { status: 400 });
+      }
+      profileData.avatar = createPrivateMediaUrl(avatarKey);
+    }
+
+    const text = [profileData.nickname, profileData.bio].filter(Boolean).join(" ");
     if (text) {
       const matches = await scanContent(text);
       if (matches.length > 0) {
@@ -46,8 +56,8 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
     }
 
     const changes = Object.fromEntries(PROFILE_FIELDS
-      .filter((field) => parsed.data[field] !== undefined && parsed.data[field] !== existing[field])
-      .map((field) => [field, parsed.data[field]]));
+      .filter((field) => profileData[field] !== undefined && profileData[field] !== existing[field])
+      .map((field) => [field, profileData[field]]));
     if (Object.keys(changes).length === 0) {
       return NextResponse.json({ error: "资料没有变化" }, { status: 400 });
     }
@@ -64,8 +74,8 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         beforeValues,
         afterValues: changes,
         category: "PROFILE",
-        reason: parsed.data.reason,
-        ticketId: parsed.data.ticketId,
+        reason: profileData.reason,
+        ticketId: profileData.ticketId,
       }, undefined, tx);
       return updated;
     });

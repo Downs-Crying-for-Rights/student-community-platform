@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
 import { getMediaKey, getPrivateOSSObject, verifyMediaSignature, verifyProtectedMediaSignature, type ProtectedMediaScope } from "@/lib/oss";
 import { withTelemetry } from "@/lib/telemetry";
+import { enforceRateLimit, rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,18 @@ async function getMedia(request: NextRequest) {
     : verifyMediaSignature(key, signature);
   if (!ALLOWED_KEY.test(key) || !signatureValid) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  const limited = await enforceRateLimit(
+    `oss-media:${protectedRequest ? "protected" : "public"}:${rateLimitKeyForIP(requestIP(request))}`,
+    protectedRequest ? 180 : 300,
+    60_000,
+  );
+  if (limited) {
+    return new NextResponse(limited.response.body, {
+      status: 429,
+      headers: { ...Object.fromEntries(limited.response.headers), "Cache-Control": "private, no-store" },
+    });
   }
 
   if (!protectedRequest) {

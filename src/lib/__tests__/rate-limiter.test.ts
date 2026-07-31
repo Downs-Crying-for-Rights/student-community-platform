@@ -23,6 +23,7 @@ import {
   checkRateLimit,
   rateLimitKeyForUser,
   rateLimitKeyForIP,
+  requestIP,
   enforceRateLimit,
 } from "../rate-limiter";
 import { hashIP } from "../utils";
@@ -159,6 +160,20 @@ describe("Rate Limiter", () => {
       const key1 = rateLimitKeyForIP("192.168.1.1");
       const key2 = rateLimitKeyForIP("10.0.0.1");
       expect(key1).not.toBe(key2);
+    });
+  });
+
+  describe("requestIP", () => {
+    it("prefers the reverse proxy real IP", () => {
+      const request = new Request("http://localhost", {
+        headers: { "x-real-ip": "203.0.113.8", "x-forwarded-for": "198.51.100.2, 10.0.0.1" },
+      });
+      expect(requestIP(request)).toBe("203.0.113.8");
+    });
+
+    it("uses the first forwarded IP and falls back safely", () => {
+      expect(requestIP(new Request("http://localhost", { headers: { "x-forwarded-for": "198.51.100.2, 10.0.0.1" } }))).toBe("198.51.100.2");
+      expect(requestIP(new Request("http://localhost"))).toBe("unknown");
     });
   });
 

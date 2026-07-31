@@ -18,6 +18,7 @@ vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 
 import { getServerSession } from "next-auth/next";
+import { createProtectedMediaUrl } from "@/lib/oss";
 const mockGetServerSession = vi.mocked(getServerSession);
 
 function makeGet(id: string) {
@@ -131,7 +132,11 @@ describe("GET /api/cases/[id]/messages", () => {
 });
 
 describe("POST /api/cases/[id]/messages", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NEXTAUTH_SECRET = "case-message-test-secret";
+    process.env.NEXTAUTH_URL = "http://localhost:3000";
+  });
 
   it("401 when not logged in", async () => {
     mockGetServerSession.mockResolvedValue(null);
@@ -225,15 +230,33 @@ describe("POST /api/cases/[id]/messages", () => {
     const res = await POST(makePost("case1", {
       content: "现场截图",
       messageType: "IMAGE",
-      mediaUrl: "https://forum.dcr2026.com/api/media?key=uploads%2F2026%2F07%2Fa.webp&sig=test",
+      mediaUrl: createProtectedMediaUrl("uploads/2026/07/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp", "CASE", "case1"),
       mediaName: "screen.webp",
       mediaMimeType: "image/webp",
       mediaSize: 1024,
     }), ctx("case1"));
     expect(res.status).toBe(201);
     expect(mockMessageCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ messageType: "IMAGE", mediaName: "screen.webp", mediaSize: 1024 }),
+      data: expect.objectContaining({
+        messageType: "IMAGE",
+        mediaUrl: "uploads/2026/07/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp",
+        mediaName: "screen.webp",
+        mediaSize: 1024,
+      }),
     }));
+  });
+
+  it("rejects an attachment URL from another origin", async () => {
+    setSession("user1", "USER");
+    mockCaseFindUnique.mockResolvedValue(base);
+    const { POST } = await import("../[id]/messages/route");
+    const res = await POST(makePost("case1", {
+      messageType: "IMAGE",
+      mediaUrl: "https://attacker.example/api/media?key=uploads%2F2026%2F07%2Faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp&sig=fake",
+    }), ctx("case1"));
+
+    expect(res.status).toBe(400);
+    expect(mockMessageCreate).not.toHaveBeenCalled();
   });
 
   it("additional handler via CaseHandler can send", async () => {

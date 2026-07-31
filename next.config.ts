@@ -15,7 +15,16 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**",
+        hostname: "forum.dcr2026.com",
+        pathname: "/api/media",
+      },
+      {
+        protocol: "https",
+        hostname: "q.qlogo.cn",
+      },
+      {
+        protocol: "https",
+        hostname: "thirdqq.qlogo.cn",
       },
     ],
   },
@@ -37,7 +46,7 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:;`,
+              `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://q.qlogo.cn https://thirdqq.qlogo.cn; font-src 'self' data:;`,
           },
         ],
       },

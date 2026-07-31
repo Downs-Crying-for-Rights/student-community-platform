@@ -3,10 +3,20 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getPrivateOSSObject, getStoredMediaKey } from "@/lib/oss";
 import { withTelemetry } from "@/lib/telemetry";
+import { enforceRateLimit, rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
 
 export const runtime = "nodejs";
 
-async function getAvatar(_request: Request, context: { params: Record<string, string> }) {
+const ALLOWED_EXTERNAL_AVATAR_HOSTS = new Set(["q.qlogo.cn", "thirdqq.qlogo.cn"]);
+
+async function getAvatar(request: Request, context: { params: Record<string, string> }) {
+  const limited = await enforceRateLimit(`oss-avatar:${rateLimitKeyForIP(requestIP(request))}`, 180, 60_000);
+  if (limited) {
+    return new NextResponse(limited.response.body, {
+      status: 429,
+      headers: { ...Object.fromEntries(limited.response.headers), "Cache-Control": "private, no-store" },
+    });
+  }
   const user = await prisma.user.findUnique({
     where: { id: context.params.id },
     select: { avatar: true },
@@ -17,7 +27,9 @@ async function getAvatar(_request: Request, context: { params: Record<string, st
   if (!key) {
     try {
       const external = new URL(user.avatar);
-      if (external.protocol !== "https:") throw new Error("invalid avatar protocol");
+      if (external.protocol !== "https:" || !ALLOWED_EXTERNAL_AVATAR_HOSTS.has(external.hostname)) {
+        throw new Error("invalid avatar host");
+      }
       return NextResponse.redirect(external);
     } catch {
       return new NextResponse(null, { status: 404 });

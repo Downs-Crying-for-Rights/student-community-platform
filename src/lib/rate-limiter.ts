@@ -91,6 +91,13 @@ export function rateLimitKeyForIP(ip: string): string {
   return `ip:${hashIP(ip)}`;
 }
 
+/** Resolve the client IP set by the trusted reverse proxy. */
+export function requestIP(request: Pick<Request, "headers">): string {
+  return request.headers.get("x-real-ip")
+    || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || "unknown";
+}
+
 /**
  * Convenience wrapper: check rate limit and return a Response when exceeded.
  * Returns `null` when the request is allowed, or a 429 Response otherwise.

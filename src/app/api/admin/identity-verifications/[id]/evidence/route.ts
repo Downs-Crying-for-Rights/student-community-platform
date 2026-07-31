@@ -4,11 +4,19 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { AuditAction, AuditTargetType, logAudit } from "@/lib/audit";
 import { getPrivateOSSObject } from "@/lib/oss";
+import { enforceRateLimit, rateLimitKeyForUser } from "@/lib/rate-limiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const GET = withAuth(async (req: AuthenticatedRequest, context: { params: Record<string, string> }) => {
+  const limited = await enforceRateLimit(`oss-identity-evidence:${rateLimitKeyForUser(req.user.id)}`, 60, 60_000);
+  if (limited) {
+    return new NextResponse(limited.response.body, {
+      status: 429,
+      headers: { ...Object.fromEntries(limited.response.headers), "Cache-Control": "private, no-store" },
+    });
+  }
   const application = await prisma.identityVerificationApplication.findUnique({
     where: { id: context.params.id },
     select: { id: true, status: true, evidenceKey: true, evidenceMime: true },

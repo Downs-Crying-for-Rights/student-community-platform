@@ -2,15 +2,12 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
-import { createProtectedMediaUrl, getMediaKey } from "@/lib/oss";
+import { createProtectedMediaUrl, getMediaKey, parseProtectedMediaUrl } from "@/lib/oss";
 
 const createMessageSchema = z.object({
   content: z.string().max(2000, "消息内容不能超过 2000 个字符").optional().default(""),
   messageType: z.enum(["TEXT", "IMAGE", "AUDIO", "FILE"]).default("TEXT"),
-  mediaUrl: z.string().url().refine((value) => {
-    const url = new URL(value);
-    return url.pathname === "/api/media" && url.searchParams.has("key") && url.searchParams.has("sig");
-  }, "媒体地址无效").optional(),
+  mediaUrl: z.string().url("媒体地址无效").optional(),
   mediaName: z.string().max(255).optional(),
   mediaMimeType: z.string().max(100).optional(),
   mediaSize: z.number().int().positive().max(20 * 1024 * 1024).optional(),
@@ -175,6 +172,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
       );
     }
 
+    const mediaKey = mediaUrl ? parseProtectedMediaUrl(mediaUrl, "CASE", id) : null;
+    if (mediaUrl && !mediaKey) {
+      return NextResponse.json({ error: "媒体必须通过当前工单的上传接口提交" }, { status: 400 });
+    }
+
     // Group mode: messages are associated via caseId, visible to all participants.
     // receiverId kept for schema compatibility — set to submitterId as default.
     const receiverId = isSubmitter
@@ -185,7 +187,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
       data: {
         content: content.trim() || (messageType === "IMAGE" ? "[图片]" : messageType === "AUDIO" ? "[录音]" : "[附件]"),
         messageType,
-        mediaUrl: mediaUrl ?? null,
+        mediaUrl: mediaKey,
         mediaName: mediaName ?? null,
         mediaMimeType: mediaMimeType ?? null,
         mediaSize: mediaSize ?? null,
