@@ -35,20 +35,13 @@ describe("DELETE /api/identity-verification", () => {
     mocks.deleteObject.mockResolvedValue(undefined);
   });
 
-  it("denies future evidence access before deleting the object", async () => {
+  it("returns Gone without mutating historical identity data", async () => {
     const response = await DELETE(new NextRequest("http://localhost/api/identity-verification", { method: "DELETE" }), { params: {} });
+    const data = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(mocks.updateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      where: { id: "application-1", applicantId: "user-1", status: "PENDING" },
-      data: expect.objectContaining({ status: "CANCELLED", identityCiphertext: null, identityLookupHash: null, evidenceDeleteAfter: expect.any(Date) }),
-    }));
-    expect(mocks.audit).toHaveBeenCalledWith("user-1", "IDENTITY_APPLICATION_CANCEL", "IDENTITY_APPLICATION", "application-1", expect.anything(), undefined, expect.anything());
-    expect(mocks.deleteObject).toHaveBeenCalledWith("identity-verification/application-1/evidence.webp");
-    expect(mocks.updateMany.mock.invocationCallOrder[0]).toBeLessThan(mocks.deleteObject.mock.invocationCallOrder[0]);
-    expect(mocks.updateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      where: { id: "application-1", status: "CANCELLED", evidenceKey: "identity-verification/application-1/evidence.webp" },
-      data: expect.objectContaining({ evidenceKey: null, evidenceDeleteAfter: null }),
-    }));
+    expect(response.status).toBe(410);
+    expect(data.error).toBe("身份认证功能已下线");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.deleteObject).not.toHaveBeenCalled();
   });
 });

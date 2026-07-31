@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import {
   DCR_ADMISSION_STEPS,
   DCR_STEP_CTA,
+  DCR_TASK_HALL_CARD,
   DCR_WORKSPACE_CARDS,
   getDcrEntryMode,
   type DcrCurrentStep,
@@ -225,7 +226,22 @@ export default function DCREntryPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <article className="mb-4 flex flex-col justify-between gap-4 rounded-2xl border border-blue-200 bg-blue-50/40 p-5 sm:flex-row sm:items-center dark:border-blue-900 dark:bg-blue-950/20">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-blue-100 p-2.5 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200">
+                  <UsersRound className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">{DCR_TASK_HALL_CARD.title}</h3>
+                  <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{DCR_TASK_HALL_CARD.description}</p>
+                </div>
+              </div>
+              <Button asChild className="shrink-0">
+                <Link href={DCR_TASK_HALL_CARD.href}>{DCR_TASK_HALL_CARD.cta}<ArrowRight className="ml-2 h-4 w-4" /></Link>
+              </Button>
+            </article>
+
+            <div className="grid gap-4 lg:grid-cols-2">
               {DCR_WORKSPACE_CARDS.map((card) => {
                 const section = progress.workspace[card.key];
                 const Icon = WORKSPACE_ICONS[card.key];

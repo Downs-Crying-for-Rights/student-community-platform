@@ -122,7 +122,7 @@ export function PostCard({
           {/* Author row */}
           <div className={cn("mt-3 flex items-center gap-2", compact && "md:mt-2")}>
             {!isAnonymous ? <Link href={`/u/${author.id}`} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} className="flex min-w-0 items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`查看 ${displayName} 的主页`}>
-            <UserAvatar src={author.avatar} name={displayName} size={20} isVerified={author.isVerified} />
+            <UserAvatar src={author.avatar} name={displayName} size={20} />
             <span className="truncate text-xs text-muted-foreground">
               {displayName}
             </span>

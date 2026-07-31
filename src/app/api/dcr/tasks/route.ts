@@ -117,18 +117,21 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           status: true,
           expectedHelpType: true,
           createdAt: true,
+          case_: { select: { province: true, city: true, riskPreference: true } },
           requester: { select: { id: true, nickname: true } },
         },
       }),
       prisma.mutualAidTask.count({ where }),
     ]);
 
-    const visibleTasks = scope === "mine"
-      ? tasks
-      : tasks.map((task) => ({
+    const visibleTasks = tasks.map((task) => ({
           ...task,
-          ...getPublicDcrTaskCopy(task.category),
-          requester: { nickname: task.requester.nickname },
+          ...(scope === "mine" ? {} : getPublicDcrTaskCopy(task.category)),
+          province: task.case_?.province ?? null,
+          city: task.case_?.city ?? null,
+          contactPreference: task.case_?.riskPreference ?? "仅站内沟通",
+          case_: undefined,
+          requester: scope === "mine" ? task.requester : { nickname: task.requester.nickname },
         }));
 
     return NextResponse.json({ tasks: visibleTasks, total, page, pageSize });

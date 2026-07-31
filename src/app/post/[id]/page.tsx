@@ -10,6 +10,7 @@ import { CommentDrawer } from "@/components/comment/CommentDrawer";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { ReportDialog } from "@/components/shared/ReportDialog";
+import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -292,9 +293,7 @@ export default function PostDetailPage() {
                 {post.title}
               </h1>
 
-              <div className="mt-4 whitespace-pre-wrap text-base leading-relaxed text-foreground/90">
-                {post.content}
-              </div>
+              <SafeMarkdown content={post.content} className="mt-4 text-base text-foreground/90" />
 
               {post.case_?.requestStatus === "APPROVED" && (
                 <button
@@ -328,7 +327,7 @@ export default function PostDetailPage() {
               <div className="mt-6 flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm">
                 {post.isAnonymous ? <UserAvatar name={displayName} size={40} anonymous /> : (
                   <Link href={`/u/${post.author.id}`} aria-label={`查看 ${displayName} 的主页`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <UserAvatar src={post.author.avatar} name={displayName} size={40} isVerified={post.author.isVerified} />
+                    <UserAvatar src={post.author.avatar} name={displayName} size={40} />
                   </Link>
                 )}
                 <div className="min-w-0 flex-1">

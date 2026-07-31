@@ -78,6 +78,32 @@ export const POST = withAuth(async (
       });
       if (accepted.count === 0) throw new Error("CLAIM_ALREADY_HANDLED");
 
+      const existingSession = await tx.helpSession.findUnique({
+        where: {
+          taskId_helperId: {
+            taskId: claim.targetTaskId,
+            helperId: claim.applicantId,
+          },
+        },
+        include: { helpChat: true, evidenceRoom: true },
+      });
+
+      if (existingSession) {
+        await tx.helpClaim.update({
+          where: { id: claim.id },
+          data: { sessionId: existingSession.id },
+        });
+        await tx.user.updateMany({
+          where: { id: { in: [claim.applicantId, claim.requesterId] } },
+          data: { dcrHelperAccess: true },
+        });
+        return {
+          sessionId: existingSession.id,
+          chatId: existingSession.helpChat?.id ?? null,
+          evidenceRoomId: existingSession.evidenceRoom?.id ?? null,
+        };
+      }
+
       const session = await tx.helpSession.create({
         data: {
           taskId: claim.targetTaskId,

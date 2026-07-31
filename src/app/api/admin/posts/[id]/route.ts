@@ -85,7 +85,7 @@ export const PATCH = withAuth(async (
         board: { select: { id: true, name: true } },
         },
       });
-      if (status !== undefined && status !== existing.status && existing.authorId !== req.user.id && (status === "DELETED" || existing.status === "DELETED")) {
+      if (status !== undefined && status !== existing.status && (status === "DELETED" || existing.status === "DELETED")) {
         await tx.notification.create({
           data: {
             userId: existing.authorId,

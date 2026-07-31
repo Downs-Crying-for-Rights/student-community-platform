@@ -116,13 +116,6 @@ export const DCR_WORKSPACE_CARDS = [
     cta: "管理我的求助",
   },
   {
-    key: "tasks",
-    title: "互助任务",
-    description: "跟进自己发起或作为互助人参与的任务。",
-    href: "/dcr/tasks",
-    cta: "进入互助任务",
-  },
-  {
     key: "cycles",
     title: "互助闭环",
     description: "查看自己发起或参与的双方、三方互助闭环。",
@@ -130,3 +123,10 @@ export const DCR_WORKSPACE_CARDS = [
     cta: "查看互助闭环",
   },
 ] as const;
+
+export const DCR_TASK_HALL_CARD = {
+  title: "互助任务大厅",
+  description: "浏览所有可加入的已审核委托，选择交换自己的委托，或直接无偿帮助他人。",
+  href: "/dcr/tasks",
+  cta: "进入任务大厅",
+} as const;

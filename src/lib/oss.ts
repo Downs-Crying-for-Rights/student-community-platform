@@ -158,6 +158,26 @@ export function getMediaKey(urlOrKey: string): string | null {
   }
 }
 
+/** Resolve current signed URLs and legacy direct OSS/CDN URLs stored before the bucket became private. */
+export function getStoredMediaKey(urlOrKey: string): string | null {
+  const signedKey = getMediaKey(urlOrKey);
+  if (signedKey) return signedKey;
+  try {
+    const url = new URL(urlOrKey);
+    const configuredHosts = [
+      process.env.OSS_CDN_DOMAIN,
+      process.env.OSS_ENDPOINT,
+      OSS_BUCKET && `${OSS_BUCKET}.${new URL(OSS_ENDPOINT).host}`,
+    ]
+      .filter(Boolean)
+      .map((value) => new URL(String(value).includes("://") ? String(value) : `https://${value}`).host);
+    const key = decodeURIComponent(url.pathname.replace(/^\//, ""));
+    return configuredHosts.includes(url.host) && isMediaObjectKey(key) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
 export function parseProtectedMediaUrl(
   value: string,
   expectedScope: ProtectedMediaScope,

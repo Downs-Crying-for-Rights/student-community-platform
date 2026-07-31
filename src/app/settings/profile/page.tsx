@@ -111,7 +111,6 @@ export default function SettingsProfilePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [isVerified, setIsVerified] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Password form state
@@ -136,7 +135,6 @@ export default function SettingsProfilePage() {
         };
         setForm(profile);
         setOriginal(profile);
-        setIsVerified(Boolean(data.user.realVerified || data.user.studentVerified));
         if (typeof data.user.hasPassword === "boolean") {
           setHasPassword(data.user.hasPassword);
         }
@@ -287,13 +285,6 @@ export default function SettingsProfilePage() {
 
         <Card className="mb-6">
           <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
-            <div><p className="font-medium">身份认证</p><p className="text-sm text-muted-foreground">申请已实名、学生用户公开身份标签。</p></div>
-            <Button asChild variant="outline"><Link href="/settings/identity">进入身份认证</Link></Button>
-          </CardContent>
-        </Card>
-
-        <Card className="mb-6">
-          <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
             <div><p className="font-medium">账号与注销</p><p className="text-sm text-muted-foreground">提交注销申请、查看审核状态或撤回待审核申请。</p></div>
             <Button asChild variant="outline"><Link href="/settings/account"><UserX className="mr-2 h-4 w-4" />账号设置</Link></Button>
           </CardContent>
@@ -314,7 +305,7 @@ export default function SettingsProfilePage() {
                 {/* Avatar upload */}
                 <div className="flex items-center gap-4">
                   <div className="relative">
-                    <UserAvatar src={form.avatar} name={form.nickname} size={64} isVerified={isVerified} />
+                    <UserAvatar src={form.avatar} name={form.nickname} size={64} />
                     <button
                       type="button"
                       onClick={() => avatarInputRef.current?.click()}

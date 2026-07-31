@@ -41,6 +41,7 @@ import {
   createPrivateMediaUrl,
   createProtectedMediaUrl,
   getMediaKey,
+  getStoredMediaKey,
   parseProtectedMediaUrl,
   uploadToOSS,
   verifyMediaSignature,
@@ -224,6 +225,14 @@ describe("private media URLs", () => {
     expect(getMediaKey(`http://localhost:3000/api/media?key=${encodeURIComponent(key)}&sig=legacy`)).toBe(key);
     expect(getMediaKey(`https://attacker.example/api/media?key=${encodeURIComponent(key)}&sig=legacy`)).toBeNull();
     expect(getMediaKey("uploads/../../secret")).toBeNull();
+  });
+
+  it("recovers object keys from the configured legacy private CDN only", () => {
+    process.env.OSS_CDN_DOMAIN = "dcr-student.oss-cn-qingdao.aliyuncs.com";
+    const key = "uploads/2026/07/d615317cea51e56e394ea36378aa1497.webp";
+
+    expect(getStoredMediaKey(`https://dcr-student.oss-cn-qingdao.aliyuncs.com/${key}`)).toBe(key);
+    expect(getStoredMediaKey(`https://attacker.example/${key}`)).toBeNull();
   });
 
   it("rejects a signature when the object key is changed", () => {

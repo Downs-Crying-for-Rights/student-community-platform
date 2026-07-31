@@ -13,9 +13,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ReportDialog } from "@/components/shared/ReportDialog";
 import { useDMConsent } from "@/components/dm/DMConsentDialog";
-import { IdentityBadges } from "@/components/shared/IdentityBadges";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import { IdentityCertificationCard } from "@/components/profile/IdentityCertificationCard";
 
 /* ---------- Types ---------- */
 
@@ -277,11 +275,11 @@ export default function ProfilePage() {
           </div>
         ) : user ? (
           <div className="mb-6 flex flex-col items-center gap-3 py-8">
-            <UserAvatar src={user.avatar} name={user.nickname} size={80} isVerified={user.realVerified || user.studentVerified} />
+            <UserAvatar src={user.avatar} name={user.nickname} size={80} />
             <h1 className="text-xl font-bold text-foreground">
               {user.nickname ?? "未命名用户"}
             </h1>
-            <IdentityBadges administrator={user.isAdministrator} realVerified={user.realVerified} studentVerified={user.studentVerified} />
+            {user.isAdministrator && <span className="text-xs font-medium text-blue-600">平台管理员</span>}
             {user.bio && (
               <p className="max-w-sm text-center text-sm text-muted-foreground">
                 {user.bio}
@@ -305,8 +303,6 @@ export default function ProfilePage() {
         ) : (
           <EmptyState title="用户不存在" description="该用户可能已被删除" />
         )}
-
-        {user && isOwnProfile && <IdentityCertificationCard compact />}
 
         {/* Tabs */}
         {user && (

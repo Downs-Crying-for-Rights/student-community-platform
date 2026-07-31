@@ -152,13 +152,15 @@ export default function AdminContentPage() {
   };
 
   const handleCommentToggle = async (commentId: string, isDeleted: boolean) => {
+    const reason = window.prompt(`请输入${isDeleted ? "删除" : "恢复"}评论的原因：`);
+    if (!reason?.trim()) return;
     setCommentsActionError("");
     setCommentsActionNotice("");
     try {
       const res = await fetch(`/api/admin/comments/${commentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isDeleted }),
+        body: JSON.stringify({ isDeleted, reason: reason.trim() }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

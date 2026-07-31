@@ -25,7 +25,7 @@ interface ModerationPost {
   tags: Array<{ tag: { id: string; name: string } }>;
 }
 
-type KanbanColumn = "PENDING" | "IN_REVIEW" | "PUBLISHED" | "REJECTED";
+type KanbanColumn = "PENDING" | "PUBLISHED" | "REJECTED";
 
 /* ---------- Extracted logic matching page.tsx ---------- */
 
@@ -46,7 +46,6 @@ function groupPostsByColumn(
 ): Record<KanbanColumn, ModerationPost[]> {
   const groups: Record<KanbanColumn, ModerationPost[]> = {
     PENDING: [],
-    IN_REVIEW: [],
     PUBLISHED: [],
     REJECTED: [],
   };
@@ -120,10 +119,9 @@ describe("审核看板页面逻辑", () => {
   });
 
   describe("帖子分组 (groupPostsByColumn)", () => {
-    it("空数组返回四个空列", () => {
+    it("空数组返回三个空列", () => {
       const result = groupPostsByColumn([]);
       expect(result.PENDING).toEqual([]);
-      expect(result.IN_REVIEW).toEqual([]);
       expect(result.PUBLISHED).toEqual([]);
       expect(result.REJECTED).toEqual([]);
     });
@@ -139,7 +137,6 @@ describe("审核看板页面逻辑", () => {
       expect(result.PENDING).toHaveLength(2);
       expect(result.PUBLISHED).toHaveLength(1);
       expect(result.REJECTED).toHaveLength(1);
-      expect(result.IN_REVIEW).toHaveLength(0);
     });
 
     it("分组后帖子 ID 正确", () => {
@@ -229,16 +226,14 @@ describe("审核看板页面逻辑", () => {
       { label: string; color: string; bgColor: string }
     > = {
       PENDING: { label: "待审核", color: "text-yellow-600", bgColor: "bg-yellow-50 dark:bg-yellow-950/30" },
-      IN_REVIEW: { label: "审核中", color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950/30" },
       PUBLISHED: { label: "已通过", color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950/30" },
       REJECTED: { label: "已拒绝", color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-950/30" },
     };
 
-    it("包含四个看板列", () => {
+    it("包含三个看板列", () => {
       const columns = Object.keys(COLUMN_CONFIG);
-      expect(columns).toHaveLength(4);
+      expect(columns).toHaveLength(3);
       expect(columns).toContain("PENDING");
-      expect(columns).toContain("IN_REVIEW");
       expect(columns).toContain("PUBLISHED");
       expect(columns).toContain("REJECTED");
     });
@@ -253,7 +248,6 @@ describe("审核看板页面逻辑", () => {
 
     it("列标签使用中文", () => {
       expect(COLUMN_CONFIG.PENDING.label).toBe("待审核");
-      expect(COLUMN_CONFIG.IN_REVIEW.label).toBe("审核中");
       expect(COLUMN_CONFIG.PUBLISHED.label).toBe("已通过");
       expect(COLUMN_CONFIG.REJECTED.label).toBe("已拒绝");
     });

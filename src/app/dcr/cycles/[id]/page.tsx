@@ -77,6 +77,7 @@ export default function CycleDetailPage() {
 
   const [cycle, setCycle] = useState<Cycle | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState("");
   const [contactLoading, setContactLoading] = useState("");
   const { ensureConsent, dialog: dmConsentDialog } = useDMConsent();
@@ -94,6 +95,8 @@ export default function CycleDetailPage() {
   useEffect(() => { fetchCycle(); }, [fetchCycle]);
 
   async function handleLinkAction(linkId: string, action: string, reason?: string) {
+    if (actionLoading) return;
+    setActionLoading(true);
     setActionError("");
     try {
       const res = await fetch(`/api/dcr/cycles/${id}/links/${linkId}`, {
@@ -101,10 +104,11 @@ export default function CycleDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reason }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) { setActionError(data.error || "操作失败"); return; }
-      fetchCycle();
+      await fetchCycle();
     } catch { setActionError("网络错误"); }
+    finally { setActionLoading(false); }
   }
 
   function handleDispute(linkId: string) {
@@ -250,10 +254,10 @@ export default function CycleDetailPage() {
                 <div className="flex flex-wrap gap-2 mt-2">
                   {canAccept && (
                     <>
-                      <Button size="sm" variant="default" onClick={() => handleLinkAction(link.id, "ACCEPTED")}>
+                      <Button size="sm" variant="default" disabled={actionLoading} onClick={() => handleLinkAction(link.id, "ACCEPTED")}>
                         <CheckCircle2 className="mr-1 h-3.5 w-3.5" />接受
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleLinkAction(link.id, "REJECTED", "拒绝参与")}>
+                      <Button size="sm" variant="outline" disabled={actionLoading} onClick={() => handleLinkAction(link.id, "REJECTED", "拒绝参与")}>
                         <XCircle className="mr-1 h-3.5 w-3.5" />拒绝
                       </Button>
                     </>

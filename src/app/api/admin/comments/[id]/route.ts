@@ -6,6 +6,7 @@ import { z } from "zod";
 
 const updateSchema = z.object({
   isDeleted: z.boolean(),
+  reason: z.string().trim().min(1, "必须填写操作原因").max(500),
 });
 
 /**
@@ -38,7 +39,7 @@ export const PATCH = withAuth(async (
       return NextResponse.json({ error: "评论不存在" }, { status: 404 });
     }
 
-    const { isDeleted } = parsed.data;
+    const { isDeleted, reason } = parsed.data;
 
     // Update comment and adjust post comment count
     const countDelta = isDeleted && !existing.isDeleted ? -1 : !isDeleted && existing.isDeleted ? 1 : 0;
@@ -55,13 +56,13 @@ export const PATCH = withAuth(async (
           data: { commentCount: { increment: countDelta } },
         });
       }
-      if (countDelta !== 0 && existing.authorId !== req.user.id) {
+      if (countDelta !== 0) {
         await tx.notification.create({
             data: {
               userId: existing.authorId,
               type: "SYSTEM",
               title: isDeleted ? "评论已被删除" : "评论已恢复",
-              content: isDeleted ? "你的评论已由平台删除。" : "你的评论已由平台恢复。",
+              content: isDeleted ? `你的评论已由平台删除。原因：${reason}` : "你的评论已由平台恢复。",
               link: `/post/${existing.postId}`,
             },
           });
@@ -71,6 +72,7 @@ export const PATCH = withAuth(async (
     const action = isDeleted ? "ADMIN_DELETE_COMMENT" : "ADMIN_RESTORE_COMMENT";
     await logAudit(req.user.id, action, AuditTargetType.COMMENT, id, {
       postId: existing.postId,
+      reason,
     });
 
     return NextResponse.json({ message: isDeleted ? "评论已删除" : "评论已恢复" });

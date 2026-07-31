@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DCR_STEP_CTA,
   DCR_WORKSPACE_CARDS,
+  DCR_TASK_HALL_CARD,
   getDcrCurrentStep,
   getDcrEntryMode,
   type DcrAdmissionProgress,
@@ -65,12 +66,12 @@ describe("DCR 工作台契约", () => {
     expect(getDcrEntryMode(state)).toBe("ADMISSION");
   });
 
-  it("已准入工作台固定展示求助、任务、闭环三卡", () => {
+  it("已准入工作台将任务大厅与个人工作卡分开", () => {
     expect(getDcrEntryMode(admission({ accessGranted: true, currentStep: "COMPLETE" }))).toBe("WORKSPACE");
     expect(DCR_WORKSPACE_CARDS.map((card) => card.title)).toEqual([
       "我的求助",
-      "互助任务",
       "互助闭环",
     ]);
+    expect(DCR_TASK_HALL_CARD.title).toBe("互助任务大厅");
   });
 });

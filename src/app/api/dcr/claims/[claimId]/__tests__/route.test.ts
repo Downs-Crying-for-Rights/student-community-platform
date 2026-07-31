@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   claimFindUnique: vi.fn(),
   claimUpdateMany: vi.fn(),
   sessionCreate: vi.fn(),
+  sessionFindUnique: vi.fn(),
   sessionFindMany: vi.fn(),
   messageCreate: vi.fn(),
   claimUpdate: vi.fn(),
@@ -20,7 +21,7 @@ vi.mock("@/lib/prisma", () => {
   const tx = {
     $queryRaw: vi.fn(),
     helpClaim: { findUnique: mocks.claimFindUnique, updateMany: mocks.claimUpdateMany, update: mocks.claimUpdate },
-    helpSession: { create: mocks.sessionCreate, findMany: mocks.sessionFindMany },
+    helpSession: { create: mocks.sessionCreate, findUnique: mocks.sessionFindUnique, findMany: mocks.sessionFindMany },
     helpChatMessage: { create: mocks.messageCreate },
     mutualAidTask: { findUnique: mocks.taskFindUnique, updateMany: mocks.taskUpdateMany },
     taskTimelineEvent: { create: mocks.timelineCreate },
@@ -67,6 +68,7 @@ describe("POST /api/dcr/claims/[claimId]", () => {
     vi.mocked(getServerSession).mockResolvedValue({ user: { id: "requester", role: "USER" } } as never);
     mocks.claimFindUnique.mockResolvedValue(claim);
     mocks.claimUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.sessionFindUnique.mockResolvedValue(null);
     mocks.sessionCreate.mockResolvedValue({
       id: "session-1",
       helpChat: { id: "chat-1" },
@@ -119,6 +121,24 @@ describe("POST /api/dcr/claims/[claimId]", () => {
     expect(response.status).toBe(200);
     expect(mocks.messageCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ content: expect.stringContaining("无偿帮助") }),
+    }));
+  });
+
+  it("recovers an existing session instead of failing the decision with a unique constraint", async () => {
+    mocks.sessionFindUnique.mockResolvedValue({
+      id: "session-existing",
+      helpChat: { id: "chat-existing" },
+      evidenceRoom: { id: "room-existing" },
+    });
+
+    const response = await POST(request("accept"), context as never);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.sessionId).toBe("session-existing");
+    expect(mocks.sessionCreate).not.toHaveBeenCalled();
+    expect(mocks.claimUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { sessionId: "session-existing" },
     }));
   });
 

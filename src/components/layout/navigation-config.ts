@@ -98,8 +98,6 @@ export const adminMenuGroups: readonly AdminMenuGroup[] = [
     { href: "/admin/account-deletions", label: "注销审核", icon: "user", minRole: "ADMIN" },
     { href: "/admin/invites", label: "邀请码", icon: "ticket", minRole: "ADMIN" },
     { href: "/admin/applications", label: "准入审核", icon: "shield-check", minRole: "ADMIN" },
-    { href: "/admin/identity-verifications", label: "身份认证审核", icon: "shield-check", minRole: "ADMIN" },
-    { href: "/admin/identity-revocations", label: "认证撤销审核", icon: "shield-check", minRole: "ADMIN" },
   ] },
   { id: "dcr", label: "DCR 管理", icon: "clipboard-check", children: [
     { href: "/admin/dcr/reviews", label: "委托表审核", icon: "clipboard-check", minRole: "ADMIN" },

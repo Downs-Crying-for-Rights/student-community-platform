@@ -70,6 +70,8 @@ export const PATCH = withAuth(async (
         subject: action === "DISPUTED" ? "互助循环争议待处理" : "互助循环已断裂",
         text: `互助循环 ${cycleId} 的关系 ${linkId} 已${action === "DISPUTED" ? "发起争议" : "被拒绝"}。`,
         actionUrl: "/admin/dcr/cycles",
+      }).catch((mailError) => {
+        console.error("Mutual-aid cycle admin mail failed", { cycleId, linkId, mailError });
       });
     }
     if (action === "DISPUTED") {
@@ -81,9 +83,13 @@ export const PATCH = withAuth(async (
     }
 
     return NextResponse.json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PATCH /api/dcr/cycles/[id]/links/[linkId] error:", error);
-    const message = error?.message || "服务器内部错误";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const message = error instanceof Error ? error.message : "服务器内部错误";
+    const status = message.includes("只有") ? 403
+      : message.includes("不存在") ? 404
+        : message.includes("状态") || message.includes("不能") ? 409
+          : 500;
+    return NextResponse.json({ error: status === 500 ? "服务器内部错误" : message }, { status });
   }
 }, undefined, { captureAllTelemetry: true });

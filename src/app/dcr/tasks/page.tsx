@@ -61,6 +61,9 @@ export interface TaskListItem {
   status: string;
   expectedHelpType: string;
   createdAt: string;
+  province?: string | null;
+  city?: string | null;
+  contactPreference?: string | null;
   requester: { id: string; nickname: string | null };
 }
 
@@ -244,6 +247,10 @@ export default function TaskFeedPage() {
                             <span className="text-xs text-muted-foreground">
                               {getStatusLabel(task.status)}
                             </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span>地区：{[task.province, task.city].filter(Boolean).join(" ") || "未公开"}</span>
+                            <span>沟通方式：{task.contactPreference || "仅站内沟通"}</span>
                           </div>
                         </div>
 

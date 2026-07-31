@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { ListSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AiReviewPanel } from "@/components/admin/AiReviewPanel";
+import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 import { cn } from "@/lib/utils";
 
 /* ---------- Types ---------- */
@@ -43,14 +44,13 @@ export interface BoardOption {
   zone: string;
 }
 
-export type KanbanColumn = "PENDING" | "IN_REVIEW" | "PUBLISHED" | "REJECTED";
+export type KanbanColumn = "PENDING" | "PUBLISHED" | "REJECTED";
 
 export const COLUMN_CONFIG: Record<
   KanbanColumn,
   { label: string; color: string; bgColor: string }
 > = {
   PENDING: { label: "待审核", color: "text-yellow-600", bgColor: "bg-yellow-50 dark:bg-yellow-950/30" },
-  IN_REVIEW: { label: "审核中", color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950/30" },
   PUBLISHED: { label: "已通过", color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950/30" },
   REJECTED: { label: "已拒绝", color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-950/30" },
 };
@@ -74,7 +74,6 @@ export function groupPostsByColumn(
 ): Record<KanbanColumn, ModerationPost[]> {
   const groups: Record<KanbanColumn, ModerationPost[]> = {
     PENDING: [],
-    IN_REVIEW: [],
     PUBLISHED: [],
     REJECTED: [],
   };
@@ -279,7 +278,7 @@ export default function ModerationPage() {
         {loading ? (
           <ListSkeleton count={4} />
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {(Object.keys(COLUMN_CONFIG) as KanbanColumn[]).map((col) => {
               const config = COLUMN_CONFIG[col];
               const columnPosts = grouped[col];
@@ -380,9 +379,7 @@ export default function ModerationPage() {
 
                 {/* Post content */}
                 <div className="rounded-lg border bg-muted/30 p-4">
-                  <p className="whitespace-pre-wrap text-sm text-foreground">
-                    {selectedPost.content}
-                  </p>
+                  <SafeMarkdown content={selectedPost.content} className="text-foreground" />
                 </div>
 
                 {/* Tags */}
