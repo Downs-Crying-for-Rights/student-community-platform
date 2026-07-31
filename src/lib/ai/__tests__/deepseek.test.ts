@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 const runtime = vi.hoisted(() => ({ getConfig: vi.fn() }));
 vi.mock("../runtime-config", () => ({ getAiConfig: runtime.getConfig }));
 
-import { AiProviderError, requestDeepSeekReview } from "../deepseek";
+import { AiProviderError, requestDeepSeekChat, requestDeepSeekReview } from "../deepseek";
 
 const validResult = {
   riskLevel: "LOW",
@@ -66,6 +66,21 @@ describe("DeepSeek review client", () => {
 
     expect(response.model).toBe("deepseek-v4-flash");
     expect(JSON.parse(String(fetchMock.mock.calls[0][1].body)).model).toBe("deepseek-v4-flash");
+  });
+
+  it("supports bounded plain-text chat without requesting JSON output", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: "  你好，我可以帮你。  " } }],
+      usage: { total_tokens: 12 },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(requestDeepSeekChat({ systemPrompt: "safe", content: "你好", userId: "qq_hash" }))
+      .resolves.toMatchObject({ content: "你好，我可以帮你。", model: "deepseek-v4-flash" });
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(body.response_format).toBeUndefined();
+    expect(body.max_tokens).toBe(1_200);
+    expect(body.user_id).toBe("qq_hash");
   });
 
   it("rejects malformed model output", async () => {

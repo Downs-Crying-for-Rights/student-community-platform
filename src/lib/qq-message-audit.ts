@@ -12,7 +12,12 @@ export function decryptQQAuditValue(envelope: EncryptedEnvelope, context: string
 }
 
 export function encryptQQMessageInput(message: QQBotMessage): EncryptedEnvelope {
-  return encryptQQAuditValue({ input: message.input, occurredAt: message.occurredAt }, `qq-inbox-input:${message.eventId}`);
+  return encryptQQAuditValue({
+    senderId: message.userId,
+    conversation: message.platform === "onebot11" ? message.conversation : { type: "private" },
+    input: message.input,
+    occurredAt: message.occurredAt,
+  }, `qq-inbox-input:${message.eventId}`);
 }
 
 export function encryptQQMessageReplies(eventId: string, response: QQBotResponse): EncryptedEnvelope {

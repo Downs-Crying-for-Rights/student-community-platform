@@ -2,7 +2,6 @@ export interface Config {
   oneBotWsUrl: string;
   oneBotAccessToken: string;
   expectedSelfId: string;
-  allowedUserIds: ReadonlySet<string>;
   internalApiBaseUrl: string;
   internalApiToken: string;
   napcatWebuiBaseUrl: string;
@@ -45,21 +44,10 @@ function url(value: string, protocols: string[], name: string): string {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const reconnectMinMs = integer(env, "RECONNECT_MIN_MS", 1_000, 100, 60_000);
   const reconnectMaxMs = integer(env, "RECONNECT_MAX_MS", 30_000, reconnectMinMs, 300_000);
-  const allowedUserIds = new Set(
-    required(env, "ONEBOT_ALLOWED_USER_IDS")
-      .split(",")
-      .map((value) => value.trim())
-      .filter((value) => /^[1-9]\d{4,11}$/.test(value)),
-  );
-  if (allowedUserIds.size === 0) {
-    throw new Error("ONEBOT_ALLOWED_USER_IDS must contain at least one QQ ID");
-  }
-
   return {
     oneBotWsUrl: url(required(env, "ONEBOT_WS_URL"), ["ws:", "wss:"], "ONEBOT_WS_URL"),
     oneBotAccessToken: required(env, "ONEBOT_ACCESS_TOKEN"),
     expectedSelfId: required(env, "ONEBOT_EXPECTED_SELF_ID"),
-    allowedUserIds,
     internalApiBaseUrl: url(required(env, "INTERNAL_API_BASE_URL"), ["http:", "https:"], "INTERNAL_API_BASE_URL"),
     internalApiToken: required(env, "INTERNAL_API_TOKEN"),
     napcatWebuiBaseUrl: url(env.NAPCAT_WEBUI_BASE_URL?.trim() || "http://tunnel:6099", ["http:", "https:"], "NAPCAT_WEBUI_BASE_URL"),

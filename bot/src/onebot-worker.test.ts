@@ -72,7 +72,6 @@ describe("OneBotWorker outbox", () => {
       oneBotWsUrl: `ws://127.0.0.1:${address.port}/`,
       oneBotAccessToken: "onebot-secret",
       expectedSelfId: "42",
-      allowedUserIds: new Set(["100"]),
       internalApiBaseUrl: "http://127.0.0.1/",
       internalApiToken: "internal-secret",
       napcatWebuiBaseUrl: "http://127.0.0.1:6099/",
@@ -88,7 +87,7 @@ describe("OneBotWorker outbox", () => {
       healthHost: "127.0.0.1",
       healthPort: 8_081,
     };
-    const worker = new OneBotWorker(config, new EventProcessor(app, "42", new Set(["100"]), 65_536), app);
+    const worker = new OneBotWorker(config, new EventProcessor(app, "42", 65_536), app);
 
     try {
       worker.start();
@@ -132,13 +131,13 @@ describe("OneBotWorker outbox", () => {
     };
     const config: Config = {
       oneBotWsUrl: `ws://127.0.0.1:${address.port}/`, oneBotAccessToken: "secret", expectedSelfId: "42",
-      allowedUserIds: new Set(["100"]), internalApiBaseUrl: "http://127.0.0.1/", internalApiToken: "secret",
+      internalApiBaseUrl: "http://127.0.0.1/", internalApiToken: "secret",
       napcatWebuiBaseUrl: "http://127.0.0.1:6099/", napcatWebuiToken: "",
       maxMessageBytes: 65_536, httpTimeoutMs: 1_000, heartbeatMs: 30_000, reconnectMinMs: 1_000,
       reconnectMaxMs: 30_000, outboxPollMs: 30_000, outboxRetryMaxMs: 30_000, actionTimeoutMs: 1_000,
       healthHost: "127.0.0.1", healthPort: 8_081,
     };
-    const worker = new OneBotWorker(config, new EventProcessor(app, "42", new Set(["100"]), 65_536), app);
+    const worker = new OneBotWorker(config, new EventProcessor(app, "42", 65_536), app);
     try {
       worker.start();
       await waitFor(() => expect(loginRequest).toBeDefined());

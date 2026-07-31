@@ -13,6 +13,7 @@ export interface InternalMessageRequest {
   selfId: string;
   userId: string;
   occurredAt: string;
+  conversation: { type: "private" } | { type: "group"; groupId: string };
   input: RoutedInput;
 }
 
@@ -91,6 +92,19 @@ export interface OneBotPrivateMessageEvent {
   message_type: "private";
   sub_type?: string;
   message_id: number | string;
+  user_id: number | string;
+  message: unknown;
+  raw_message?: string;
+}
+
+export interface OneBotGroupMessageEvent {
+  time: number;
+  self_id: number | string;
+  post_type: "message";
+  message_type: "group";
+  sub_type?: string;
+  message_id: number | string;
+  group_id: number | string;
   user_id: number | string;
   message: unknown;
   raw_message?: string;

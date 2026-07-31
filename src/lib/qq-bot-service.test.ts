@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   conversationFindUnique: vi.fn(),
   allowRegistration: vi.fn(),
   finalizeRegistration: vi.fn(),
+  chatReply: vi.fn(),
   transaction: vi.fn(),
   tx: {
     qQBotEventInbox: { create: vi.fn(), update: vi.fn() },
@@ -39,6 +40,7 @@ vi.mock("@/lib/qq-config", () => ({
 }));
 vi.mock("@/lib/sensitive-engine", () => ({ scanContent: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/qq-draft-ai-review", () => ({ reviewQQDraftWithAi: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/lib/qq-chat-ai", () => ({ generateQQChatReply: mocks.chatReply }));
 vi.mock("@/lib/qq-registration", () => ({
   allowQQRegistrationAttempt: mocks.allowRegistration,
   finalizeQQRegistration: mocks.finalizeRegistration,
@@ -54,6 +56,7 @@ const bindingMessage: QQBotMessage = {
   selfId: "1000000000",
   userId: "2000000000",
   occurredAt: "2026-07-19T10:00:00.000Z",
+  conversation: { type: "private" },
   input: { type: "command", command: "绑定" },
 };
 
@@ -71,6 +74,7 @@ describe("QQ bot transactional service", () => {
     mocks.tx.qQDelegationDraft.create.mockResolvedValue({ id: "draft-1" });
     mocks.allowRegistration.mockResolvedValue(true);
     mocks.finalizeRegistration.mockResolvedValue("注册成功。请返回网站登录。");
+    mocks.chatReply.mockResolvedValue("AI 测试回复");
   });
 
   it("returns the exact saved response as a duplicate without applying the event", async () => {
@@ -151,6 +155,33 @@ describe("QQ bot transactional service", () => {
       }),
     });
     expect(result.conversation.state).toBe("binding");
+  });
+
+  it("allows an unbound personal QQ user to use AI chat", async () => {
+    const result = await processQQBotMessage({
+      ...bindingMessage,
+      eventId: "1000000000:chat-unbound",
+      input: { type: "text", text: "介绍一下相对论" },
+    });
+    expect(mocks.chatReply).toHaveBeenCalledWith({ text: "介绍一下相对论", identityKey: expect.any(String) });
+    expect(result.replies).toEqual(["AI 测试回复"]);
+    expect(mocks.tx.qQGrant.create).not.toHaveBeenCalled();
+  });
+
+  it("treats a group mention as AI-only and never runs account commands", async () => {
+    const result = await processQQBotMessage({
+      ...bindingMessage,
+      eventId: "1000000000:group:300000000:1",
+      conversation: { type: "group", groupId: "300000000" },
+      input: { type: "text", text: "状态" },
+    });
+    expect(mocks.chatReply).toHaveBeenCalledWith({
+      text: "状态",
+      identityKey: expect.any(String),
+    });
+    expect(result.replies).toEqual(["AI 测试回复"]);
+    expect(mocks.tx.qQIdentity.findUnique).not.toHaveBeenCalled();
+    expect(mocks.finalizeRegistration).not.toHaveBeenCalled();
   });
 
   it("persists the complete final answer, seven-day draft, submit grant, and saved link response", async () => {

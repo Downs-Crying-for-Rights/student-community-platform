@@ -79,3 +79,43 @@ export async function requestDeepSeekReview(input: {
     throw new AiProviderError("AI_INVALID_RESPONSE", 502);
   }
 }
+
+export async function requestDeepSeekChat(input: {
+  systemPrompt: string;
+  content: string;
+  userId: string;
+}): Promise<{ content: string; model: string; usage: DeepSeekResponse["usage"] }> {
+  const config = await getAiConfig();
+  if (!config.enabled || !config.apiKey) throw new AiProviderError("AI_DISABLED", 503);
+  if (input.content.length > config.maxInputChars) throw new AiProviderError("AI_INPUT_TOO_LARGE", 413);
+
+  const response = await fetchDeepSeek(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.defaultModel,
+      messages: [
+        { role: "system", content: input.systemPrompt },
+        { role: "user", content: input.content },
+      ],
+      thinking: { type: "disabled" },
+      stream: false,
+      max_tokens: Math.min(config.maxOutputTokens, 1_200),
+      temperature: 0.4,
+      user_id: input.userId,
+    }),
+    redirect: "error",
+  }, config.timeoutMs);
+
+  if (!response.ok) {
+    if (response.status === 429) throw new AiProviderError("AI_RATE_LIMITED", 503);
+    throw new AiProviderError("AI_PROVIDER_ERROR", 502);
+  }
+  const body = await response.json() as DeepSeekResponse;
+  const content = body.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new AiProviderError("AI_EMPTY_RESPONSE", 502);
+  return { content: content.slice(0, 4_000), model: config.defaultModel, usage: body.usage };
+}

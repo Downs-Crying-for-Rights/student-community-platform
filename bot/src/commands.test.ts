@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractText, routeInput } from "./commands.js";
+import { extractMentionedText, extractText, routeInput } from "./commands.js";
 
 describe("routeInput", () => {
   it.each(["帮助", "状态", "新建委托", "取消", "草稿"] as const)("routes %s", (command) => {
@@ -28,5 +28,16 @@ describe("extractText", () => {
 
   it("removes CQ segments from string messages", () => {
     expect(extractText("[CQ:face,id=1] 状态")).toBe("状态");
+  });
+});
+
+describe("extractMentionedText", () => {
+  it("requires an at segment for the current bot and removes it from text", () => {
+    expect(extractMentionedText([{ type: "at", data: { qq: "42" } }, { type: "text", data: { text: " 你好" } }], "42")).toBe("你好");
+    expect(extractMentionedText([{ type: "at", data: { qq: "41" } }, { type: "text", data: { text: "你好" } }], "42")).toBeNull();
+  });
+
+  it("supports CQ string messages", () => {
+    expect(extractMentionedText("[CQ:at,qq=42] 帮助", "42")).toBe("帮助");
   });
 });

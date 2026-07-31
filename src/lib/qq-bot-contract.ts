@@ -27,9 +27,14 @@ const commonMessageFields = {
     input: z.discriminatedUnion("type", [commandInput, textInput]),
 } as const;
 
+const oneBotConversation = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("private") }).strict(),
+  z.object({ type: z.literal("group"), groupId: qqId }).strict(),
+]);
+
 export const qqBotMessageSchema = z
   .discriminatedUnion("platform", [
-    z.object({ ...commonMessageFields, platform: z.literal("onebot11"), selfId: qqId, userId: qqId }).strict(),
+    z.object({ ...commonMessageFields, platform: z.literal("onebot11"), selfId: qqId, userId: qqId, conversation: oneBotConversation }).strict(),
     z.object({ ...commonMessageFields, platform: z.literal("qq_official"), selfId: qqOfficialAppId, userId: qqOfficialOpenId }).strict(),
   ])
   .superRefine((message, context) => {

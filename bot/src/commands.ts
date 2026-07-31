@@ -33,3 +33,19 @@ export function extractText(message: unknown, rawMessage?: string): string | nul
   const text = source.replace(/\[CQ:[^\]]*\]/gu, "").trim();
   return text || null;
 }
+
+export function extractMentionedText(message: unknown, selfId: string, rawMessage?: string): string | null {
+  if (Array.isArray(message)) {
+    const mentioned = message.some((segment) => {
+      if (!segment || typeof segment !== "object") return false;
+      const candidate = segment as { type?: unknown; data?: { qq?: unknown } };
+      return candidate.type === "at" && String(candidate.data?.qq ?? "") === selfId;
+    });
+    return mentioned ? extractText(message, rawMessage) : null;
+  }
+  const source = typeof message === "string" ? message : rawMessage;
+  if (typeof source !== "string") return null;
+  const escapedSelfId = selfId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!new RegExp(`\\[CQ:at,(?:[^\\]]*,)?qq=${escapedSelfId}(?:,[^\\]]*)?\\]`, "u").test(source)) return null;
+  return extractText(source);
+}

@@ -9,12 +9,12 @@ const response: InternalMessageResponse = {
 };
 
 describe("EventProcessor", () => {
-  it("does not forward group event details", async () => {
+  it("ignores group messages that do not mention the bot", async () => {
     const app: MessageApi = { processMessage: vi.fn() };
     const send = vi.fn();
-    const processor = new EventProcessor(app, "42", new Set(["7"]), 65_536);
+    const processor = new EventProcessor(app, "42", 65_536);
     const result = await processor.process(
-      { post_type: "message", message_type: "group", group_id: 99, user_id: 7, raw_message: "private detail" },
+      { time: 1, self_id: 42, post_type: "message", message_type: "group", message_id: 1, group_id: 99, user_id: 7, raw_message: "普通群消息" },
       send,
     );
     expect(result).toBe("ignored");
@@ -26,7 +26,7 @@ describe("EventProcessor", () => {
     const processMessage = vi.fn().mockResolvedValue(response);
     const app: MessageApi = { processMessage };
     const actions: OneBotAction[] = [];
-    const processor = new EventProcessor(app, "42", new Set(["7"]), 65_536);
+    const processor = new EventProcessor(app, "42", 65_536);
     const result = await processor.process(
       {
         time: 1_700_000_000,
@@ -42,7 +42,7 @@ describe("EventProcessor", () => {
 
     expect(result).toBe("processed");
     expect(processMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ eventId: "42:123", userId: "7", input: { type: "command", command: "新建委托" } }),
+      expect.objectContaining({ eventId: "42:123", userId: "7", conversation: { type: "private" }, input: { type: "command", command: "新建委托" } }),
     );
     expect(actions).toEqual([{ action: "send_private_msg", params: { user_id: 7, message: "请填写标题" } }]);
   });
@@ -50,7 +50,7 @@ describe("EventProcessor", () => {
   it("returns a safe temporary failure without exposing API errors", async () => {
     const app: MessageApi = { processMessage: vi.fn().mockRejectedValue(new Error("token=secret")) };
     const actions: OneBotAction[] = [];
-    const processor = new EventProcessor(app, "42", new Set(["7"]), 65_536);
+    const processor = new EventProcessor(app, "42", 65_536);
     const result = await processor.process(
       { time: 1, self_id: 42, post_type: "message", message_type: "private", message_id: 1, user_id: 7, message: "状态" },
       (action) => actions.push(action),
@@ -62,7 +62,7 @@ describe("EventProcessor", () => {
   it("does not send replies again for a duplicate event", async () => {
     const app: MessageApi = { processMessage: vi.fn().mockResolvedValue({ ...response, duplicate: true }) };
     const send = vi.fn();
-    const processor = new EventProcessor(app, "42", new Set(["7"]), 65_536);
+    const processor = new EventProcessor(app, "42", 65_536);
     const result = await processor.process(
       { time: 1, self_id: 42, post_type: "message", message_type: "private", message_id: 1, user_id: 7, message: "状态" },
       send,
@@ -71,38 +71,34 @@ describe("EventProcessor", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("drops private messages from users outside the rollout allowlist", async () => {
-    const app: MessageApi = { processMessage: vi.fn() };
-    const send = vi.fn();
-    const processor = new EventProcessor(app, "42", new Set(["100"]), 65_536);
+  it("allows private messages from any QQ user", async () => {
+    const processMessage = vi.fn().mockResolvedValue(response);
+    const app: MessageApi = { processMessage };
+    const processor = new EventProcessor(app, "42", 65_536);
     const result = await processor.process(
       { time: 1, self_id: 42, post_type: "message", message_type: "private", message_id: 1, user_id: 7, message: "状态" },
-      send,
+      vi.fn(),
     );
-    expect(result).toBe("ignored");
-    expect(app.processMessage).not.toHaveBeenCalled();
-    expect(send).not.toHaveBeenCalled();
+    expect(result).toBe("processed");
+    expect(processMessage).toHaveBeenCalledOnce();
   });
 
-  it("allows only a valid registration command outside the rollout allowlist", async () => {
+  it("handles an explicit group mention as AI-only text and replies to the group", async () => {
     const processMessage = vi.fn().mockResolvedValue(response);
-    const processor = new EventProcessor({ processMessage }, "42", new Set(["100"]), 65_536);
-    const credential = `qqg_${"A".repeat(43)}`;
+    const processor = new EventProcessor({ processMessage }, "42", 65_536);
+    const actions: OneBotAction[] = [];
     const result = await processor.process(
-      { time: 1, self_id: 42, post_type: "message", message_type: "private", message_id: 2, user_id: 7, message: `注册 ${credential}` },
-      vi.fn(),
+      { time: 1, self_id: 42, post_type: "message", message_type: "group", message_id: 2, group_id: 99, user_id: 7,
+        message: [{ type: "at", data: { qq: "42" } }, { type: "text", data: { text: " 帮助" } }] },
+      (action) => actions.push(action),
     );
     expect(result).toBe("processed");
     expect(processMessage).toHaveBeenCalledWith(expect.objectContaining({
       userId: "7",
-      input: { type: "command", command: "注册", argument: credential },
+      eventId: "42:group:99:2",
+      conversation: { type: "group", groupId: "99" },
+      input: { type: "text", text: "帮助" },
     }));
-
-    processMessage.mockClear();
-    await expect(processor.process(
-      { time: 1, self_id: 42, post_type: "message", message_type: "private", message_id: 3, user_id: 7, message: "注册 invalid" },
-      vi.fn(),
-    )).resolves.toBe("ignored");
-    expect(processMessage).not.toHaveBeenCalled();
+    expect(actions).toEqual([{ action: "send_group_msg", params: { group_id: 99, message: "请填写标题" } }]);
   });
 });

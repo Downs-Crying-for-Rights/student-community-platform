@@ -12,6 +12,7 @@ const message = {
   selfId: "1000000000",
   userId: "2000000000",
   occurredAt: "2026-07-19T10:00:00.000Z",
+  conversation: { type: "private" },
   input: { type: "command", command: "帮助" },
 };
 

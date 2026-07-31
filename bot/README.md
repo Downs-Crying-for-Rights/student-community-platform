@@ -6,10 +6,10 @@ Standalone Node.js 22 worker for a OneBot 11 **reverse WebSocket** connection. I
 
 - Connects as a WebSocket client to `ONEBOT_WS_URL` and authenticates with `Authorization: Bearer <ONEBOT_ACCESS_TOKEN>`.
 - Calls `get_login_info` after connecting and stays unready until its `user_id` equals `ONEBOT_EXPECTED_SELF_ID`.
-- Accepts private `message` events only. Group messages, notices, requests, and mismatched `self_id` events are dropped locally and no group/user/message details are forwarded or logged.
-- Routes exact Chinese commands `帮助`, `绑定`, `状态`, `新建委托`, `取消`, and `草稿`. `绑定 <code>` carries an optional binding argument. Other text is a form answer.
+- Accepts private `message` events from every QQ user. A group message is accepted only when it explicitly mentions `ONEBOT_EXPECTED_SELF_ID`; other group messages, notices, requests, and mismatched `self_id` events are dropped locally.
+- Routes exact Chinese commands `帮助`, `绑定`, `注册`, `状态`, `新建委托`, `取消`, and `草稿` in private chat. Other private text and explicitly mentioned group text can use the application AI chat service; group input never executes account or delegation commands.
 - Sends every accepted input to the internal API. The API atomically deduplicates the event, advances the conversation, and returns messages. This is how a complete multi-step form works without local state.
-- Sends each returned reply with the OneBot 11 `send_private_msg` action.
+- Sends each returned reply with `send_private_msg` for private chat or `send_group_msg` for an accepted group mention.
 - After identity verification, polls the authenticated app outbox in batches of at most ten, correlates each `send_private_msg` result by an opaque OneBot `echo`, and acknowledges success or a bounded failure code. Polling stops whenever readiness is lost.
 - Processes messages in arrival order, reconnects with capped exponential backoff and jitter, sends WebSocket ping frames, enforces payload limits, and never logs message text, URLs, tokens, API response bodies, or raw errors.
 
@@ -22,7 +22,6 @@ Use `.env.example` as a configuration reference. The worker does not load dotenv
 | `ONEBOT_WS_URL` | yes | `ws:` or `wss:` reverse-WebSocket endpoint; credentials in the URL are rejected |
 | `ONEBOT_ACCESS_TOKEN` | yes | OneBot handshake bearer token |
 | `ONEBOT_EXPECTED_SELF_ID` | yes | Expected bot QQ/self ID |
-| `ONEBOT_ALLOWED_USER_IDS` | yes | Comma-separated QQ IDs accepted during the controlled rollout |
 | `INTERNAL_API_BASE_URL` | yes | Application base URL over HTTP(S) |
 | `INTERNAL_API_TOKEN` | yes | Dedicated bearer token for the bot API |
 | `MAX_MESSAGE_BYTES` | no, `65536` | Maximum inbound frame, user text, API response, reply, and action size |
@@ -62,6 +61,7 @@ Command body:
   "selfId": "1000000000",
   "userId": "2000000000",
   "occurredAt": "2026-07-19T10:00:00.000Z",
+  "conversation": { "type": "private" },
   "input": {
     "type": "command",
     "command": "新建委托"
@@ -69,7 +69,7 @@ Command body:
 }
 ```
 
-Binding can include `"argument": "one-time-code"`. A form answer uses:
+Binding can include `"argument": "one-time-code"`. An explicitly mentioned group message uses `"conversation": { "type": "group", "groupId": "300000000" }`. A form answer or AI chat message uses:
 
 ```json
 {
@@ -105,7 +105,7 @@ Contract rules:
 - `state` is one of `idle`, `binding`, `delegation_form`, or `draft`. `revision` is an opaque non-empty application value. `prompt` is an opaque field key or `null`.
 - `replies` contains zero to ten plain-text OneBot messages. The worker does not interpret form fields: prompts, validation errors, confirmation, cancellation, draft saving/resumption, binding, and status text all come from this response.
 - `帮助` should return command help. `新建委托` starts/resumes the form. `取消` and `草稿` apply to current server state. `绑定` and `状态` must enforce app-side security and authorization.
-- Use `401`/`403` for authentication failure, `400` for an invalid contract, `409` only for a non-idempotency conflict, `429` for rate limiting, and `5xx` for temporary failures. Any non-2xx result produces a generic private failure message; response details are never relayed or logged.
+- Use `401`/`403` for authentication failure, `400` for an invalid contract, `409` only for a non-idempotency conflict, `429` for rate limiting, and `5xx` for temporary failures. Any non-2xx result produces a generic failure message in the originating conversation; response details are never relayed or logged.
 - Keep this endpoint internal. Validate QQ IDs as untrusted external identifiers and do not trust OneBot display names or message metadata for authorization.
 
 ## Outbox API contract

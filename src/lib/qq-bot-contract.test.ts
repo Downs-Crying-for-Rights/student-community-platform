@@ -8,6 +8,7 @@ const validMessage = {
   selfId: "1000000000",
   userId: "2000000000",
   occurredAt: "2026-07-19T10:00:00.000Z",
+  conversation: { type: "private" },
   input: { type: "command", command: "状态" },
 };
 
@@ -28,13 +29,25 @@ describe("QQ bot internal contract", () => {
     }).success).toBe(false);
   });
 
-  it("accepts official openids and routes the same command set", () => {
+  it("accepts a bounded group context only for OneBot messages", () => {
     expect(qqBotMessageSchema.safeParse({
       ...validMessage,
+      eventId: "1000000000:group:300000000:123",
+      conversation: { type: "group", groupId: "300000000" },
+      input: { type: "text", text: "你好" },
+    }).success).toBe(true);
+    expect(qqBotMessageSchema.safeParse({ ...validMessage, conversation: { type: "group", groupId: "bad" } }).success).toBe(false);
+  });
+
+  it("accepts official openids and routes the same command set", () => {
+    expect(qqBotMessageSchema.safeParse({
+      version: 1,
       eventId: "12345678901234567890:event-1",
       platform: "qq_official",
       selfId: "12345678901234567890",
       userId: "openid_Abc-123",
+      occurredAt: validMessage.occurredAt,
+      input: validMessage.input,
     }).success).toBe(true);
     expect(routeQQBotInput("注册 qqg_token")).toEqual({ type: "command", command: "注册", argument: "qqg_token" });
     expect(routeQQBotInput("新建委托")).toEqual({ type: "command", command: "新建委托" });

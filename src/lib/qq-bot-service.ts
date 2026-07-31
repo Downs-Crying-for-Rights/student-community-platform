@@ -25,6 +25,7 @@ import { decryptQQAuditValue, encryptQQMessageInput, encryptQQMessageReplies } f
 import { qqBotIdentityProvider, type QQBotIdentityProvider, type QQBotMessage, type QQBotResponse } from "@/lib/qq-bot-contract";
 import { QQ_DELEGATION_SCHEMA_VERSION } from "@/lib/qq-delegation";
 import { allowQQRegistrationAttempt, finalizeQQRegistration } from "@/lib/qq-registration";
+import { generateQQChatReply } from "@/lib/qq-chat-ai";
 
 const SITE_ORIGIN = "https://forum.dcr2026.com";
 const HELP = "可用命令：帮助、绑定、注册 <凭据>、状态、新建委托、取消、草稿。发送“新建委托”获取完整模板，填写后一次发送。";
@@ -133,6 +134,7 @@ async function processBound(
   user: { id: string; isBanned: boolean },
   answerHasSensitiveContent: boolean,
   draftPreflight: DraftPreflight | null,
+  chatReply: string | null,
 ): Promise<QQBotResponse> {
   const conversation = await tx.qQConversation.findUnique({ where: { ownerId: user.id } });
   const active = conversation && conversation.expiresAt > new Date() ? conversation : null;
@@ -207,7 +209,9 @@ async function processBound(
   }
 
   if (user.isBanned) return response(["账号当前不可用，请联系管理员。"], state, revision, null);
-  if (!active || active.state !== "DELEGATION_FORM") return response(["当前没有等待回答的问题。发送“新建委托”开始，或发送“帮助”查看命令。"], state, revision, null);
+  if (!active || active.state !== "DELEGATION_FORM") {
+    return response([chatReply ?? "AI 对话服务暂时不可用，请稍后再试。"], state, revision, null);
+  }
   if (message.input.type !== "text") return response([HELP], state, revision, null);
 
   if (answerHasSensitiveContent) {
@@ -256,7 +260,11 @@ async function applyMessage(
   answerHasSensitiveContent: boolean,
   draftPreflight: DraftPreflight | null,
   provider: QQBotIdentityProvider,
+  chatReply: string | null,
 ): Promise<QQBotResponse> {
+  if (message.platform === "onebot11" && message.conversation.type === "group") {
+    return response([chatReply ?? "AI 对话服务暂时不可用，请稍后再试。"], "idle", 1, null);
+  }
   if (message.input.type === "command" && message.input.command === "注册") {
     const reply = await finalizeQQRegistration(tx, message.input.argument, message.userId, provider);
     return response([reply], "idle", 1, null);
@@ -273,27 +281,45 @@ async function applyMessage(
   if (!identity) {
     if (message.input.type === "command" && message.input.command === "帮助") return response([HELP], "idle", 1, null);
     if (message.input.type === "command" && message.input.command === "绑定") return createBinding(tx, message.userId, provider);
+    if (message.input.type === "text") return response([chatReply ?? "AI 对话服务暂时不可用，请稍后再试。"], "idle", 1, null);
     return response(["此 QQ 尚未绑定账号。请先发送“绑定”获取安全绑定链接。"], "idle", 1, null);
   }
-  return processBound(tx, message, identity.user, answerHasSensitiveContent, draftPreflight);
+  return processBound(tx, message, identity.user, answerHasSensitiveContent, draftPreflight, chatReply);
 }
 
-async function prepareDraftPreflight(
+async function prepareMessagePreflight(
   message: QQBotMessage,
   lookupHash: string,
   answerHasSensitiveContent: boolean,
   provider: QQBotIdentityProvider,
-): Promise<DraftPreflight | null> {
-  if (message.input.type !== "text" || answerHasSensitiveContent) return null;
+): Promise<{ draft: DraftPreflight | null; chatReply: string | null }> {
+  if (message.input.type !== "text") return { draft: null, chatReply: null };
+  if (message.platform === "onebot11" && message.conversation.type === "group") {
+    const chatReply = answerHasSensitiveContent
+      ? "消息中检测到敏感内容或可识别个人信息，为保护隐私，未发送给 AI。"
+      : await generateQQChatReply({ text: message.input.text, identityKey: lookupHash });
+    return { draft: null, chatReply };
+  }
   const identity = provider === "QQ_OFFICIAL"
     ? await prisma.qQOfficialIdentity.findUnique({ where: { lookupHash }, select: { userId: true } })
     : await prisma.qQIdentity.findUnique({ where: { lookupHash }, select: { userId: true } });
-  if (!identity) return null;
+  if (!identity) {
+    const chatReply = answerHasSensitiveContent
+      ? "消息中检测到敏感内容或可识别个人信息，为保护隐私，未发送给 AI。"
+      : await generateQQChatReply({ text: message.input.text, identityKey: lookupHash });
+    return { draft: null, chatReply };
+  }
   const conversation = await prisma.qQConversation.findUnique({
     where: { ownerId: identity.userId },
     select: { state: true, expiresAt: true },
   });
-  if (!conversation || conversation.state !== "DELEGATION_FORM" || conversation.expiresAt <= new Date()) return null;
+  if (!conversation || conversation.state !== "DELEGATION_FORM" || conversation.expiresAt <= new Date()) {
+    const chatReply = answerHasSensitiveContent
+      ? "消息中检测到敏感内容或可识别个人信息，为保护隐私，未发送给 AI。"
+      : await generateQQChatReply({ text: message.input.text, identityKey: lookupHash });
+    return { draft: null, chatReply };
+  }
+  if (answerHasSensitiveContent) return { draft: null, chatReply: null };
 
   try {
     const payload = parseQQDelegationForm(message.input.text);
@@ -301,9 +327,9 @@ async function prepareDraftPreflight(
     const aiIssues = deterministicIssues.length === 0
       ? await reviewQQDraftWithAi(payload, identity.userId)
       : [];
-    return { payload, issues: [...new Set([...deterministicIssues, ...aiIssues])] };
+    return { draft: { payload, issues: [...new Set([...deterministicIssues, ...aiIssues])] }, chatReply: null };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "委托格式不正确。", issues: [] };
+    return { draft: { error: error instanceof Error ? error.message : "委托格式不正确。", issues: [] }, chatReply: null };
   }
 }
 
@@ -324,7 +350,7 @@ export async function processQQBotMessage(message: QQBotMessage): Promise<QQBotR
   }
   const answerHasSensitiveContent = message.input.type === "text"
     && (await scanContent(message.input.text)).length > 0;
-  const draftPreflight = await prepareDraftPreflight(message, lookupHash, answerHasSensitiveContent, provider);
+  const preflight = await prepareMessagePreflight(message, lookupHash, answerHasSensitiveContent, provider);
 
   try {
     return await runSerializableTransaction(async (tx) => {
@@ -338,7 +364,7 @@ export async function processQQBotMessage(message: QQBotMessage): Promise<QQBotR
         inputAuthTag: input.authTag,
         inputKeyVersion: input.keyVersion,
       } });
-      const result = await applyMessage(tx, message, lookupHash, answerHasSensitiveContent, draftPreflight, provider);
+      const result = await applyMessage(tx, message, lookupHash, answerHasSensitiveContent, preflight.draft, provider, preflight.chatReply);
       const replies = encryptQQMessageReplies(message.eventId, result);
       await tx.qQBotEventInbox.update({
         where: { eventId: message.eventId },

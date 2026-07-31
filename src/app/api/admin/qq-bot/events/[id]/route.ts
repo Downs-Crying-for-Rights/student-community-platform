@@ -51,7 +51,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context: { params:
     where: { lookupHash: row.lookupHash },
     select: {
       ciphertext: true, iv: true, authTag: true, keyVersion: true,
-      user: { select: { id: true, nickname: true, email: true, role: true, isBanned: true, createdAt: true } },
+      user: { select: { id: true, username: true, nickname: true, email: true, role: true, isBanned: true, createdAt: true } },
     },
   });
   let senderQQ: string | null = null;
@@ -66,6 +66,19 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context: { params:
   if (inputEnvelope) input = decryptQQAuditValue(inputEnvelope, `qq-inbox-input:${row.eventId}`);
   if (replyEnvelope) replies = decryptQQAuditValue(replyEnvelope, `qq-inbox-replies:${row.eventId}`);
   else if (row.response && typeof row.response === "object" && "replies" in row.response) replies = (row.response as { replies?: unknown }).replies ?? null;
+  const encryptedSenderId = input && typeof input === "object" && "senderId" in input
+    ? (input as { senderId?: unknown }).senderId : null;
+  const auditedQQ = senderQQ ?? (typeof encryptedSenderId === "string" && /^[1-9]\d{4,11}$/.test(encryptedSenderId)
+    ? encryptedSenderId : null);
+  const sender = identity || auditedQQ ? {
+    qqNumber: auditedQQ,
+    username: identity?.user.username ?? null,
+    nickname: identity?.user.nickname ?? null,
+    userId: identity?.user.id ?? null,
+    role: identity?.user.role ?? null,
+    isBanned: identity?.user.isBanned ?? null,
+    accountCreatedAt: identity?.user.createdAt ?? null,
+  } : null;
 
   await logAudit(req.user.id, AuditAction.QQ_MESSAGE_CONTENT_VIEW, AuditTargetType.QQ_MESSAGE, row.id, {
     inputAvailable: input !== null,
@@ -77,7 +90,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context: { params:
     id: row.id,
     eventId: row.eventId,
     selfId: row.selfId,
-    sender: identity ? { qq: senderQQ, account: identity.user } : null,
+    sender,
     input: sanitize(input),
     replies: sanitize(replies),
     responseState: row.response && typeof row.response === "object" && "conversation" in row.response
