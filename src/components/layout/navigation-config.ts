@@ -136,6 +136,7 @@ export const bottomPrimaryNavItems: readonly BottomPrimaryNavigationItem[] = [
 /** Items shown in the mobile "更多" sheet. */
 export const bottomMoreNavItems: readonly NavigationItem[] = [
   { href: "/u/me", label: "我的", icon: "user" },
+  { href: "/settings/profile", label: "设置", icon: "settings" },
   { href: "/messages?tab=chat", label: "群聊", icon: "messages" },
   { href: "/dcr", label: "DCR 互助", icon: "shield-check" },
   { href: "/support", label: "客服工单", icon: "ticket" },

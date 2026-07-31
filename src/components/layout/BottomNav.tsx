@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Heart,
   Ticket,
+  Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,7 @@ const NAV_ICONS: Partial<Record<NavigationIconName, LucideIcon>> = {
   "shield-check": ShieldCheck,
   heart: Heart,
   ticket: Ticket,
+  settings: Settings,
 };
 
 export function getBottomNavIcon(item: NavigationItem): LucideIcon {

@@ -26,9 +26,10 @@ describe("BottomNav navigation contract", () => {
     expect(bottomPrimaryNavItems.find((item) => item.href === "/create")?.raised).toBe(true);
   });
 
-  it("keeps 我的、群聊、DCR、客服、心理、审核 in More", () => {
+  it("keeps 我的、设置、群聊、DCR、客服、心理、审核 in More", () => {
     expect(bottomMoreNavItems.map((item) => [item.label, item.href])).toEqual([
       ["我的", "/u/me"],
+      ["设置", "/settings/profile"],
       ["群聊", "/messages?tab=chat"],
       ["DCR 互助", "/dcr"],
       ["客服工单", "/support"],
@@ -43,6 +44,7 @@ describe("BottomNav navigation contract", () => {
     );
     expect(userItems.map((item) => item.href)).toEqual([
       "/u/me",
+      "/settings/profile",
       "/messages?tab=chat",
       "/dcr",
       "/support",
@@ -54,6 +56,7 @@ describe("BottomNav navigation contract", () => {
       ).map((item) => item.href),
     ).toEqual([
       "/u/me",
+      "/settings/profile",
       "/messages?tab=chat",
       "/dcr",
       "/support",
