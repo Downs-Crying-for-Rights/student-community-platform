@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isValidInternalBearer, qqBotMessageSchema } from "./qq-bot-contract";
+import { isValidInternalBearer, qqBotMessageSchema, routeQQBotInput } from "./qq-bot-contract";
 
 const validMessage = {
   version: 1,
@@ -26,6 +26,19 @@ describe("QQ bot internal contract", () => {
       ...validMessage,
       input: { type: "command", command: "状态", argument: credential },
     }).success).toBe(false);
+  });
+
+  it("accepts official openids and routes the same command set", () => {
+    expect(qqBotMessageSchema.safeParse({
+      ...validMessage,
+      eventId: "12345678901234567890:event-1",
+      platform: "qq_official",
+      selfId: "12345678901234567890",
+      userId: "openid_Abc-123",
+    }).success).toBe(true);
+    expect(routeQQBotInput("注册 qqg_token")).toEqual({ type: "command", command: "注册", argument: "qqg_token" });
+    expect(routeQQBotInput("新建委托")).toEqual({ type: "command", command: "新建委托" });
+    expect(routeQQBotInput("表单正文")).toEqual({ type: "text", text: "表单正文" });
   });
 
   it("rejects unknown properties, invalid QQ IDs, and unscoped events", () => {

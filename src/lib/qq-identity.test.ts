@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   decryptQQIdentity,
+  decryptQQOfficialIdentity,
   encryptQQIdentity,
+  encryptQQOfficialIdentity,
   hashQQIdentity,
+  hashQQOfficialIdentity,
   normalizeQQIdentity,
+  normalizeQQOfficialIdentity,
 } from "./qq-identity";
 
 const encryptionKey = Buffer.alloc(32, 1);
@@ -48,5 +52,13 @@ describe("QQ identity crypto", () => {
   it("rejects invalid QQ numbers", () => {
     expect(() => normalizeQQIdentity("01234")).toThrow("QQ_IDENTITY_INVALID");
     expect(() => normalizeQQIdentity("1234")).toThrow("QQ_IDENTITY_INVALID");
+  });
+
+  it("encrypts official openids in a separate lookup namespace", () => {
+    const openid = "openid_Abc-123";
+    const encrypted = encryptQQOfficialIdentity(openid, encryptionKey, 3);
+    expect(decryptQQOfficialIdentity(encrypted, encryptionKey)).toBe(openid);
+    expect(hashQQOfficialIdentity(openid, hmacKey)).not.toBe(hashQQIdentity("12345678", hmacKey));
+    expect(() => normalizeQQOfficialIdentity("openid with spaces")).toThrow("QQ_OFFICIAL_IDENTITY_INVALID");
   });
 });

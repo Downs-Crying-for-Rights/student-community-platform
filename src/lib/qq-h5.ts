@@ -14,7 +14,12 @@ import {
   type QQDelegationDraft,
 } from "@/lib/qq-delegation";
 import { buildQQGrantConsumeWhere, hashQQGrant } from "@/lib/qq-grants";
-import { decryptQQIdentity, hashQQIdentity } from "@/lib/qq-identity";
+import {
+  decryptQQIdentity,
+  decryptQQOfficialIdentity,
+  hashQQIdentity,
+  hashQQOfficialIdentity,
+} from "@/lib/qq-identity";
 import prisma from "@/lib/prisma";
 import { hasMinimumRole } from "@/lib/rbac";
 import { canSubmitDcrDelegation } from "@/lib/dcr-capabilities";
@@ -80,6 +85,7 @@ function assertIdentityGrant(grant: {
   identityIv: string | null;
   identityAuthTag: string | null;
   identityKeyVersion: number | null;
+  identityProvider: string;
 }) {
   if (
     !grant.identityLookupHash ||
@@ -92,19 +98,23 @@ function assertIdentityGrant(grant: {
   }
 
   const config = getQQConfig();
-  const identity = decryptQQIdentity(
-    {
-      ciphertext: grant.identityCiphertext,
-      iv: grant.identityIv,
-      authTag: grant.identityAuthTag,
-      keyVersion: grant.identityKeyVersion,
-    },
-    config.identityEncryptionKey,
-  );
-  if (hashQQIdentity(identity, config.identityHmacKey) !== grant.identityLookupHash) {
+  const provider = grant.identityProvider === "QQ_OFFICIAL" ? "QQ_OFFICIAL" : "ONEBOT11";
+  const encrypted = {
+    ciphertext: grant.identityCiphertext,
+    iv: grant.identityIv,
+    authTag: grant.identityAuthTag,
+    keyVersion: grant.identityKeyVersion,
+  };
+  const identity = provider === "QQ_OFFICIAL"
+    ? decryptQQOfficialIdentity(encrypted, config.identityEncryptionKey)
+    : decryptQQIdentity(encrypted, config.identityEncryptionKey);
+  const lookupHash = provider === "QQ_OFFICIAL"
+    ? hashQQOfficialIdentity(identity, config.identityHmacKey)
+    : hashQQIdentity(identity, config.identityHmacKey);
+  if (lookupHash !== grant.identityLookupHash) {
     throw new QQH5Error("GRANT_INVALID", "绑定信息校验失败，请重新从 QQ 发起绑定", 409);
   }
-  return identity;
+  return { identity, provider };
 }
 
 export async function previewQQBinding(userId: string, token: string) {
@@ -119,12 +129,14 @@ export async function previewQQBinding(userId: string, token: string) {
       identityIv: true,
       identityAuthTag: true,
       identityKeyVersion: true,
+      identityProvider: true,
       expiresAt: true,
     },
   });
   if (!grant) throw new QQH5Error("GRANT_UNAVAILABLE", "绑定链接已过期、已使用或不属于当前账号", 410);
 
-  return { maskedQQ: maskQQIdentity(assertIdentityGrant(grant)), expiresAt: grant.expiresAt };
+  const identity = assertIdentityGrant(grant);
+  return { maskedQQ: maskQQIdentity(identity.identity), expiresAt: grant.expiresAt };
 }
 
 export async function confirmQQBinding(userId: string, token: string) {
@@ -142,15 +154,21 @@ export async function confirmQQBinding(userId: string, token: string) {
         identityIv: true,
         identityAuthTag: true,
         identityKeyVersion: true,
+        identityProvider: true,
       },
     });
     if (!grant) throw new QQH5Error("GRANT_UNAVAILABLE", "绑定链接已过期或已使用", 410);
 
     const identity = assertIdentityGrant(grant);
-    const existing = await tx.qQIdentity.findFirst({
-      where: { OR: [{ userId }, { lookupHash: grant.identityLookupHash! }] },
-      select: { userId: true },
-    });
+    const existing = identity.provider === "QQ_OFFICIAL"
+      ? await tx.qQOfficialIdentity.findFirst({
+        where: { OR: [{ userId }, { lookupHash: grant.identityLookupHash! }] },
+        select: { userId: true },
+      })
+      : await tx.qQIdentity.findFirst({
+        where: { OR: [{ userId }, { lookupHash: grant.identityLookupHash! }] },
+        select: { userId: true },
+      });
     if (existing) {
       throw new QQH5Error(
         existing.userId === userId ? "USER_ALREADY_BOUND" : "QQ_ALREADY_BOUND",
@@ -168,16 +186,19 @@ export async function confirmQQBinding(userId: string, token: string) {
     });
     if (consumed.count !== 1) throw new QQH5Error("GRANT_UNAVAILABLE", "绑定链接已被使用", 409);
 
-    await tx.qQIdentity.create({
-      data: {
-        userId,
-        lookupHash: grant.identityLookupHash!,
-        ciphertext: grant.identityCiphertext!,
-        iv: grant.identityIv!,
-        authTag: grant.identityAuthTag!,
-        keyVersion: grant.identityKeyVersion!,
-      },
-    });
+    const identityData = {
+      userId,
+      lookupHash: grant.identityLookupHash!,
+      ciphertext: grant.identityCiphertext!,
+      iv: grant.identityIv!,
+      authTag: grant.identityAuthTag!,
+      keyVersion: grant.identityKeyVersion!,
+    };
+    if (identity.provider === "QQ_OFFICIAL") {
+      await tx.qQOfficialIdentity.create({ data: identityData });
+    } else {
+      await tx.qQIdentity.create({ data: identityData });
+    }
     await tx.user.update({ where: { id: userId }, data: { securityVersion: { increment: 1 } } });
     await tx.auditLog.create({
       data: {
@@ -185,10 +206,10 @@ export async function confirmQQBinding(userId: string, token: string) {
         action: "QQ_IDENTITY_BIND",
         targetType: "USER",
         targetId: userId,
-        details: { source: "QQ_H5_GRANT" },
+        details: { source: "QQ_H5_GRANT", provider: identity.provider },
       },
     });
-    return { maskedQQ: maskQQIdentity(identity) };
+    return { maskedQQ: maskQQIdentity(identity.identity) };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 

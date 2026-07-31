@@ -1,6 +1,13 @@
 import { Prisma, type QQConversationState } from "@prisma/client";
 import { getQQConfig } from "@/lib/qq-config";
-import { encryptQQIdentity, hashQQIdentity, normalizeQQIdentity } from "@/lib/qq-identity";
+import {
+  encryptQQIdentity,
+  encryptQQOfficialIdentity,
+  hashQQIdentity,
+  hashQQOfficialIdentity,
+  normalizeQQIdentity,
+  normalizeQQOfficialIdentity,
+} from "@/lib/qq-identity";
 import { generateQQGrant, hashQQGrant } from "@/lib/qq-grants";
 import { runSerializableTransaction } from "@/lib/serializable-transaction";
 import prisma from "@/lib/prisma";
@@ -15,7 +22,7 @@ import {
 } from "@/lib/qq-bot-conversation";
 import { reviewQQDraftWithAi } from "@/lib/qq-draft-ai-review";
 import { decryptQQAuditValue, encryptQQMessageInput, encryptQQMessageReplies } from "@/lib/qq-message-audit";
-import type { QQBotMessage, QQBotResponse } from "@/lib/qq-bot-contract";
+import { qqBotIdentityProvider, type QQBotIdentityProvider, type QQBotMessage, type QQBotResponse } from "@/lib/qq-bot-contract";
 import { QQ_DELEGATION_SCHEMA_VERSION } from "@/lib/qq-delegation";
 import { allowQQRegistrationAttempt, finalizeQQRegistration } from "@/lib/qq-registration";
 
@@ -66,20 +73,30 @@ function stateName(state: QQConversationState | undefined): QQBotResponse["conve
   return "idle";
 }
 
-async function createBinding(tx: Prisma.TransactionClient, qq: string): Promise<QQBotResponse> {
+async function createBinding(
+  tx: Prisma.TransactionClient,
+  identity: string,
+  provider: QQBotIdentityProvider,
+): Promise<QQBotResponse> {
   const config = getQQConfig();
-  const encrypted = encryptQQIdentity(qq, config.identityEncryptionKey, config.keyVersion);
+  const encrypted = provider === "QQ_OFFICIAL"
+    ? encryptQQOfficialIdentity(identity, config.identityEncryptionKey, config.keyVersion)
+    : encryptQQIdentity(identity, config.identityEncryptionKey, config.keyVersion);
+  const lookupHash = provider === "QQ_OFFICIAL"
+    ? hashQQOfficialIdentity(identity, config.identityHmacKey)
+    : hashQQIdentity(identity, config.identityHmacKey);
   const token = generateQQGrant();
   await tx.qQGrant.create({
     data: {
       tokenHash: hashQQGrant(token, config.grantHmacKey),
       purpose: "IDENTITY_BIND",
       expiresAt: new Date(Date.now() + config.grantTtlSeconds * 1_000),
-      identityLookupHash: hashQQIdentity(qq, config.identityHmacKey),
+      identityLookupHash: lookupHash,
       identityCiphertext: encrypted.ciphertext,
       identityIv: encrypted.iv,
       identityAuthTag: encrypted.authTag,
       identityKeyVersion: encrypted.keyVersion,
+      identityProvider: provider,
     },
   });
   return response([`请在浏览器中完成账号绑定：${SITE_ORIGIN}/qq/bind?token=${encodeURIComponent(token)}`], "binding", 1, null);
@@ -238,18 +255,24 @@ async function applyMessage(
   lookupHash: string,
   answerHasSensitiveContent: boolean,
   draftPreflight: DraftPreflight | null,
+  provider: QQBotIdentityProvider,
 ): Promise<QQBotResponse> {
   if (message.input.type === "command" && message.input.command === "注册") {
-    const reply = await finalizeQQRegistration(tx, message.input.argument, message.userId);
+    const reply = await finalizeQQRegistration(tx, message.input.argument, message.userId, provider);
     return response([reply], "idle", 1, null);
   }
-  const identity = await tx.qQIdentity.findUnique({
-    where: { lookupHash },
-    select: { user: { select: { id: true, isBanned: true } } },
-  });
+  const identity = provider === "QQ_OFFICIAL"
+    ? await tx.qQOfficialIdentity.findUnique({
+      where: { lookupHash },
+      select: { user: { select: { id: true, isBanned: true } } },
+    })
+    : await tx.qQIdentity.findUnique({
+      where: { lookupHash },
+      select: { user: { select: { id: true, isBanned: true } } },
+    });
   if (!identity) {
     if (message.input.type === "command" && message.input.command === "帮助") return response([HELP], "idle", 1, null);
-    if (message.input.type === "command" && message.input.command === "绑定") return createBinding(tx, message.userId);
+    if (message.input.type === "command" && message.input.command === "绑定") return createBinding(tx, message.userId, provider);
     return response(["此 QQ 尚未绑定账号。请先发送“绑定”获取安全绑定链接。"], "idle", 1, null);
   }
   return processBound(tx, message, identity.user, answerHasSensitiveContent, draftPreflight);
@@ -259,12 +282,12 @@ async function prepareDraftPreflight(
   message: QQBotMessage,
   lookupHash: string,
   answerHasSensitiveContent: boolean,
+  provider: QQBotIdentityProvider,
 ): Promise<DraftPreflight | null> {
   if (message.input.type !== "text" || answerHasSensitiveContent) return null;
-  const identity = await prisma.qQIdentity.findUnique({
-    where: { lookupHash },
-    select: { userId: true },
-  });
+  const identity = provider === "QQ_OFFICIAL"
+    ? await prisma.qQOfficialIdentity.findUnique({ where: { lookupHash }, select: { userId: true } })
+    : await prisma.qQIdentity.findUnique({ where: { lookupHash }, select: { userId: true } });
   if (!identity) return null;
   const conversation = await prisma.qQConversation.findUnique({
     where: { ownerId: identity.userId },
@@ -286,8 +309,13 @@ async function prepareDraftPreflight(
 
 export async function processQQBotMessage(message: QQBotMessage): Promise<QQBotResponse> {
   const config = getQQConfig();
-  const qq = normalizeQQIdentity(message.userId);
-  const lookupHash = hashQQIdentity(qq, config.identityHmacKey);
+  const provider = qqBotIdentityProvider(message.platform);
+  const identity = provider === "QQ_OFFICIAL"
+    ? normalizeQQOfficialIdentity(message.userId)
+    : normalizeQQIdentity(message.userId);
+  const lookupHash = provider === "QQ_OFFICIAL"
+    ? hashQQOfficialIdentity(identity, config.identityHmacKey)
+    : hashQQIdentity(identity, config.identityHmacKey);
   const inboxSelect = { eventId: true, response: true, replyCiphertext: true, replyIv: true, replyAuthTag: true, replyKeyVersion: true } as const;
   const existing = await prisma.qQBotEventInbox.findUnique({ where: { eventId: message.eventId }, select: inboxSelect });
   if (existing?.response) return storedResponse({ ...existing, response: existing.response });
@@ -296,7 +324,7 @@ export async function processQQBotMessage(message: QQBotMessage): Promise<QQBotR
   }
   const answerHasSensitiveContent = message.input.type === "text"
     && (await scanContent(message.input.text)).length > 0;
-  const draftPreflight = await prepareDraftPreflight(message, lookupHash, answerHasSensitiveContent);
+  const draftPreflight = await prepareDraftPreflight(message, lookupHash, answerHasSensitiveContent, provider);
 
   try {
     return await runSerializableTransaction(async (tx) => {
@@ -310,7 +338,7 @@ export async function processQQBotMessage(message: QQBotMessage): Promise<QQBotR
         inputAuthTag: input.authTag,
         inputKeyVersion: input.keyVersion,
       } });
-      const result = await applyMessage(tx, message, lookupHash, answerHasSensitiveContent, draftPreflight);
+      const result = await applyMessage(tx, message, lookupHash, answerHasSensitiveContent, draftPreflight, provider);
       const replies = encryptQQMessageReplies(message.eventId, result);
       await tx.qQBotEventInbox.update({
         where: { eventId: message.eventId },

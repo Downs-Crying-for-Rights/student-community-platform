@@ -3,7 +3,13 @@ import { Prisma } from "@prisma/client";
 
 import { getQQConfig } from "@/lib/qq-config";
 import { buildQQGrantConsumeWhere, generateQQGrant, hashQQGrant } from "@/lib/qq-grants";
-import { encryptQQIdentity, hashQQIdentity } from "@/lib/qq-identity";
+import type { QQBotIdentityProvider } from "@/lib/qq-bot-contract";
+import {
+  encryptQQIdentity,
+  encryptQQOfficialIdentity,
+  hashQQIdentity,
+  hashQQOfficialIdentity,
+} from "@/lib/qq-identity";
 import prisma from "@/lib/prisma";
 import redis from "@/lib/redis";
 import { runSerializableTransaction } from "@/lib/serializable-transaction";
@@ -58,6 +64,7 @@ export async function finalizeQQRegistration(
   tx: Prisma.TransactionClient,
   credential: string | undefined,
   qq: string,
+  provider: QQBotIdentityProvider = "ONEBOT11",
 ): Promise<string> {
   if (!credential) return REGISTRATION_UNAVAILABLE;
   const config = getQQConfig();
@@ -76,9 +83,13 @@ export async function finalizeQQRegistration(
   const pending = grant?.pendingRegistration;
   if (!grant || !pending?.passwordHash || pending.consumedAt || pending.expiresAt <= now) return REGISTRATION_UNAVAILABLE;
 
-  const lookupHash = hashQQIdentity(qq, config.identityHmacKey);
+  const lookupHash = provider === "QQ_OFFICIAL"
+    ? hashQQOfficialIdentity(qq, config.identityHmacKey)
+    : hashQQIdentity(qq, config.identityHmacKey);
   const [existingIdentity, existingUser] = await Promise.all([
-    tx.qQIdentity.findUnique({ where: { lookupHash }, select: { id: true } }),
+    provider === "QQ_OFFICIAL"
+      ? tx.qQOfficialIdentity.findUnique({ where: { lookupHash }, select: { id: true } })
+      : tx.qQIdentity.findUnique({ where: { lookupHash }, select: { id: true } }),
     tx.user.findUnique({ where: { username: pending.username }, select: { id: true } }),
   ]);
   if (existingIdentity) return "此 QQ 已绑定账号，无法用于注册新账号。";
@@ -98,17 +109,22 @@ export async function finalizeQQRegistration(
       profileCompletionRequired: false,
     },
   });
-  const encrypted = encryptQQIdentity(qq, config.identityEncryptionKey, config.keyVersion);
-  await tx.qQIdentity.create({
-    data: {
-      userId: user.id,
-      lookupHash,
-      ciphertext: encrypted.ciphertext,
-      iv: encrypted.iv,
-      authTag: encrypted.authTag,
-      keyVersion: encrypted.keyVersion,
-    },
-  });
+  const encrypted = provider === "QQ_OFFICIAL"
+    ? encryptQQOfficialIdentity(qq, config.identityEncryptionKey, config.keyVersion)
+    : encryptQQIdentity(qq, config.identityEncryptionKey, config.keyVersion);
+  const identityData = {
+    userId: user.id,
+    lookupHash,
+    ciphertext: encrypted.ciphertext,
+    iv: encrypted.iv,
+    authTag: encrypted.authTag,
+    keyVersion: encrypted.keyVersion,
+  };
+  if (provider === "QQ_OFFICIAL") {
+    await tx.qQOfficialIdentity.create({ data: identityData });
+  } else {
+    await tx.qQIdentity.create({ data: identityData });
+  }
   await tx.pendingQQRegistration.update({
     where: { id: pending.id },
     data: { consumedAt: now, passwordHash: null, userId: user.id },
@@ -116,7 +132,7 @@ export async function finalizeQQRegistration(
   await tx.qQGrant.update({ where: { id: grant.id }, data: { userId: user.id } });
   await tx.auditLog.create({
     data: { action: "QQ_REGISTRATION_COMPLETE", targetType: "User", targetId: user.id, operatorId: user.id, details: {
-      method: "personal_qq_bot",
+      method: provider === "QQ_OFFICIAL" ? "official_qq_bot" : "personal_qq_bot",
       agreementRevisions: pending.agreementRevisions,
       acceptedAt: pending.createdAt,
     } },

@@ -6,12 +6,13 @@ import { Link2, Loader2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-type QQStatus = { bound: boolean; maskedQQ?: string; boundAt?: string };
+type IdentityStatus = { bound: boolean; maskedQQ?: string; boundAt?: string };
+type QQStatus = { bound: boolean; personal: IdentityStatus; official: IdentityStatus };
 
 export default function QQSettingsPage() {
   const [status, setStatus] = useState<QQStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [removing, setRemoving] = useState(false);
+  const [removing, setRemoving] = useState<"personal" | "official" | null>(null);
 
   useEffect(() => {
     fetch("/api/qq/settings", { cache: "no-store" })
@@ -23,19 +24,23 @@ export default function QQSettingsPage() {
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "读取 QQ 绑定状态失败"));
   }, []);
 
-  async function unbind() {
+  async function unbind(provider: "personal" | "official") {
     if (!window.confirm("解绑后 QQ 机器人将无法识别此账号。确认解绑吗？")) return;
-    setRemoving(true);
+    setRemoving(provider);
     setError(null);
     try {
-      const response = await fetch("/api/qq/settings", { method: "DELETE", cache: "no-store" });
+      const response = await fetch(`/api/qq/settings?provider=${provider}`, { method: "DELETE", cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "解绑失败");
-      setStatus({ bound: false });
+      setStatus((current) => current ? {
+        ...current,
+        bound: provider === "personal" ? current.official.bound : current.personal.bound,
+        [provider]: { bound: false },
+      } : current);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "解绑失败");
     } finally {
-      setRemoving(false);
+      setRemoving(null);
     }
   }
 
@@ -47,7 +52,18 @@ export default function QQSettingsPage() {
         <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-5 w-5" />绑定状态</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           {!status && !error && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在读取...</div>}
-          {status?.bound ? <><div className="rounded-xl bg-muted p-4"><div className="text-xs text-muted-foreground">已绑定 QQ</div><div className="mt-1 font-mono text-xl font-semibold tracking-wider">{status.maskedQQ}</div></div><Button variant="destructive" disabled={removing} onClick={unbind}><Unlink className="h-4 w-4" />{removing ? "正在解绑..." : "解绑 QQ"}</Button></> : status && <div className="text-sm leading-6 text-muted-foreground">尚未绑定。请在 QQ 机器人中发起绑定，并打开机器人提供的一次性确认链接。</div>}
+          {status && ([
+            { provider: "personal" as const, label: "个人 QQ 机器人", value: status.personal },
+            { provider: "official" as const, label: "QQ 官方机器人", value: status.official },
+          ]).map(({ provider, label, value }) => (
+            <div key={provider} className="flex flex-wrap items-center gap-3 border-b py-3 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium">{label}</div>
+                <div className="mt-1 font-mono text-sm text-muted-foreground">{value.bound ? value.maskedQQ : "未绑定"}</div>
+              </div>
+              {value.bound && <Button variant="destructive" size="sm" disabled={removing !== null} onClick={() => void unbind(provider)}><Unlink className="h-4 w-4" />{removing === provider ? "正在解绑..." : "解绑"}</Button>}
+            </div>
+          ))}
           {error && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">{error}</div>}
         </CardContent>
       </Card>

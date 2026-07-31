@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 
 const QQ_NUMBER_PATTERN = /^[1-9]\d{4,11}$/;
+const QQ_OFFICIAL_OPENID_PATTERN = /^[A-Za-z0-9_-]{6,128}$/;
 const IV_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
 
@@ -33,10 +34,23 @@ export function normalizeQQIdentity(value: string): string {
   return normalized;
 }
 
+export function normalizeQQOfficialIdentity(value: string): string {
+  const normalized = value.trim();
+  if (!QQ_OFFICIAL_OPENID_PATTERN.test(normalized)) throw new Error("QQ_OFFICIAL_IDENTITY_INVALID");
+  return normalized;
+}
+
 export function hashQQIdentity(value: string, hmacKey: Uint8Array): string {
   assertKey(hmacKey);
   return createHmac("sha256", hmacKey)
     .update(normalizeQQIdentity(value), "utf8")
+    .digest("base64url");
+}
+
+export function hashQQOfficialIdentity(value: string, hmacKey: Uint8Array): string {
+  assertKey(hmacKey);
+  return createHmac("sha256", hmacKey)
+    .update(`qq-official:${normalizeQQOfficialIdentity(value)}`, "utf8")
     .digest("base64url");
 }
 
@@ -58,6 +72,30 @@ export function encryptQQIdentity(
     cipher.final(),
   ]);
 
+  return {
+    ciphertext: ciphertext.toString("base64url"),
+    iv: iv.toString("base64url"),
+    authTag: cipher.getAuthTag().toString("base64url"),
+    keyVersion,
+  };
+}
+
+export function encryptQQOfficialIdentity(
+  value: string,
+  encryptionKey: Uint8Array,
+  keyVersion: number,
+): EncryptedQQIdentity {
+  assertKey(encryptionKey);
+  const aad = additionalData(keyVersion);
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey, iv, {
+    authTagLength: AUTH_TAG_BYTES,
+  });
+  cipher.setAAD(aad);
+  const ciphertext = Buffer.concat([
+    cipher.update(normalizeQQOfficialIdentity(value), "utf8"),
+    cipher.final(),
+  ]);
   return {
     ciphertext: ciphertext.toString("base64url"),
     iv: iv.toString("base64url"),
@@ -92,5 +130,32 @@ export function decryptQQIdentity(
     return normalizeQQIdentity(plaintext);
   } catch {
     throw new Error("QQ_IDENTITY_DECRYPT_FAILED");
+  }
+}
+
+export function decryptQQOfficialIdentity(
+  encrypted: EncryptedQQIdentity,
+  encryptionKey: Uint8Array,
+): string {
+  assertKey(encryptionKey);
+  const aad = additionalData(encrypted.keyVersion);
+  const iv = Buffer.from(encrypted.iv, "base64url");
+  const authTag = Buffer.from(encrypted.authTag, "base64url");
+  const ciphertext = Buffer.from(encrypted.ciphertext, "base64url");
+  if (iv.length !== IV_BYTES || authTag.length !== AUTH_TAG_BYTES) {
+    throw new Error("QQ_OFFICIAL_IDENTITY_INVALID_CIPHERTEXT");
+  }
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", encryptionKey, iv, {
+      authTagLength: AUTH_TAG_BYTES,
+    });
+    decipher.setAAD(aad);
+    decipher.setAuthTag(authTag);
+    return normalizeQQOfficialIdentity(Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString("utf8"));
+  } catch {
+    throw new Error("QQ_OFFICIAL_IDENTITY_DECRYPT_FAILED");
   }
 }

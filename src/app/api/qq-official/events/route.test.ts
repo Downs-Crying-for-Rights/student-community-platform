@@ -8,7 +8,9 @@ const mocks = vi.hoisted(() => ({
   send: vi.fn(),
   challenge: vi.fn(),
   verify: vi.fn(),
+  process: vi.fn(),
 }));
+vi.mock("@/lib/qq-bot-service", () => ({ processQQBotMessage: mocks.process }));
 
 vi.mock("@/lib/qq-official", () => ({
   getQQOfficialConfig: mocks.config,
@@ -44,6 +46,11 @@ describe("POST /api/qq-official/events", () => {
     mocks.complete.mockResolvedValue(true);
     mocks.release.mockResolvedValue(undefined);
     mocks.send.mockResolvedValue(undefined);
+    mocks.process.mockResolvedValue({
+      duplicate: false,
+      replies: ["可用命令：帮助、绑定、注册、状态、新建委托、取消、草稿。"],
+      conversation: { state: "idle", revision: "1", prompt: null },
+    });
     vi.spyOn(Date, "now").mockReturnValue(1_725_442_341_000);
   });
 
@@ -122,7 +129,7 @@ describe("POST /api/qq-official/events", () => {
       op: 0,
       id: "event-1",
       t: "C2C_MESSAGE_CREATE",
-      d: { id: "message-1", author: { user_openid: "openid-1" } },
+      d: { id: "message-1", content: "帮助", author: { user_openid: "openid-1" } },
     };
     mocks.record.mockResolvedValueOnce({ status: "DELIVERED" });
     expect((await POST(request(event))).status).toBe(200);

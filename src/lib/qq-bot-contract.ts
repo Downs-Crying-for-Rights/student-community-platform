@@ -4,6 +4,8 @@ import { z } from "zod";
 export const QQ_BOT_COMMANDS = ["帮助", "绑定", "注册", "状态", "新建委托", "取消", "草稿"] as const;
 
 const qqId = z.string().regex(/^[1-9]\d{4,11}$/);
+const qqOfficialAppId = z.string().regex(/^\d{5,20}$/);
+const qqOfficialOpenId = z.string().regex(/^[A-Za-z0-9_-]{6,128}$/);
 const commandInput = z
   .object({
     type: z.literal("command"),
@@ -18,17 +20,18 @@ const textInput = z
   })
   .strict();
 
-export const qqBotMessageSchema = z
-  .object({
+const commonMessageFields = {
     version: z.literal(1),
-    eventId: z.string().min(3).max(200),
-    platform: z.literal("onebot11"),
-    selfId: qqId,
-    userId: qqId,
+    eventId: z.string().min(3).max(512),
     occurredAt: z.string().datetime({ offset: true }),
     input: z.discriminatedUnion("type", [commandInput, textInput]),
-  })
-  .strict()
+} as const;
+
+export const qqBotMessageSchema = z
+  .discriminatedUnion("platform", [
+    z.object({ ...commonMessageFields, platform: z.literal("onebot11"), selfId: qqId, userId: qqId }).strict(),
+    z.object({ ...commonMessageFields, platform: z.literal("qq_official"), selfId: qqOfficialAppId, userId: qqOfficialOpenId }).strict(),
+  ])
   .superRefine((message, context) => {
     if (!message.eventId.startsWith(`${message.selfId}:`) || message.eventId.length === message.selfId.length + 1) {
       context.addIssue({
@@ -47,6 +50,7 @@ export const qqBotMessageSchema = z
   });
 
 export type QQBotMessage = z.infer<typeof qqBotMessageSchema>;
+export type QQBotIdentityProvider = "ONEBOT11" | "QQ_OFFICIAL";
 export type QQBotConversationState = "idle" | "binding" | "delegation_form" | "draft";
 
 export interface QQBotResponse {
@@ -57,6 +61,23 @@ export interface QQBotResponse {
     revision: string;
     prompt: string | null;
   };
+}
+
+export function routeQQBotInput(text: string): QQBotMessage["input"] | null {
+  const normalized = text.trim();
+  if (!normalized) return null;
+  const [first, ...rest] = normalized.split(/\s+/u);
+  if (first && (QQ_BOT_COMMANDS as readonly string[]).includes(first)) {
+    const command = first as (typeof QQ_BOT_COMMANDS)[number];
+    const argument = rest.join(" ");
+    if ((command === "绑定" || command === "注册") && argument) return { type: "command", command, argument };
+    if (!argument) return { type: "command", command };
+  }
+  return { type: "text", text: normalized };
+}
+
+export function qqBotIdentityProvider(platform: QQBotMessage["platform"]): QQBotIdentityProvider {
+  return platform === "qq_official" ? "QQ_OFFICIAL" : "ONEBOT11";
 }
 
 export function isValidInternalBearer(header: string | null, expectedToken: string | undefined): boolean {

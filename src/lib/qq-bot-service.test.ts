@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   tx: {
     qQBotEventInbox: { create: vi.fn(), update: vi.fn() },
     qQIdentity: { findUnique: vi.fn() },
+    qQOfficialIdentity: { findUnique: vi.fn(), create: vi.fn() },
     qQGrant: { create: vi.fn() },
     qQConversation: { findUnique: vi.fn(), update: vi.fn() },
     qQDelegationDraft: { create: vi.fn() },
@@ -20,6 +21,7 @@ vi.mock("@/lib/prisma", () => ({
   default: {
     qQBotEventInbox: { findUnique: mocks.inboxFindUnique },
     qQIdentity: { findUnique: mocks.identityFindUnique },
+    qQOfficialIdentity: { findUnique: vi.fn() },
     qQConversation: { findUnique: mocks.conversationFindUnique },
   },
 }));
@@ -122,9 +124,33 @@ describe("QQ bot transactional service", () => {
       input: { type: "command", command: "注册", argument: credential },
     });
     expect(mocks.allowRegistration).toHaveBeenCalledOnce();
-    expect(mocks.finalizeRegistration).toHaveBeenCalledWith(mocks.tx, credential, bindingMessage.userId);
+    expect(mocks.finalizeRegistration).toHaveBeenCalledWith(mocks.tx, credential, bindingMessage.userId, "ONEBOT11");
     expect(result.replies).toEqual(["注册成功。请返回网站登录。"]);
     expect(mocks.tx.qQIdentity.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("creates a provider-scoped binding grant for an official QQ openid", async () => {
+    const message: QQBotMessage = {
+      version: 1,
+      eventId: "11111111:event-official",
+      platform: "qq_official",
+      selfId: "11111111",
+      userId: "openid_Abc-123",
+      occurredAt: "2026-08-01T00:00:00+08:00",
+      input: { type: "command", command: "绑定" },
+    };
+    const result = await processQQBotMessage(message);
+    expect(mocks.tx.qQOfficialIdentity.findUnique).toHaveBeenCalledWith({
+      where: { lookupHash: expect.any(String) },
+      select: { user: { select: { id: true, isBanned: true } } },
+    });
+    expect(mocks.tx.qQGrant.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        purpose: "IDENTITY_BIND",
+        identityProvider: "QQ_OFFICIAL",
+      }),
+    });
+    expect(result.conversation.state).toBe("binding");
   });
 
   it("persists the complete final answer, seven-day draft, submit grant, and saved link response", async () => {

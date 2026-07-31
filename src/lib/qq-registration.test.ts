@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     pendingQQRegistration: { findUnique: vi.fn(), create: vi.fn(), delete: vi.fn(), update: vi.fn() },
     qQGrant: { create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
     qQIdentity: { findUnique: vi.fn(), create: vi.fn() },
+    qQOfficialIdentity: { findUnique: vi.fn(), create: vi.fn() },
     auditLog: { create: vi.fn() },
   },
 }));
@@ -30,6 +31,7 @@ describe("QQ bot registration", () => {
     mocks.tx.pendingQQRegistration.findUnique.mockResolvedValue(null);
     mocks.tx.pendingQQRegistration.create.mockResolvedValue({ id: "pending-1" });
     mocks.tx.qQIdentity.findUnique.mockResolvedValue(null);
+    mocks.tx.qQOfficialIdentity.findUnique.mockResolvedValue(null);
   });
 
   it("stores only a password hash and a purpose-bound credential hash", async () => {
@@ -77,5 +79,31 @@ describe("QQ bot registration", () => {
       .resolves.toContain("无效");
     expect(mocks.tx.user.create).not.toHaveBeenCalled();
     expect(mocks.tx.qQIdentity.create).not.toHaveBeenCalled();
+  });
+
+  it("registers an official openid without consuming the personal QQ identity slot", async () => {
+    mocks.tx.qQGrant.findFirst.mockResolvedValue({
+      id: "grant-official",
+      pendingRegistration: {
+        id: "pending-official", username: "official_user", passwordHash: "bcrypt-hash",
+        consumedAt: null, expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    mocks.tx.qQGrant.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.user.create.mockResolvedValue({ id: "user-official" });
+    const reply = await finalizeQQRegistration(
+      mocks.tx as never,
+      `qqg_${"B".repeat(43)}`,
+      "openid_Abc-123",
+      "QQ_OFFICIAL",
+    );
+    expect(reply).toContain("注册成功");
+    expect(mocks.tx.qQOfficialIdentity.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ userId: "user-official", lookupHash: expect.any(String) }),
+    });
+    expect(mocks.tx.qQIdentity.create).not.toHaveBeenCalled();
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ details: expect.objectContaining({ method: "official_qq_bot" }) }),
+    });
   });
 });

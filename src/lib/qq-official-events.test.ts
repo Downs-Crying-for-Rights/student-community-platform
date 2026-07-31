@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   record: vi.fn(),
   release: vi.fn(),
   send: vi.fn(),
+  process: vi.fn(),
 }));
 
 vi.mock("@/lib/qq-official", () => ({
@@ -12,7 +13,9 @@ vi.mock("@/lib/qq-official", () => ({
   recordQQOfficialEvent: mocks.record,
   releaseQQOfficialEvent: mocks.release,
   sendQQOfficialReply: mocks.send,
+  getQQOfficialConfig: () => ({ appId: "11111111" }),
 }));
+vi.mock("@/lib/qq-bot-service", () => ({ processQQBotMessage: mocks.process }));
 
 import { processQQOfficialEvent } from "./qq-official-events";
 
@@ -23,6 +26,11 @@ describe("processQQOfficialEvent", () => {
     mocks.send.mockResolvedValue(undefined);
     mocks.complete.mockResolvedValue(true);
     mocks.release.mockResolvedValue(undefined);
+    mocks.process.mockResolvedValue({
+      duplicate: false,
+      replies: ["可用命令：帮助、绑定、注册、状态、新建委托、取消、草稿。"],
+      conversation: { state: "idle", revision: "1", prompt: null },
+    });
   });
 
   it("ignores non-message gateway dispatches", async () => {
@@ -35,13 +43,36 @@ describe("processQQOfficialEvent", () => {
       op: 0,
       id: "event-1",
       t: "C2C_MESSAGE_CREATE",
-      d: { id: "message-1", author: { user_openid: "openid-1" } },
+      d: { id: "message-1", content: "帮助", timestamp: "2026-08-01T00:00:00+08:00", author: { user_openid: "openid-1" } },
     };
     await expect(processQQOfficialEvent(payload)).resolves.toEqual({ status: "DELIVERED" });
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
       targetType: "user", targetId: "openid-1", messageId: "message-1",
     }));
+    expect(mocks.process).toHaveBeenCalledWith({
+      version: 1,
+      eventId: "11111111:official:event-1",
+      platform: "qq_official",
+      selfId: "11111111",
+      userId: "openid-1",
+      occurredAt: "2026-07-31T16:00:00.000Z",
+      input: { type: "command", command: "帮助" },
+    });
     expect(mocks.complete).toHaveBeenCalledWith("event-1", "C2C_MESSAGE_CREATE", "lease-1");
+  });
+
+  it("keeps account and delegation commands out of group conversations", async () => {
+    await expect(processQQOfficialEvent({
+      op: 0,
+      id: "event-group",
+      t: "GROUP_AT_MESSAGE_CREATE",
+      d: { id: "message-group", content: "状态", group_openid: "group-1" },
+    })).resolves.toEqual({ status: "DELIVERED" });
+    expect(mocks.process).not.toHaveBeenCalled();
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      targetType: "group",
+      content: expect.stringContaining("请私聊机器人"),
+    }));
   });
 
   it("releases the event lease when sending fails", async () => {
@@ -50,7 +81,7 @@ describe("processQQOfficialEvent", () => {
       op: 0,
       id: "event-1",
       t: "GROUP_AT_MESSAGE_CREATE",
-      d: { id: "message-1", group_openid: "group-1" },
+      d: { id: "message-1", content: "帮助", group_openid: "group-1" },
     });
     expect(result).toEqual({ status: "REPLY_FAILED" });
     expect(mocks.release).toHaveBeenCalledWith("event-1", "lease-1");
