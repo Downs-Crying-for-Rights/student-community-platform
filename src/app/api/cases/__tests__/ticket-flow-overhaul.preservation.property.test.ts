@@ -205,7 +205,7 @@ describe("Observation 2: 状态机转换规则不变", () => {
           // Mock transaction to execute the callback
           mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
             const tx = {
-              $queryRaw: vi.fn().mockResolvedValue([]),
+              $executeRaw: vi.fn().mockResolvedValue(1),
               case: {
                 findUnique: (...args: unknown[]) => mockCaseFindUnique(...args),
                 update: vi.fn().mockResolvedValue({
@@ -436,7 +436,7 @@ describe("Observation 5: DCR_HELPER 并发处理上限 5 个活跃工单", () =>
 
           mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
             const tx = {
-              $queryRaw: vi.fn().mockResolvedValue([]),
+              $executeRaw: vi.fn().mockResolvedValue(1),
               case: {
                 findUnique: (...args: unknown[]) => mockCaseFindUnique(...args),
                 update: vi.fn().mockResolvedValue({

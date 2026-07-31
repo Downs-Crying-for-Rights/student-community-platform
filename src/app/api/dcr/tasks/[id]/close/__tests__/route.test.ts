@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
-    $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
     helpSession: {
       update: mocks.sessionUpdate,
       updateMany: mocks.sessionUpdateMany,

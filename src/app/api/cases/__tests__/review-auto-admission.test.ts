@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
-    $queryRaw: vi.fn().mockResolvedValue([]),
+    $executeRaw: vi.fn().mockResolvedValue(1),
     case: { findUnique: mocks.caseFindUnique, updateMany: mocks.caseUpdateMany },
     accessApplication: { updateMany: mocks.applicationUpdateMany },
     user: { update: mocks.userUpdate, count: mocks.userCount },

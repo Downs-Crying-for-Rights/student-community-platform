@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
-    $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
     helpClaim: { findUnique: mocks.claimFindUnique, updateMany: mocks.claimUpdateMany, update: mocks.claimUpdate },
     helpSession: { create: mocks.sessionCreate, findUnique: mocks.sessionFindUnique, findMany: mocks.sessionFindMany },
     helpChatMessage: { create: mocks.messageCreate },

@@ -44,7 +44,7 @@ describe("三方互助系统匹配", () => {
     mocks.linkCreate.mockResolvedValue({});
     mocks.userUpdate.mockResolvedValue({});
     mocks.transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback({
-      $queryRaw: vi.fn().mockResolvedValue(undefined),
+      $executeRaw: vi.fn().mockResolvedValue(1),
       mutualAidCycle: { create: mocks.cycleCreate, findFirst: mocks.cycleFindFirst },
       mutualAidLink: { create: mocks.linkCreate },
       user: { findMany: mocks.userFindMany, update: mocks.userUpdate },

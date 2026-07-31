@@ -263,7 +263,7 @@ describe("PATCH /api/cases/[id]", () => {
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        $queryRaw: vi.fn(),
+        $executeRaw: vi.fn(),
         case: { findUnique: mockCaseFindUnique, update: vi.fn().mockResolvedValue(updatedCase) },
         caseHandler: { count: mockCaseHandlerCount, create: vi.fn() },
         timelineEvent: { create: vi.fn() },
@@ -383,7 +383,7 @@ describe("PATCH /api/cases/[id]", () => {
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        $queryRaw: vi.fn(),
+        $executeRaw: vi.fn(),
         case: { findUnique: mockCaseFindUnique, update: vi.fn().mockResolvedValue(updatedCase) },
         caseHandler: { count: mockCaseHandlerCount, create: vi.fn() },
         timelineEvent: { create: vi.fn() },
@@ -430,7 +430,7 @@ describe("PATCH /api/cases/[id] - JOIN action", () => {
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        $queryRaw: vi.fn(),
+        $executeRaw: vi.fn(),
         case: { findUnique: mockCaseFindUnique, update: vi.fn().mockResolvedValue(updatedCase) },
         caseHandler: { count: mockCaseHandlerCount, create: vi.fn() },
         timelineEvent: { create: vi.fn() },
@@ -497,7 +497,7 @@ describe("PATCH /api/cases/[id] - JOIN action", () => {
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        $queryRaw: vi.fn(),
+        $executeRaw: vi.fn(),
         case: { findUnique: mockCaseFindUnique, update: vi.fn().mockResolvedValue(updatedCase) },
         caseHandler: { count: mockCaseHandlerCount, create: vi.fn() },
         timelineEvent: { create: vi.fn() },

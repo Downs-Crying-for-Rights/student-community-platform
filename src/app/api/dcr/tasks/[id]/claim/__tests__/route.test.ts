@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   claimUpdateMany: vi.fn(),
   claimCreate: vi.fn(),
   sessionFindFirst: vi.fn(),
-  queryRaw: vi.fn(),
+  executeRaw: vi.fn(),
   timelineCreate: vi.fn(),
   logAudit: vi.fn(),
   notifyUsers: vi.fn(),
@@ -21,7 +21,7 @@ vi.mock("@/lib/prisma", () => ({ default: {
   helpClaim: { findUnique: mocks.claimFindUnique },
   helpSession: { findFirst: mocks.sessionFindFirst },
   $transaction: (callback: (client: unknown) => unknown) => callback({
-    $queryRaw: mocks.queryRaw,
+    $executeRaw: mocks.executeRaw,
     mutualAidTask: { findUnique: mocks.taskFindUnique },
     helpClaim: {
       findUnique: mocks.claimFindUnique,

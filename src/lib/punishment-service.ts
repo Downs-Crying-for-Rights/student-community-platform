@@ -52,7 +52,7 @@ export async function recalculatePunishmentProjection(
   if (db === prisma) {
     return runSerializableTransaction((tx) => recalculatePunishmentProjection(userId, tx, now));
   }
-  if ("$queryRaw" in db) {
+  if ("$executeRaw" in db) {
     await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punishment-projection:${userId}`}))`;
   }
   const user = await db.user.findUnique({ where: { id: userId }, select: { deactivatedAt: true } });
@@ -89,7 +89,7 @@ export async function applyPunishment(input: {
     const expiresAt = input.expiresAt ?? null;
     if (isTemporaryPunishment(input.type) && (!expiresAt || expiresAt <= now)) throw new Error("INVALID_PUNISHMENT_EXPIRY");
     if (!isTemporaryPunishment(input.type) && expiresAt) throw new Error("UNEXPECTED_PUNISHMENT_EXPIRY");
-    if (isBanPunishment(input.type) && "$queryRaw" in tx) {
+    if (isBanPunishment(input.type) && "$executeRaw" in tx) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('punishment:last-active-super-admin'))`;
     }
     const target = await tx.user.findUnique({

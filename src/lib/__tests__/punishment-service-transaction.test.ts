@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
-  queryRaw: vi.fn(),
+  executeRaw: vi.fn(),
   userFindUnique: vi.fn(),
   userCount: vi.fn(),
   punishmentCreate: vi.fn(),
@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const tx = {
-  $queryRaw: mocks.queryRaw,
+  $executeRaw: mocks.executeRaw,
   user: { findUnique: mocks.userFindUnique, count: mocks.userCount, update: mocks.userUpdate },
   userPunishment: { create: mocks.punishmentCreate, findMany: mocks.punishmentFindMany },
   notification: { create: mocks.notificationCreate },
@@ -46,8 +46,8 @@ describe("punishment mutation transaction", () => {
     }, prisma);
 
     expect(mocks.transaction).toHaveBeenCalledTimes(1);
-    expect(mocks.queryRaw).toHaveBeenCalledTimes(2);
-    expect(mocks.userCount).toHaveBeenCalledAfter(mocks.queryRaw);
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(2);
+    expect(mocks.userCount).toHaveBeenCalledAfter(mocks.executeRaw);
     expect(mocks.punishmentCreate).toHaveBeenCalledAfter(mocks.userCount);
   });
 
@@ -61,7 +61,7 @@ describe("punishment mutation transaction", () => {
       reason: "test",
     })).rejects.toThrow("LAST_ACTIVE_SUPER_ADMIN");
 
-    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(1);
     expect(mocks.punishmentCreate).not.toHaveBeenCalled();
   });
 });

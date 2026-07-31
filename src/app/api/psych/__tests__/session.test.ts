@@ -35,7 +35,7 @@ vi.mock("@/lib/prisma", () => ({
       create: (...args: unknown[]) => mockAuditLogCreate(...args),
     },
     $transaction: async (callback: (tx: unknown) => unknown) => callback({
-      $queryRaw: vi.fn(),
+      $executeRaw: vi.fn(),
       confideRequest: {
         findUnique: (...args: unknown[]) => mockConfideRequestFindUnique(...args),
         update: (...args: unknown[]) => mockConfideRequestUpdate(...args),

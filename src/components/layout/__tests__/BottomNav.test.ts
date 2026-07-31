@@ -7,8 +7,15 @@ import {
   isActive,
   isVisible,
 } from "../navigation-config";
+import { getBottomNavIcon } from "../BottomNav";
 
 describe("BottomNav navigation contract", () => {
+  it("configures an icon for every mobile navigation item", () => {
+    for (const item of [...bottomPrimaryNavItems, ...bottomMoreNavItems]) {
+      expect(() => getBottomNavIcon(item)).not.toThrow();
+    }
+  });
+
   it("keeps the four configured links plus the More control", () => {
     expect(bottomPrimaryNavItems.map((item) => [item.label, item.href])).toEqual([
       ["首页", "/"],

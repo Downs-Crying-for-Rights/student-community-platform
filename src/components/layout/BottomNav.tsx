@@ -54,7 +54,7 @@ const NAV_ICONS: Partial<Record<NavigationIconName, LucideIcon>> = {
   ticket: Ticket,
 };
 
-function getIcon(item: NavigationItem): LucideIcon {
+export function getBottomNavIcon(item: NavigationItem): LucideIcon {
   const Icon = NAV_ICONS[item.icon];
   if (!Icon) throw new Error(`BottomNav icon is not configured: ${item.icon}`);
   return Icon;
@@ -95,7 +95,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
 
   function NavLink({ item }: { item: BottomPrimaryNavigationItem }) {
     const active = isActive(item.href, pathname);
-    const Icon = getIcon(item);
+    const Icon = getBottomNavIcon(item);
     const badgeText = item.badge === "unread" ? formatUnreadCount(unreadCount) : null;
     const badgeLabel = item.badge === "unread" ? getUnreadAccessibleLabel(unreadCount) : null;
 
@@ -155,7 +155,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-150 active:scale-95">
                 {(() => {
-                  const Icon = getIcon(centerItem);
+                  const Icon = getBottomNavIcon(centerItem);
                   return <Icon className="h-6 w-6" />;
                 })()}
               </span>
@@ -190,7 +190,7 @@ export function BottomNav({ unreadCount = 0 }: BottomNavProps) {
               </SheetHeader>
               <div className="grid grid-cols-3 gap-4">
                 {visibleMoreItems.map((item) => {
-                  const Icon = getIcon(item);
+                  const Icon = getBottomNavIcon(item);
                   const active = isActive(item.href, pathname);
                   return (
                     <a
