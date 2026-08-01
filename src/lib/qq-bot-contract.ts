@@ -31,11 +31,15 @@ const oneBotConversation = z.discriminatedUnion("type", [
   z.object({ type: z.literal("private") }).strict(),
   z.object({ type: z.literal("group"), groupId: qqId }).strict(),
 ]);
+const qqOfficialConversation = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("private") }).strict(),
+  z.object({ type: z.literal("group"), groupId: qqOfficialOpenId }).strict(),
+]);
 
 export const qqBotMessageSchema = z
   .discriminatedUnion("platform", [
     z.object({ ...commonMessageFields, platform: z.literal("onebot11"), selfId: qqId, userId: qqId, conversation: oneBotConversation }).strict(),
-    z.object({ ...commonMessageFields, platform: z.literal("qq_official"), selfId: qqOfficialAppId, userId: qqOfficialOpenId }).strict(),
+    z.object({ ...commonMessageFields, platform: z.literal("qq_official"), selfId: qqOfficialAppId, userId: qqOfficialOpenId, conversation: qqOfficialConversation }).strict(),
   ])
   .superRefine((message, context) => {
     if (!message.eventId.startsWith(`${message.selfId}:`) || message.eventId.length === message.selfId.length + 1) {

@@ -16,7 +16,8 @@ export const qqOfficialEventSchema = z.object({
   d: z.record(z.string(), z.unknown()),
 }).passthrough();
 
-const GROUP_REPLY = "为保护账号与委托隐私，请私聊机器人使用：帮助、绑定、注册、状态、新建委托、取消、草稿。";
+const QQ_OFFICIAL_ID_PATTERN = /^[A-Za-z0-9_-]{6,128}$/;
+const GROUP_MENTION_PATTERN = /<@![^>]*>/gu;
 
 function occurredAt(value: unknown): string {
   if (typeof value === "string") {
@@ -42,33 +43,36 @@ export async function processQQOfficialEvent(payload: unknown): Promise<QQOffici
   const messageId = typeof event.data.d.id === "string" ? event.data.d.id : "";
   const content = typeof event.data.d.content === "string" ? event.data.d.content.trim() : "";
   const author = event.data.d.author as Record<string, unknown> | undefined;
-  const targetType = event.data.t === "C2C_MESSAGE_CREATE" ? "user" : "group";
-  const targetId = targetType === "user" ? author?.user_openid : event.data.d.group_openid;
-  if (!messageId || !content || content.length > 10_000 || typeof targetId !== "string" || targetId.length > 256) {
+  const isGroup = event.data.t === "GROUP_AT_MESSAGE_CREATE";
+  const targetType = isGroup ? "group" : "user";
+  const targetId = isGroup ? event.data.d.group_openid : author?.user_openid;
+  if (!messageId || !content || content.length > 10_000
+    || typeof targetId !== "string" || !QQ_OFFICIAL_ID_PATTERN.test(targetId)) {
     return { status: "INVALID" };
   }
-  const input = targetType === "user" ? routeQQBotInput(content) : null;
-  if (targetType === "user" && !input) return { status: "INVALID" };
+  const stripped = isGroup ? content.replace(GROUP_MENTION_PATTERN, "").trim() : content;
+  const input = isGroup
+    ? (stripped ? { type: "text" as const, text: stripped } : null)
+    : routeQQBotInput(stripped);
+  if (!input) return { status: "INVALID" };
 
   const reservation = await recordQQOfficialEvent(event.data.id);
   if (reservation.status === "DELIVERED") return { status: "DUPLICATE" };
   if (reservation.status === "IN_PROGRESS") return { status: "IN_PROGRESS" };
 
   try {
-    let reply = GROUP_REPLY;
-    if (targetType === "user" && input) {
-      const config = getQQOfficialConfig();
-      const result = await processQQBotMessage({
-        version: 1,
-        eventId: `${config.appId}:official:${event.data.id}`,
-        platform: "qq_official",
-        selfId: config.appId,
-        userId: targetId,
-        occurredAt: occurredAt(event.data.d.timestamp),
-        input,
-      });
-      reply = result.replies.join("\n\n") || "操作已完成。";
-    }
+    const config = getQQOfficialConfig();
+    const result = await processQQBotMessage({
+      version: 1,
+      eventId: `${config.appId}:official:${event.data.id}`,
+      platform: "qq_official",
+      selfId: config.appId,
+      userId: targetId,
+      occurredAt: occurredAt(event.data.d.timestamp),
+      conversation: isGroup ? { type: "group", groupId: targetId } : { type: "private" },
+      input,
+    });
+    const reply = result.replies.join("\n\n") || "操作已完成。";
     await sendQQOfficialReply({ targetType, targetId, messageId, content: reply });
   } catch {
     await releaseQQOfficialEvent(event.data.id, reservation.leaseToken).catch(() => null);

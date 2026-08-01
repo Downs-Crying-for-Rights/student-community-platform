@@ -354,12 +354,13 @@ export function QQBotMonitor() {
               <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2">
                 {([
                   ["用户名", (detail.sender as Record<string, unknown>).username ?? "未设置"],
-                  ["QQ 号", (detail.sender as Record<string, unknown>).qqNumber ?? "无法解密"],
+                  ["QQ 号 / OpenID", (detail.sender as Record<string, unknown>).identity ?? "无法解密"],
+                  ["机器人来源", (detail.sender as Record<string, unknown>).provider === "QQ_OFFICIAL" ? "QQ 官方机器人" : "个人 QQ 机器人"],
                   ["昵称", (detail.sender as Record<string, unknown>).nickname ?? "未设置"],
                   ["账号角色", (detail.sender as Record<string, unknown>).role ?? "-"],
                   ["用户 ID", (detail.sender as Record<string, unknown>).userId ?? "-"],
                   ["账号状态", !(detail.sender as Record<string, unknown>).userId ? "未绑定" : (detail.sender as Record<string, unknown>).isBanned ? "已封禁" : "正常"],
-                ] as const).map(([label, value]) => <p key={label}><span className="text-muted-foreground">{label}：</span><span className={label === "QQ 号" || label === "用户 ID" ? "font-mono text-xs" : ""}>{String(value)}</span></p>)}
+                ] as const).map(([label, value]) => <p key={label}><span className="text-muted-foreground">{label}：</span><span className={label === "QQ 号 / OpenID" || label === "用户 ID" ? "font-mono text-xs" : ""}>{String(value)}</span></p>)}
               </div>
             </div> : null}
             {detail.kind === "OUTBOX" ? <><div><h3 className="mb-2 font-semibold">机器人通知原文</h3><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-slate-950 p-4 text-xs text-slate-100">{String(detail.content)}</pre></div><div><h3 className="mb-2 font-semibold">投递状态</h3><pre className="overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify({ status: detail.status, attemptCount: detail.attemptCount, nextAttemptAt: detail.nextAttemptAt, providerMessageId: detail.providerMessageId, lastError: detail.lastError, deliveredAt: detail.deliveredAt }, null, 2)}</pre></div></> : <><div><h3 className="mb-2 font-semibold">用户发送原文</h3><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-slate-950 p-4 text-xs text-slate-100">{detail.input == null ? "历史消息未保存输入原文" : JSON.stringify(detail.input, null, 2)}</pre></div><div><h3 className="mb-2 font-semibold">机器人回复原文</h3><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-slate-950 p-4 text-xs text-slate-100">{detail.replies == null ? "无回复记录" : JSON.stringify(detail.replies, null, 2)}</pre></div><div><h3 className="mb-2 font-semibold">会话状态</h3><pre className="overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(detail.responseState, null, 2)}</pre></div></>}

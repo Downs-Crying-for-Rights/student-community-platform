@@ -3,7 +3,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { AuditAction, AuditTargetType, logAudit } from "@/lib/audit";
 import { decryptQQAuditValue, redactSensitiveQQText } from "@/lib/qq-message-audit";
-import { decryptQQIdentity } from "@/lib/qq-identity";
+import { decryptQQIdentity, decryptQQOfficialIdentity } from "@/lib/qq-identity";
 import { getQQConfig } from "@/lib/qq-config";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 
@@ -47,16 +47,36 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context: { params:
   }
   const row = await prisma.qQBotEventInbox.findUnique({ where: { id: parsedId.data } });
   if (!row) return NextResponse.json({ error: "事件不存在" }, { status: 404 });
-  const identity = await prisma.qQIdentity.findUnique({
-    where: { lookupHash: row.lookupHash },
-    select: {
-      ciphertext: true, iv: true, authTag: true, keyVersion: true,
-      user: { select: { id: true, username: true, nickname: true, email: true, role: true, isBanned: true, createdAt: true } },
-    },
-  });
-  let senderQQ: string | null = null;
-  if (identity) {
-    try { senderQQ = decryptQQIdentity(identity, getQQConfig().identityEncryptionKey); } catch { senderQQ = null; }
+  const [identity, officialIdentity] = await Promise.all([
+    prisma.qQIdentity.findUnique({
+      where: { lookupHash: row.lookupHash },
+      select: {
+        ciphertext: true, iv: true, authTag: true, keyVersion: true,
+        user: { select: { id: true, username: true, nickname: true, email: true, role: true, isBanned: true, createdAt: true } },
+      },
+    }),
+    prisma.qQOfficialIdentity.findUnique({
+      where: { lookupHash: row.lookupHash },
+      select: {
+        ciphertext: true, iv: true, authTag: true, keyVersion: true,
+        user: { select: { id: true, username: true, nickname: true, email: true, role: true, isBanned: true, createdAt: true } },
+      },
+    }),
+  ]);
+  const bound = identity ?? officialIdentity;
+  let senderIdentity: string | null = null;
+  let provider: "QQ_OFFICIAL" | "ONEBOT11" | null = null;
+  if (officialIdentity) {
+    try {
+      senderIdentity = decryptQQOfficialIdentity(officialIdentity, getQQConfig().identityEncryptionKey);
+      provider = "QQ_OFFICIAL";
+    } catch { senderIdentity = null; }
+  }
+  if (!senderIdentity && identity) {
+    try {
+      senderIdentity = decryptQQIdentity(identity, getQQConfig().identityEncryptionKey);
+      provider = "ONEBOT11";
+    } catch { senderIdentity = null; }
   }
 
   let input: unknown = null;
@@ -68,16 +88,17 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context: { params:
   else if (row.response && typeof row.response === "object" && "replies" in row.response) replies = (row.response as { replies?: unknown }).replies ?? null;
   const encryptedSenderId = input && typeof input === "object" && "senderId" in input
     ? (input as { senderId?: unknown }).senderId : null;
-  const auditedQQ = senderQQ ?? (typeof encryptedSenderId === "string" && /^[1-9]\d{4,11}$/.test(encryptedSenderId)
+  const auditedIdentity = senderIdentity ?? (typeof encryptedSenderId === "string" && /^[1-9]\d{4,11}$/.test(encryptedSenderId)
     ? encryptedSenderId : null);
-  const sender = identity || auditedQQ ? {
-    qqNumber: auditedQQ,
-    username: identity?.user.username ?? null,
-    nickname: identity?.user.nickname ?? null,
-    userId: identity?.user.id ?? null,
-    role: identity?.user.role ?? null,
-    isBanned: identity?.user.isBanned ?? null,
-    accountCreatedAt: identity?.user.createdAt ?? null,
+  const sender = bound || auditedIdentity ? {
+    provider,
+    identity: auditedIdentity,
+    username: bound?.user.username ?? null,
+    nickname: bound?.user.nickname ?? null,
+    userId: bound?.user.id ?? null,
+    role: bound?.user.role ?? null,
+    isBanned: bound?.user.isBanned ?? null,
+    accountCreatedAt: bound?.user.createdAt ?? null,
   } : null;
 
   await logAudit(req.user.id, AuditAction.QQ_MESSAGE_CONTENT_VIEW, AuditTargetType.QQ_MESSAGE, row.id, {

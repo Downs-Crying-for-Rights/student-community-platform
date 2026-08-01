@@ -56,22 +56,54 @@ describe("processQQOfficialEvent", () => {
       selfId: "11111111",
       userId: "openid-1",
       occurredAt: "2026-07-31T16:00:00.000Z",
+      conversation: { type: "private" },
       input: { type: "command", command: "帮助" },
     });
     expect(mocks.complete).toHaveBeenCalledWith("event-1", "C2C_MESSAGE_CREATE", "lease-1");
   });
 
-  it("keeps account and delegation commands out of group conversations", async () => {
+  it("treats official group mentions as AI-only text and never runs account commands", async () => {
     await expect(processQQOfficialEvent({
       op: 0,
       id: "event-group",
       t: "GROUP_AT_MESSAGE_CREATE",
       d: { id: "message-group", content: "状态", group_openid: "group-1" },
     })).resolves.toEqual({ status: "DELIVERED" });
-    expect(mocks.process).not.toHaveBeenCalled();
+    expect(mocks.process).toHaveBeenCalledWith({
+      version: 1,
+      eventId: "11111111:official:event-group",
+      platform: "qq_official",
+      selfId: "11111111",
+      userId: "group-1",
+      occurredAt: expect.any(String),
+      conversation: { type: "group", groupId: "group-1" },
+      input: { type: "text", text: "状态" },
+    });
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
       targetType: "group",
-      content: expect.stringContaining("请私聊机器人"),
+      content: "可用命令：帮助、绑定、注册、状态、新建委托、取消、草稿。",
+    }));
+  });
+
+  it("strips the bot mention before sending group text to the AI", async () => {
+    mocks.process.mockResolvedValue({
+      duplicate: false,
+      replies: ["AI 回复"],
+      conversation: { state: "idle", revision: "1", prompt: null },
+    });
+    await expect(processQQOfficialEvent({
+      op: 0,
+      id: "event-mention",
+      t: "GROUP_AT_MESSAGE_CREATE",
+      d: { id: "message-mention", content: "<@!123456789012345678> 你好", group_openid: "group-1" },
+    })).resolves.toEqual({ status: "DELIVERED" });
+    expect(mocks.process).toHaveBeenCalledWith(expect.objectContaining({
+      input: { type: "text", text: "你好" },
+      conversation: { type: "group", groupId: "group-1" },
+    }));
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      targetType: "group",
+      content: "AI 回复",
     }));
   });
 

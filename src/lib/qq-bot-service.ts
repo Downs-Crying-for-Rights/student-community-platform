@@ -262,7 +262,7 @@ async function applyMessage(
   provider: QQBotIdentityProvider,
   chatReply: string | null,
 ): Promise<QQBotResponse> {
-  if (message.platform === "onebot11" && message.conversation.type === "group") {
+  if (message.conversation.type === "group") {
     return response([chatReply ?? "AI 对话服务暂时不可用，请稍后再试。"], "idle", 1, null);
   }
   if (message.input.type === "command" && message.input.command === "注册") {
@@ -294,7 +294,7 @@ async function prepareMessagePreflight(
   provider: QQBotIdentityProvider,
 ): Promise<{ draft: DraftPreflight | null; chatReply: string | null }> {
   if (message.input.type !== "text") return { draft: null, chatReply: null };
-  if (message.platform === "onebot11" && message.conversation.type === "group") {
+  if (message.conversation.type === "group") {
     const chatReply = answerHasSensitiveContent
       ? "消息中检测到敏感内容或可识别个人信息，为保护隐私，未发送给 AI。"
       : await generateQQChatReply({ text: message.input.text, identityKey: lookupHash });

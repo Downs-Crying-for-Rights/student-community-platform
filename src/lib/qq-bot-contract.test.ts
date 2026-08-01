@@ -29,14 +29,31 @@ describe("QQ bot internal contract", () => {
     }).success).toBe(false);
   });
 
-  it("accepts a bounded group context only for OneBot messages", () => {
+  it("accepts a bounded group context for OneBot and official messages", () => {
     expect(qqBotMessageSchema.safeParse({
       ...validMessage,
       eventId: "1000000000:group:300000000:123",
       conversation: { type: "group", groupId: "300000000" },
       input: { type: "text", text: "你好" },
     }).success).toBe(true);
+    expect(qqBotMessageSchema.safeParse({
+      ...validMessage,
+      eventId: "12345678901234567890:official:event-2",
+      platform: "qq_official",
+      selfId: "12345678901234567890",
+      userId: "openid_Abc-123",
+      conversation: { type: "group", groupId: "group_openid_123" },
+      input: { type: "text", text: "你好" },
+    }).success).toBe(true);
     expect(qqBotMessageSchema.safeParse({ ...validMessage, conversation: { type: "group", groupId: "bad" } }).success).toBe(false);
+    expect(qqBotMessageSchema.safeParse({
+      ...validMessage,
+      eventId: "12345678901234567890:official:event-2",
+      platform: "qq_official",
+      selfId: "12345678901234567890",
+      userId: "openid_Abc-123",
+      conversation: { type: "group", groupId: "bad" },
+    }).success).toBe(false);
   });
 
   it("accepts official openids and routes the same command set", () => {
@@ -47,6 +64,7 @@ describe("QQ bot internal contract", () => {
       selfId: "12345678901234567890",
       userId: "openid_Abc-123",
       occurredAt: validMessage.occurredAt,
+      conversation: { type: "private" },
       input: validMessage.input,
     }).success).toBe(true);
     expect(routeQQBotInput("注册 qqg_token")).toEqual({ type: "command", command: "注册", argument: "qqg_token" });

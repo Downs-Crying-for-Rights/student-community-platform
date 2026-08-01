@@ -141,6 +141,7 @@ describe("QQ bot transactional service", () => {
       selfId: "11111111",
       userId: "openid_Abc-123",
       occurredAt: "2026-08-01T00:00:00+08:00",
+      conversation: { type: "private" },
       input: { type: "command", command: "绑定" },
     };
     const result = await processQQBotMessage(message);
@@ -181,6 +182,26 @@ describe("QQ bot transactional service", () => {
     });
     expect(result.replies).toEqual(["AI 测试回复"]);
     expect(mocks.tx.qQIdentity.findUnique).not.toHaveBeenCalled();
+    expect(mocks.finalizeRegistration).not.toHaveBeenCalled();
+  });
+
+  it("treats official group mentions as AI-only and never runs account commands", async () => {
+    const result = await processQQBotMessage({
+      ...bindingMessage,
+      eventId: "12345678901234567890:official:event-1",
+      platform: "qq_official",
+      selfId: "12345678901234567890",
+      userId: "openid_Abc-123",
+      conversation: { type: "group", groupId: "group_openid_123" },
+      input: { type: "text", text: "介绍一下相对论" },
+    });
+    expect(mocks.chatReply).toHaveBeenCalledWith({
+      text: "介绍一下相对论",
+      identityKey: expect.any(String),
+    });
+    expect(result.replies).toEqual(["AI 测试回复"]);
+    expect(mocks.tx.qQGrant.create).not.toHaveBeenCalled();
+    expect(mocks.tx.qQOfficialIdentity.findUnique).not.toHaveBeenCalled();
     expect(mocks.finalizeRegistration).not.toHaveBeenCalled();
   });
 

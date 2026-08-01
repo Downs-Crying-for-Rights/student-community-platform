@@ -14,7 +14,7 @@ export function decryptQQAuditValue(envelope: EncryptedEnvelope, context: string
 export function encryptQQMessageInput(message: QQBotMessage): EncryptedEnvelope {
   return encryptQQAuditValue({
     senderId: message.userId,
-    conversation: message.platform === "onebot11" ? message.conversation : { type: "private" },
+    conversation: message.conversation,
     input: message.input,
     occurredAt: message.occurredAt,
   }, `qq-inbox-input:${message.eventId}`);

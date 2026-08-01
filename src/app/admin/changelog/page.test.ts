@@ -8,8 +8,8 @@ import { GIT_HISTORY, GIT_HISTORY_SOURCE_COMMIT } from "@/lib/git-history.genera
 describe("admin changelog", () => {
   it("shows newest releases first with structured changes", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(4);
-    expect(CHANGELOG[0].version).toBe("0.3.29");
-    expect(CHANGELOG[0].changes).toContain("移除个人 QQ 机器人的灰度 QQ 白名单，普通用户无需管理员身份即可使用私聊命令和通用 AI 对话。");
+    expect(CHANGELOG[0].version).toBe("0.3.30");
+    expect(CHANGELOG[0].changes).toContain("QQ 官方机器人在私聊与群聊中获得与个人机器人相同的访问权限：非管理员用户同样可以使用私聊命令和通用 AI 对话。");
   });
 
   it("contains the complete reachable Git history in chronological order", () => {
