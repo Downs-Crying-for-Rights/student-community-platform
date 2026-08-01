@@ -13,9 +13,9 @@ describe("admin changelog", () => {
   });
 
   it("contains the complete reachable Git history in chronological order", () => {
-    expect(GIT_HISTORY).toHaveLength(304);
+    expect(GIT_HISTORY).toHaveLength(306);
     expect(GIT_HISTORY[0].shortHash).toBe("43445ed");
-    expect(GIT_HISTORY_SOURCE_COMMIT).toBe("62df81aa651cfaa41e725468c5ab93810d1681d3");
+    expect(GIT_HISTORY_SOURCE_COMMIT).toBe("c98fe165ceb6411188340eeb65eaff25c979fbf6");
     expect(GIT_HISTORY.some((commit) => commit.hash === GIT_HISTORY_SOURCE_COMMIT)).toBe(true);
     expect(new Set(GIT_HISTORY.map((commit) => commit.hash)).size).toBe(GIT_HISTORY.length);
     for (let index = 1; index < GIT_HISTORY.length; index += 1) {
