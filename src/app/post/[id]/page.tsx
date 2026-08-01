@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { Heart, Bookmark, MessageCircle, Share2, Trash2, Loader2, Clock, HandHelping, Pencil } from "lucide-react";
+import { ArrowLeft, Heart, Bookmark, MessageCircle, Share2, Trash2, Loader2, Clock, HandHelping, Pencil } from "lucide-react";
 import { ImageCarousel } from "@/components/post/ImageCarousel";
 import { CommentDrawer } from "@/components/comment/CommentDrawer";
 import { PrivacyBanner } from "@/components/shared/PrivacyBanner";
@@ -62,6 +62,10 @@ export interface PostData {
 
 export function getPostInteractionState(post: Pick<PostData, "isLiked" | "isBookmarked">) {
   return { liked: post.isLiked, bookmarked: post.isBookmarked };
+}
+
+export function shouldUseBrowserBack(historyLength: number) {
+  return historyLength > 1;
 }
 
 function PostDetailSkeleton() {
@@ -243,6 +247,14 @@ export default function PostDetailPage() {
   const showPrivacyBanner =
     post?.board.zone === "PSYCHOLOGY" || post?.board.zone === "DCR";
 
+  const handleBack = useCallback(() => {
+    if (typeof window !== "undefined" && shouldUseBrowserBack(window.history.length)) {
+      router.back();
+      return;
+    }
+    router.push("/");
+  }, [router]);
+
   const displayName = post
     ? post.isAnonymous
       ? post.anonymousId ?? "匿名用户"
@@ -252,6 +264,19 @@ export default function PostDetailPage() {
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-6">
       <main className="mx-auto max-w-screen-xl px-4 pt-4">
+        <div className="mx-auto mb-2 max-w-2xl">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleBack}
+            className="min-h-[44px] gap-1.5 px-2"
+            aria-label="返回上一页"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            返回
+          </Button>
+        </div>
       {loading ? (
         <PostDetailSkeleton />
       ) : error ? (

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getPostInteractionState } from "../[id]/page";
+import { getPostInteractionState, shouldUseBrowserBack } from "../[id]/page";
 
 // Mock next/navigation
 const mockPush = vi.fn();
@@ -96,6 +96,16 @@ describe("PostDetailPage data handling", () => {
       ? post.anonymousId ?? "匿名用户"
       : post.author.nickname ?? "未命名用户";
     expect(displayName).toBe("匿名用户");
+  });
+});
+
+describe("PostDetailPage back navigation", () => {
+  it("uses browser history when a previous entry exists", () => {
+    expect(shouldUseBrowserBack(2)).toBe(true);
+  });
+
+  it("falls back to the home page for a directly opened detail page", () => {
+    expect(shouldUseBrowserBack(1)).toBe(false);
   });
 });
 
