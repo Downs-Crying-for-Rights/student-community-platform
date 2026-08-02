@@ -14,6 +14,7 @@ import prisma from "@/lib/prisma";
 import redis from "@/lib/redis";
 import { runSerializableTransaction } from "@/lib/serializable-transaction";
 import { markRecentRegistration } from "@/lib/captcha";
+import { findAccountNameConflict } from "@/lib/auth/account-name";
 
 const REGISTRATION_UNAVAILABLE = "注册凭据无效、已过期或已使用，请返回网站重新申请。";
 
@@ -25,7 +26,7 @@ export async function createPendingQQRegistration(username: string, password: st
   const passwordHash = await bcrypt.hash(password, 10);
 
   return runSerializableTransaction(async (tx) => {
-    const existingUser = await tx.user.findUnique({ where: { username }, select: { id: true } });
+    const existingUser = await findAccountNameConflict(tx, username);
     if (existingUser) return { ok: false as const, reason: "USERNAME_TAKEN" as const };
 
     const pending = await tx.pendingQQRegistration.findUnique({ where: { username } });
@@ -53,15 +54,15 @@ export async function getQQRegistrationStatus(credential: string) {
   const config = getQQConfig();
   const grant = await prisma.qQGrant.findUnique({
     where: { tokenHash: hashQQGrant(credential, config.grantHmacKey) },
-    select: { purpose: true, expiresAt: true, consumedAt: true, pendingRegistration: { select: { consumedAt: true, userId: true } } },
+    select: { purpose: true, expiresAt: true, consumedAt: true, pendingRegistration: { select: { consumedAt: true, userId: true, username: true } } },
   });
-  if (!grant || grant.purpose !== "REGISTRATION_FINALIZE") return "EXPIRED" as const;
+  if (!grant || grant.purpose !== "REGISTRATION_FINALIZE") return { status: "EXPIRED" as const };
   if (grant.consumedAt && grant.pendingRegistration?.consumedAt) {
     if (grant.pendingRegistration.userId) await markRecentRegistration(grant.pendingRegistration.userId);
-    return "COMPLETED" as const;
+    return { status: "COMPLETED" as const, username: grant.pendingRegistration.username };
   }
-  if (grant.expiresAt <= new Date()) return "EXPIRED" as const;
-  return "PENDING" as const;
+  if (grant.expiresAt <= new Date()) return { status: "EXPIRED" as const };
+  return { status: "PENDING" as const };
 }
 
 export async function finalizeQQRegistration(
@@ -94,7 +95,7 @@ export async function finalizeQQRegistration(
     provider === "QQ_OFFICIAL"
       ? tx.qQOfficialIdentity.findUnique({ where: { lookupHash }, select: { id: true } })
       : tx.qQIdentity.findUnique({ where: { lookupHash }, select: { id: true } }),
-    tx.user.findUnique({ where: { username: pending.username }, select: { id: true } }),
+    findAccountNameConflict(tx, pending.username),
   ]);
   if (existingIdentity) return "此 QQ 已绑定账号，无法用于注册新账号。";
   if (existingUser) return "用户名已被占用，请返回网站更换用户名后重试。";

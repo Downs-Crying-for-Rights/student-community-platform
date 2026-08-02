@@ -64,6 +64,7 @@ const post = async (request: Request) => {
       credential: result.credential,
       command: `注册 ${result.credential}`,
       expiresAt: result.expiresAt.toISOString(),
+      username: parsed.data.username,
     }, { status: 201 }));
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

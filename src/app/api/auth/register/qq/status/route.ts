@@ -18,8 +18,8 @@ const post = async (request: Request) => {
     if (!await claimQQRegistrationRateLimit("status", rateLimitKeyForIP(ip), credentialKey, 600, 600)) {
       return NextResponse.json({ error: "Too Many Requests" }, { status: 429, headers: { "Cache-Control": "no-store" } });
     }
-    const status = await getQQRegistrationStatus(parsed.data.credential);
-    return NextResponse.json({ status }, { headers: { "Cache-Control": "no-store" } });
+    const result = await getQQRegistrationStatus(parsed.data.credential);
+    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Temporary failure" }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }

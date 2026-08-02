@@ -16,6 +16,7 @@ import {
   validateCaptchaProof,
 } from "@/lib/captcha";
 import { checkRateLimit } from "@/lib/rate-limiter";
+import { buildNicknameIdentifierWhere, buildPrimaryAccountIdentifierWhere } from "@/lib/auth/account-name";
 
 export function escapeHtmlAttribute(value: string): string {
   return value
@@ -102,15 +103,17 @@ export const authOptions: NextAuthOptions = {
           15 * 60 * 1000,
         );
         if (!loginLimit.allowed) throw new Error("账号或密码错误");
-        const user = await prisma.user.findFirst({
-          where: { OR: [
-            { email: identifier },
-            ...(normalized === identifier ? [] : [{ email: normalized }]),
-            { username: normalized },
-            { phone: identifier },
-          ] },
-          select: { id: true, email: true, nickname: true, role: true, phone: true, passwordHash: true, isBanned: true, banUntil: true, deactivatedAt: true },
+        const select = { id: true, email: true, nickname: true, role: true, phone: true, passwordHash: true, isBanned: true, banUntil: true, deactivatedAt: true } as const;
+        let user = await prisma.user.findFirst({
+          where: buildPrimaryAccountIdentifierWhere(identifier),
+          select,
         });
+        if (!user) {
+          user = await prisma.user.findFirst({
+            where: buildNicknameIdentifierWhere(identifier),
+            select,
+          });
+        }
         if (!user || !user.passwordHash || user.deactivatedAt) throw new Error("账号或密码错误");
         const isValid = await bcrypt.compare(password, user.passwordHash);
         if (!isValid) throw new Error("账号或密码错误");

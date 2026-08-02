@@ -7,6 +7,7 @@ import { nicknameSchema, emailSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createPrivateMediaUrl, parsePrivateMediaUrl } from "@/lib/oss";
+import { findAccountNameConflict } from "@/lib/auth/account-name";
 
 const profileSchema = z.object({
   nickname: nicknameSchema.nullable().optional(),
@@ -60,6 +61,9 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
       .map((field) => [field, profileData[field]]));
     if (Object.keys(changes).length === 0) {
       return NextResponse.json({ error: "资料没有变化" }, { status: 400 });
+    }
+    if (typeof changes.nickname === "string" && await findAccountNameConflict(prisma, changes.nickname, id)) {
+      return NextResponse.json({ error: "该用户名已被使用" }, { status: 409 });
     }
     const beforeValues = Object.fromEntries(Object.keys(changes).map((field) => [field, existing[field as keyof typeof existing]]));
 

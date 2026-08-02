@@ -196,7 +196,7 @@ function LoginContent() {
   const qqPollCompletedRef = useRef(false);
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
   const [regMethod, setRegMethod] = useState<"email" | "qq">("email");
-  const [qqRegistration, setQQRegistration] = useState<{ credential: string; command: string; expiresAt: string } | null>(null);
+  const [qqRegistration, setQQRegistration] = useState<{ credential: string; command: string; expiresAt: string; username: string } | null>(null);
   const [agreedKeys, setAgreedKeys] = useState<Record<string, boolean>>({});
   const [showAgreement, setShowAgreement] = useState("");
   const [agreementTitle, setAgreementTitle] = useState("");
@@ -311,8 +311,10 @@ function LoginContent() {
         }
         if (data.status !== "COMPLETED") return;
         qqPollCompletedRef.current = true;
+        setSuccessMessage("QQ 注册成功，正在登录...");
+        const registeredUsername = typeof data.username === "string" ? data.username : qqRegistration.username;
         const signedIn = await signIn("credentials-password", {
-          identifier: regNickname.trim(),
+          identifier: registeredUsername,
           password: regPassword,
           redirect: false,
           callbackUrl: "/",
@@ -321,7 +323,7 @@ function LoginContent() {
           setErrorMessage("注册成功，请使用用户名和密码登录");
           setView("form");
           setActiveTab("password");
-          setPwEmail(regNickname.trim());
+          setPwEmail(registeredUsername);
           return;
         }
         setRegPassword("");
@@ -339,7 +341,7 @@ function LoginContent() {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [qqRegistration, regNickname, regPassword, router]);
+  }, [qqRegistration, regPassword, router]);
 
   function getErrorMessage(error: string): string {
     switch (error) {

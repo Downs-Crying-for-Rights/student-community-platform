@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   hash: vi.fn().mockResolvedValue("bcrypt-hash"),
+  grantFindUnique: vi.fn(),
+  markRecentRegistration: vi.fn(),
   transaction: vi.fn(),
   tx: {
-    user: { findUnique: vi.fn(), create: vi.fn() },
+    user: { findFirst: vi.fn(), create: vi.fn() },
     pendingQQRegistration: { findUnique: vi.fn(), create: vi.fn(), delete: vi.fn(), update: vi.fn() },
     qQGrant: { create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
     qQIdentity: { findUnique: vi.fn(), create: vi.fn() },
@@ -14,20 +16,21 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("bcryptjs", () => ({ default: { hash: mocks.hash } }));
-vi.mock("@/lib/prisma", () => ({ default: { qQGrant: { findUnique: vi.fn() } } }));
+vi.mock("@/lib/prisma", () => ({ default: { qQGrant: { findUnique: mocks.grantFindUnique } } }));
+vi.mock("@/lib/captcha", () => ({ markRecentRegistration: mocks.markRecentRegistration }));
 vi.mock("@/lib/serializable-transaction", () => ({ runSerializableTransaction: mocks.transaction }));
 vi.mock("@/lib/qq-config", () => ({ getQQConfig: () => ({
   identityEncryptionKey: Buffer.alloc(32, 1), identityHmacKey: Buffer.alloc(32, 2),
   grantHmacKey: Buffer.alloc(32, 3), keyVersion: 1, grantTtlSeconds: 900,
 }) }));
 
-import { createPendingQQRegistration, finalizeQQRegistration } from "./qq-registration";
+import { createPendingQQRegistration, finalizeQQRegistration, getQQRegistrationStatus } from "./qq-registration";
 
 describe("QQ bot registration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.transaction.mockImplementation((operation) => operation(mocks.tx));
-    mocks.tx.user.findUnique.mockResolvedValue(null);
+    mocks.tx.user.findFirst.mockResolvedValue(null);
     mocks.tx.pendingQQRegistration.findUnique.mockResolvedValue(null);
     mocks.tx.pendingQQRegistration.create.mockResolvedValue({ id: "pending-1" });
     mocks.tx.qQIdentity.findUnique.mockResolvedValue(null);
@@ -79,6 +82,21 @@ describe("QQ bot registration", () => {
       .resolves.toContain("无效");
     expect(mocks.tx.user.create).not.toHaveBeenCalled();
     expect(mocks.tx.qQIdentity.create).not.toHaveBeenCalled();
+  });
+
+  it("returns the server-confirmed username after completion", async () => {
+    mocks.grantFindUnique.mockResolvedValue({
+      purpose: "REGISTRATION_FINALIZE",
+      expiresAt: new Date(Date.now() + 60_000),
+      consumedAt: new Date(),
+      pendingRegistration: { consumedAt: new Date(), userId: "user-1", username: "new_user" },
+    });
+
+    await expect(getQQRegistrationStatus(`qqg_${"C".repeat(43)}`)).resolves.toEqual({
+      status: "COMPLETED",
+      username: "new_user",
+    });
+    expect(mocks.markRecentRegistration).toHaveBeenCalledWith("user-1");
   });
 
   it("registers an official openid without consuming the personal QQ identity slot", async () => {

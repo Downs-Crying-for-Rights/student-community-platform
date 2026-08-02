@@ -8,6 +8,7 @@ import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
 import { asNextResponse } from "@/lib/support-ticket";
 import { withTelemetry } from "@/lib/telemetry";
 import { issueCaptchaProof, validateCaptchaProof } from "@/lib/captcha";
+import { buildNicknameIdentifierWhere, buildPrimaryAccountIdentifierWhere } from "@/lib/auth/account-name";
 
 export const POST = withTelemetry(async (req: Request) => {
   const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -20,9 +21,13 @@ export const POST = withTelemetry(async (req: Request) => {
   const parsed = loginPasswordSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ valid: false }, { status: 401 });
   const identifier = parsed.data.identifier;
-  const normalized = identifier.toLowerCase();
-  const user = await prisma.user.findFirst({
-    where: { OR: [{ email: identifier }, ...(normalized === identifier ? [] : [{ email: normalized }]), { username: normalized }, { phone: identifier }] },
+  const select = { id: true, passwordHash: true } as const;
+  let user = await prisma.user.findFirst({
+    where: buildPrimaryAccountIdentifierWhere(identifier),
+    select,
+  });
+  if (!user) user = await prisma.user.findFirst({
+    where: buildNicknameIdentifierWhere(identifier),
     select: { id: true, passwordHash: true },
   });
   if (!user?.passwordHash || !await bcrypt.compare(parsed.data.password, user.passwordHash)) {

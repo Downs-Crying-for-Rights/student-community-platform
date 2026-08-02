@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { nicknameSchema } from "@/lib/validators";
 import { withTelemetry } from "@/lib/telemetry";
+import { findAccountNameConflict } from "@/lib/auth/account-name";
 
 /**
  * POST /api/auth/username
@@ -28,10 +29,7 @@ const post = async (req: Request) => {
     const nickname = parsed.data;
 
     // 检查昵称是否已被其他用户使用
-    const existing = await prisma.user.findFirst({
-      where: { nickname, NOT: { id: session.user.id } },
-      select: { id: true },
-    });
+    const existing = await findAccountNameConflict(prisma, nickname, session.user.id);
     if (existing) {
       return NextResponse.json({ error: "该用户名已被使用" }, { status: 409 });
     }

@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { updateProfileSchema } from "@/lib/validators";
 import { scanContent } from "@/lib/sensitive-engine";
+import { findAccountNameConflict } from "@/lib/auth/account-name";
 import { isProfileComplete } from "@/lib/profile-completion";
 import { createPrivateMediaUrl, parsePrivateMediaUrl } from "@/lib/oss";
 
@@ -136,10 +137,7 @@ export const PATCH = withAuth(async (req: AuthenticatedRequest, context) => {
         { status: 400 },
       );
     }
-    const nicknameOwner = await prisma.user.findFirst({
-      where: { nickname, id: { not: targetId } },
-      select: { id: true },
-    });
+    const nicknameOwner = await findAccountNameConflict(prisma, nickname, targetId);
     if (nicknameOwner) {
       return NextResponse.json({ error: "该昵称已被使用" }, { status: 409 });
     }

@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
+import { findAccountNameConflict } from "@/lib/auth/account-name";
+import { runSerializableTransaction } from "@/lib/serializable-transaction";
 
 export interface CreateUserParams {
   email: string;
@@ -85,8 +87,10 @@ export async function createUserWithSession({
   // 密码哈希
   const passwordHash = await bcrypt.hash(password, 10);
 
-  // 在事务中创建用户和 session
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await runSerializableTransaction(async (tx) => {
+    const nameConflict = await findAccountNameConflict(tx, nickname);
+    if (nameConflict) return null;
+
     const user = await tx.user.create({
       data: {
         email,
@@ -105,6 +109,10 @@ export async function createUserWithSession({
 
     return { userId: user.id };
   });
+
+  if (!result) {
+    return { success: false, error: "该用户名已被使用", status: 409 };
+  }
 
   return { success: true, data: result };
 }

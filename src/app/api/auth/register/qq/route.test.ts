@@ -47,6 +47,7 @@ describe("QQ bot registration issuance", () => {
       credential,
       command: `注册 ${credential}`,
       expiresAt: "2026-07-20T12:15:00.000Z",
+      username: "new_user",
     });
     expect(mocks.create).toHaveBeenCalledWith("new_user", "password-123", revisions);
   });

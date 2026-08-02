@@ -330,6 +330,31 @@ describe("NextAuth 配置", () => {
       }));
     });
 
+    it("网页注册昵称也可用于密码登录", async () => {
+      const authorize = getPasswordAuthorize();
+      mockFindFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: "user-nickname",
+          email: "nickname@example.com",
+          nickname: "网页用户",
+          role: "USER",
+          phone: null,
+          passwordHash: "$2b$10$hashedpassword",
+          isBanned: false,
+          deactivatedAt: null,
+        });
+      vi.mocked(bcrypt.compare).mockResolvedValueOnce(true as never);
+
+      await expect(authorize({
+        identifier: "网页用户",
+        password: "validPassword123",
+      })).resolves.toMatchObject({ id: "user-nickname", name: "网页用户" });
+      expect(mockFindFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        where: { nickname: { equals: "网页用户", mode: "insensitive" } },
+      }));
+    });
+
     it("错误密码应抛出统一错误", async () => {
       const authorize = getPasswordAuthorize();
       mockFindFirst.mockResolvedValueOnce({
