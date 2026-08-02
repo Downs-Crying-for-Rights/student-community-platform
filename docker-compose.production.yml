@@ -1,3 +1,5 @@
 services:
   web:
     command: ["node", "server.js"]
+    extra_hosts:
+      - "mail.dcr2026.com:host-gateway"
