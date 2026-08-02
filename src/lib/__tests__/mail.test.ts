@@ -34,6 +34,7 @@ const SMTP_KEYS = [
   "SMTP_USER",
   "SMTP_PASSWORD",
   "SMTP_FROM",
+  "SMTP_TLS_SERVERNAME",
 ] as const;
 
 describe("sendUserMail", () => {
@@ -47,6 +48,7 @@ describe("sendUserMail", () => {
     process.env.SMTP_USER = "mailer@example.com";
     process.env.SMTP_PASSWORD = "secret";
     process.env.SMTP_FROM = "mailer@example.com";
+    process.env.SMTP_TLS_SERVERNAME = "mail.example.com";
     mocks.createTransport.mockReturnValue({ sendMail: mocks.sendMail });
     mocks.findUnique.mockResolvedValue({ email: "student@example.com" });
     mocks.findMany.mockResolvedValue([
@@ -82,7 +84,11 @@ describe("sendUserMail", () => {
 
     expect(result).toEqual({ sent: true });
     expect(mocks.createTransport).toHaveBeenCalledWith(
-      expect.objectContaining({ port: 465, secure: true }),
+      expect.objectContaining({
+        port: 465,
+        secure: true,
+        tls: { servername: "mail.example.com" },
+      }),
     );
     expect(mocks.sendMail).toHaveBeenCalledWith({
       to: "student@example.com",

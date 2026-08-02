@@ -31,9 +31,10 @@ function getSmtpConfig() {
   const user = process.env.SMTP_USER;
   const password = process.env.SMTP_PASSWORD;
   const from = process.env.SMTP_FROM;
+  const tlsServername = process.env.SMTP_TLS_SERVERNAME?.trim() || undefined;
   const port = Number(process.env.SMTP_PORT) || 587;
   if (!host || !user || !password || !from) return null;
-  return { host, user, password, from, port };
+  return { host, user, password, from, port, tlsServername };
 }
 
 function createMailTransport(config: NonNullable<ReturnType<typeof getSmtpConfig>>) {
@@ -42,6 +43,7 @@ function createMailTransport(config: NonNullable<ReturnType<typeof getSmtpConfig
     port: config.port,
     secure: config.port === 465,
     auth: { user: config.user, pass: config.password },
+    tls: config.tlsServername ? { servername: config.tlsServername } : undefined,
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 20_000,

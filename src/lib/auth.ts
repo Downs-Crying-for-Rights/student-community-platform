@@ -47,6 +47,9 @@ export const authOptions: NextAuthOptions = {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASSWORD,
         },
+        tls: process.env.SMTP_TLS_SERVERNAME
+          ? { servername: process.env.SMTP_TLS_SERVERNAME }
+          : undefined,
       },
       from: process.env.SMTP_FROM || "noreply@example.com",
       maxAge: 15 * 60,
