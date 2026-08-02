@@ -33,5 +33,8 @@ export const POST = withTelemetry(async (request: Request) => {
     actionUrl: `https://github.com/${parsed.data.repository}/commit/${parsed.data.release}`,
   });
 
-  return NextResponse.json({ notified: result.sent, recipientCount: result.recipientCount, reason: result.reason ?? null });
+  return NextResponse.json(
+    { notified: result.sent, recipientCount: result.recipientCount, reason: result.reason ?? null },
+    { status: result.sent ? 200 : 502 },
+  );
 }, { route: "/v1/internal/deployment-notification" });

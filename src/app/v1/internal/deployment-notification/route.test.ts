@@ -42,4 +42,16 @@ describe("deployment notification endpoint", () => {
       actionUrl: `https://github.com/${payload.repository}/commit/${payload.release}`,
     }));
   });
+
+  it("reports a gateway error when administrator email delivery fails", async () => {
+    mocks.send.mockResolvedValue({ sent: false, recipientCount: 0, reason: "send_failed" });
+    const { POST } = await import("./route");
+    const response = await POST(request("internal-secret", payload));
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      notified: false,
+      recipientCount: 0,
+      reason: "send_failed",
+    });
+  });
 });
