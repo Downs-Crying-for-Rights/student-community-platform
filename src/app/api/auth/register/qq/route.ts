@@ -9,6 +9,7 @@ import prisma from "@/lib/prisma";
 import { LOGIN_POLICIES, REGISTRATION_POLICY_KEYS } from "@/lib/login-policies";
 import { withTelemetry } from "@/lib/telemetry";
 import { getSystemAccessPolicy } from "@/lib/system-config";
+import { verifyCaptcha } from "@/lib/captcha";
 
 
 export const runtime = "nodejs";
@@ -24,6 +25,9 @@ const post = async (request: Request) => {
   const parsed = qqRegistrationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return noStore(NextResponse.json({ error: "参数校验失败", details: parsed.error.flatten().fieldErrors }, { status: 400 }));
+  }
+  if (!await verifyCaptcha(parsed.data.captchaId, parsed.data.captchaCode, "register")) {
+    return noStore(NextResponse.json({ error: "图形验证码错误或已过期" }, { status: 400 }));
   }
 
   const usernameKey = createHash("sha256").update(parsed.data.username).digest("hex");

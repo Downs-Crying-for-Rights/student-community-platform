@@ -248,6 +248,8 @@ export const qqRegistrationSchema = z.object({
   username: usernameSchema,
   password: passwordSchema,
   agreementRevisions: z.record(z.string().min(1).max(100), z.number().int().positive()),
+  captchaId: z.string().optional(),
+  captchaCode: z.string().optional(),
 }).strict();
 
 export const qqRegistrationStatusSchema = z.object({
@@ -320,7 +322,7 @@ export const delegationFormSchema = z.object({
   feeDetails: z.string().max(500).optional(),
   demands: z.array(z.string()).min(1, '请至少选择一项诉求'),
   otherDemand: z.string().max(500).optional(),
-  confirmations: z.tuple([z.literal(true), z.literal(true), z.literal(true)]),
+  confirmations: z.tuple([z.literal(true), z.literal(true), z.literal(true), z.literal(true)]),
   // 新增结构化字段 (P1-5)
   grade: z.string().max(20).optional(),
   timeRange: z.string().max(200).optional(),

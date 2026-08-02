@@ -24,7 +24,7 @@ export interface DelegationFormData {
 
 export interface CanonicalDelegationFormData extends Omit<DelegationFormData, 'reportChannels'> {
   reportChannels?: string;
-  confirmations: [true, true, true];
+  confirmations: [true, true, true, true];
   grade?: string;
   timeRange?: string;
   province?: string;

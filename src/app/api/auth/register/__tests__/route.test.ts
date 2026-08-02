@@ -20,6 +20,10 @@ vi.mock("bcryptjs", () => ({
 }));
 
 vi.mock("@/lib/sms/verification", () => ({ verifyCode: vi.fn() }));
+vi.mock("@/lib/captcha", () => ({
+  verifyCaptcha: vi.fn().mockResolvedValue(true),
+  markRecentRegistration: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { prisma } from "@/lib/prisma";
 import { verifyCode } from "@/lib/sms/verification";

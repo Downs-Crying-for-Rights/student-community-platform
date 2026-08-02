@@ -2,6 +2,7 @@ import crypto from "crypto";
 import redis from "@/lib/redis";
 import { getSmsProvider } from "@/lib/sms";
 import { getSmsVerificationEnabled } from "@/lib/system-config";
+import { checkRateLimit } from "@/lib/rate-limiter";
 
 const ALWAYS_REQUIRED_PURPOSES = new Set(["register", "account-deletion"]);
 
@@ -33,6 +34,16 @@ export async function sendVerificationCode(
   const limited = await redis.get(limitKey);
   if (limited) {
     return { success: false, error: "请求过于频繁，请稍后再试" };
+  }
+
+  const phoneKey = crypto.createHash("sha256").update(phone).digest("hex");
+  const hourly = await checkRateLimit(`sms-send:${purpose}:${phoneKey}:hour`, 5, 60 * 60 * 1000);
+  if (!hourly.allowed) {
+    return { success: false, error: "验证码发送次数已达上限，请稍后再试" };
+  }
+  const daily = await checkRateLimit(`sms-send:${purpose}:${phoneKey}:day`, 10, 24 * 60 * 60 * 1000);
+  if (!daily.allowed) {
+    return { success: false, error: "验证码发送次数已达上限，请稍后再试" };
   }
 
   // 测试模式使用固定验证码，否则生成随机码

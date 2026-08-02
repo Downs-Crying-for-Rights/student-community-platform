@@ -9,6 +9,7 @@ import {
 import { verifyCode } from "@/lib/sms/verification";
 import { withTelemetry } from "@/lib/telemetry";
 import { getSystemAccessPolicy } from "@/lib/system-config";
+import { markRecentRegistration, verifyCaptcha } from "@/lib/captcha";
 
 const post = async (request: NextRequest) => {
   try {
@@ -19,6 +20,10 @@ const post = async (request: NextRequest) => {
         { error: "参数校验失败", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
+    }
+
+    if (!await verifyCaptcha(body?.captchaId, body?.captchaCode, "register")) {
+      return NextResponse.json({ error: "图形验证码错误或已过期" }, { status: 400 });
     }
 
     const { email, password, nickname, phone, code } = parsed.data;
@@ -55,6 +60,10 @@ const post = async (request: NextRequest) => {
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
+
+    await markRecentRegistration(result.data.userId).catch((error) => {
+      console.error("Failed to mark recent registration", error);
+    });
 
     return NextResponse.json(
       { success: true, message: "注册成功", userId: result.data.userId },

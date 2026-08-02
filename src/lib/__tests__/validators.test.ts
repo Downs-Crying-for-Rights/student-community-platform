@@ -60,7 +60,7 @@ describe("canonicalCaseRequestSchema", () => {
       description: "这是完整的委托事项描述，字数足够通过服务端的必填字段校验。",
       feeStatus: "none",
       demands: ["停止补课"],
-      confirmations: [true, true, true],
+      confirmations: [true, true, true, true],
       riskPreference: "不限",
     },
   };

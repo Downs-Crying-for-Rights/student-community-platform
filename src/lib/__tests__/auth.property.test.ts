@@ -42,6 +42,16 @@ vi.mock("next-auth/providers/credentials", () => ({
   })),
 }));
 
+vi.mock("@/lib/captcha", () => ({
+  captchaTargetKey: (value: string) => value,
+  consumeEmailCaptchaVerified: vi.fn().mockResolvedValue(true),
+  consumeRecentRegistration: vi.fn().mockResolvedValue(false),
+  validateCaptchaProof: vi.fn().mockResolvedValue(true),
+}));
+vi.mock("@/lib/rate-limiter", () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 9, resetAt: Date.now() + 60_000, limit: 10 }),
+}));
+
 import { prisma } from "../prisma";
 
 // ==================== Generators ====================

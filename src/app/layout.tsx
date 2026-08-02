@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Providers } from "@/components/providers/Providers";
 import { MemberShell } from "@/components/layout/MemberShell";
 import { VersionFooter } from "@/components/layout/VersionFooter";
@@ -15,6 +15,12 @@ export const fetchCache = "force-no-store";
 export const metadata: Metadata = {
   title: "学互会",
   description: "面向学生群体的交流与互助社区",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

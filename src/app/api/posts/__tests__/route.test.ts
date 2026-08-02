@@ -99,6 +99,7 @@ describe("GET /api/posts", () => {
           AND: [
             { status: "PUBLISHED" },
             { author: { isShadowBanned: false } },
+            { status: { not: "DELETED" } },
             { visibility: "PUBLIC" },
           ],
         }),

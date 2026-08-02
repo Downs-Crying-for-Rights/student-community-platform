@@ -1,6 +1,7 @@
 import redis from "@/lib/redis";
 import { sendUserMail } from "@/lib/mail";
 import { generateCode } from "@/lib/sms/verification";
+import { checkRateLimit } from "@/lib/rate-limiter";
 
 const PURPOSE = "account-deletion";
 
@@ -10,6 +11,10 @@ const limitKey = (userId: string) => `email-code-limit:${PURPOSE}:${userId}`;
 export async function sendAccountDeletionEmailCode(userId: string) {
   if (await redis.get(limitKey(userId))) {
     return { success: false, error: "请求过于频繁，请稍后再试" };
+  }
+  const hourly = await checkRateLimit(`email-code:${PURPOSE}:${userId}`, 5, 60 * 60 * 1000);
+  if (!hourly.allowed) {
+    return { success: false, error: "验证码发送次数已达上限，请稍后再试" };
   }
 
   const code = process.env.EMAIL_VERIFICATION_TEST_MODE === "true" ? "888888" : await generateCode();

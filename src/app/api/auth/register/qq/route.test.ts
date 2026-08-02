@@ -14,6 +14,7 @@ vi.mock("@/lib/qq-registration", () => ({
 vi.mock("@/lib/rate-limiter", () => ({
   rateLimitKeyForIP: (ip: string) => `hashed:${ip}`,
 }));
+vi.mock("@/lib/captcha", () => ({ verifyCaptcha: vi.fn().mockResolvedValue(true) }));
 vi.mock("@/lib/prisma", () => ({ default: { siteContent: { findMany: mocks.siteContentFindMany, upsert: mocks.siteContentUpsert } } }));
 
 function request(body: unknown) {

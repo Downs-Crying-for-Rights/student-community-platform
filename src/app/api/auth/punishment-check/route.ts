@@ -7,12 +7,17 @@ import { getCurrentPunishmentStatus } from "@/lib/punishment-service";
 import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
 import { asNextResponse } from "@/lib/support-ticket";
 import { withTelemetry } from "@/lib/telemetry";
+import { issueCaptchaProof, validateCaptchaProof } from "@/lib/captcha";
 
 export const POST = withTelemetry(async (req: Request) => {
   const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const limited = await enforceRateLimit(`punishment-check:${rateLimitKeyForIP(forwarded || "unknown")}`, 10, 15 * 60 * 1000);
   if (limited) return asNextResponse(limited.response);
-  const parsed = loginPasswordSchema.safeParse(await req.json().catch(() => null));
+  const body = await req.json().catch(() => null);
+  if (!await validateCaptchaProof(body?.captchaProof, "login-password")) {
+    return NextResponse.json({ valid: false }, { status: 401 });
+  }
+  const parsed = loginPasswordSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ valid: false }, { status: 401 });
   const identifier = parsed.data.identifier;
   const normalized = identifier.toLowerCase();
@@ -24,7 +29,13 @@ export const POST = withTelemetry(async (req: Request) => {
     return NextResponse.json({ valid: false }, { status: 401 });
   }
   const status = await getCurrentPunishmentStatus(user.id);
-  if (!status?.isBanned) return NextResponse.json({ valid: true, banned: false });
+  if (!status?.isBanned) {
+    return NextResponse.json({
+      valid: true,
+      banned: false,
+      captchaProof: await issueCaptchaProof("login-password"),
+    });
+  }
   const punishment = await prisma.userPunishment.findFirst({
     where: { userId: user.id, action: "APPLIED", revokedAt: null, type: { in: ["TEMPORARY_BAN", "PERMANENT_BAN", "ACCOUNT_BAN"] }, startsAt: { lte: new Date() }, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
     select: { reason: true, expiresAt: true },

@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,8 @@ import {
   UserPlus,
   Bot,
   Copy,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
 import {
   loginPasswordSchema,
@@ -65,6 +68,45 @@ export function getEmptyFormState(): LoginFormState {
     pwErrors: {},
     errorMessage: "",
   };
+}
+
+function CaptchaField({
+  image,
+  code,
+  loading,
+  onCodeChange,
+  onRefresh,
+}: {
+  image: string;
+  code: string;
+  loading: boolean;
+  onCodeChange: (value: string) => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="graphical-captcha">图形验证码</Label>
+      <div className="flex items-stretch gap-2">
+        <Input
+          id="graphical-captcha"
+          value={code}
+          onChange={(event) => onCodeChange(event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 5))}
+          placeholder="输入图中字符"
+          autoComplete="off"
+          maxLength={5}
+          className="min-w-0 uppercase"
+          disabled={loading}
+          required
+        />
+        <div className="flex h-12 w-[145px] shrink-0 items-center justify-center overflow-hidden rounded-md border bg-slate-50">
+          {image ? <Image src={image} alt="图形验证码" width={145} height={48} unoptimized className="h-12 w-[145px] object-contain" /> : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+        </div>
+        <Button type="button" variant="outline" size="icon" className="h-12 w-12 shrink-0" onClick={onRefresh} title="换一张验证码" aria-label="换一张验证码">
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -110,6 +152,10 @@ function LoginContent() {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaImage, setCaptchaImage] = useState("");
+  const [captchaCode, setCaptchaCode] = useState("");
+  const [captchaLoading, setCaptchaLoading] = useState(false);
 
   // Active tab
   const [activeTab, setActiveTab] = useState<LoginTab>("email");
@@ -156,6 +202,44 @@ function LoginContent() {
   const [agreementTitle, setAgreementTitle] = useState("");
   const [agreementContent, setAgreementContent] = useState("");
   const [allKeys, setAllKeys] = useState<{ key: string; title: string; revision: number }[]>([]);
+
+  const currentCaptchaPurpose = view === "register"
+    ? "register"
+    : activeTab === "email" ? "login-email" : "login-password";
+
+  const refreshCaptcha = useCallback(async (purpose = currentCaptchaPurpose) => {
+    setCaptchaLoading(true);
+    setCaptchaCode("");
+    try {
+      const response = await fetch(`/api/auth/captcha?purpose=${encodeURIComponent(purpose)}`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "验证码加载失败");
+      setCaptchaId(data.captchaId || "");
+      setCaptchaImage(data.image || "");
+    } catch {
+      setCaptchaId("");
+      setCaptchaImage("");
+      setErrorMessage("图形验证码加载失败，请稍后重试");
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, [currentCaptchaPurpose]);
+
+  useEffect(() => {
+    if (view === "form" || view === "register") void refreshCaptcha(currentCaptchaPurpose);
+  }, [view, activeTab, currentCaptchaPurpose, refreshCaptcha]);
+
+  const verifyLoginCaptcha = async (purpose: "login-email" | "login-password", subject?: string) => {
+    if (!captchaId || captchaCode.length !== 5) throw new Error("请输入 5 位图形验证码");
+    const response = await fetch("/api/auth/captcha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ captchaId, captchaCode, purpose, ...(subject ? { subject } : {}) }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "图形验证码错误或已过期");
+    return data.proof as string | undefined;
+  };
 
   useEffect(() => {
     fetch("/api/access-policy", { cache: "no-store" })
@@ -299,6 +383,7 @@ function LoginContent() {
     setErrorMessage("");
 
     try {
+      await verifyLoginCaptcha("login-email", email.trim());
       const result = await signIn("email", {
         email: email.trim(),
         redirect: false,
@@ -312,8 +397,9 @@ function LoginContent() {
         setView("verify");
       }
     } catch {
-      setErrorMessage("网络错误，请检查网络连接后重试。");
+      setErrorMessage("图形验证码错误、已过期或网络异常，请重试。");
       setView("error");
+      void refreshCaptcha("login-email");
     } finally {
       setLoading(false);
     }
@@ -344,14 +430,16 @@ function LoginContent() {
     setLoading(true);
 
     try {
+      const captchaProof = await verifyLoginCaptcha("login-password");
       const check = await fetch("/api/auth/punishment-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: pwEmail.trim(), password: pwPassword }),
+        body: JSON.stringify({ identifier: pwEmail.trim(), password: pwPassword, captchaProof }),
       });
       const checkData = await check.json().catch(() => ({}));
       if (!check.ok) {
         setErrorMessage("账号或密码错误");
+        void refreshCaptcha("login-password");
         return;
       }
       if (checkData.banned) {
@@ -361,6 +449,7 @@ function LoginContent() {
       const res = await signIn("credentials-password", {
         identifier: pwEmail.trim(),
         password: pwPassword,
+        captchaProof: checkData.captchaProof,
         redirect: false,
         callbackUrl: "/",
       });
@@ -373,6 +462,7 @@ function LoginContent() {
       }
     } catch {
       setErrorMessage("网络错误，请检查网络连接后重试。");
+      void refreshCaptcha("login-password");
     } finally {
       setLoading(false);
     }
@@ -539,6 +629,8 @@ function LoginContent() {
         username: regNickname.trim(),
         password: regPassword,
         agreementRevisions: Object.fromEntries(allKeys.filter(({ key }) => agreedKeys[key]).map(({ key, revision }) => [key, revision])),
+        captchaId,
+        captchaCode,
       };
       const parsed = qqRegistrationSchema.safeParse(registrationData);
       if (!parsed.success) {
@@ -577,6 +669,8 @@ function LoginContent() {
       nickname: regNickname.trim(),
       ...(registrationPolicy.phoneRequired ? { phone: regPhone.trim(), code: regCode.trim() } : {}),
       ...(showInvite ? { inviteCode: inviteCode.trim() } : {}),
+      captchaId,
+      captchaCode,
     };
     const result = (showInvite ? inviteRegisterSchema : registerSchema).safeParse(registrationData);
 
@@ -604,6 +698,7 @@ function LoginContent() {
 
       if (!res.ok) {
         setErrorMessage(data.error || "注册失败，请重试");
+        void refreshCaptcha("register");
         return;
       }
 
@@ -974,6 +1069,14 @@ function LoginContent() {
                 </div>
               )}
 
+              <CaptchaField
+                image={captchaImage}
+                code={captchaCode}
+                loading={captchaLoading || loading}
+                onCodeChange={setCaptchaCode}
+                onRefresh={() => void refreshCaptcha("register")}
+              />
+
               {/* 用户协议 */}
               <div className="space-y-2">
                 {allKeys.map(({ key, title }) => (
@@ -1122,6 +1225,13 @@ function LoginContent() {
                     我们将发送一封包含魔法链接的邮件
                   </p>
                 </div>
+                <CaptchaField
+                  image={captchaImage}
+                  code={captchaCode}
+                  loading={captchaLoading || loading}
+                  onCodeChange={setCaptchaCode}
+                  onRefresh={() => void refreshCaptcha("login-email")}
+                />
                 <Button
                   type="submit"
                   className="w-full"
@@ -1189,6 +1299,13 @@ function LoginContent() {
                     </p>
                   )}
                 </div>
+                <CaptchaField
+                  image={captchaImage}
+                  code={captchaCode}
+                  loading={captchaLoading || loading}
+                  onCodeChange={setCaptchaCode}
+                  onRefresh={() => void refreshCaptcha("login-password")}
+                />
                 <Button
                   type="submit"
                   className="w-full"

@@ -115,4 +115,4 @@ jobs:
             -p "$DEPLOY_PORT" \
             -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "set -eu; APP_DIR=/opt/forum-dcr2026; RELEASE_SHA=$GITHUB_SHA; RELEASE_DIR=\$APP_DIR/releases/\$RELEASE_SHA; ARCHIVE_PATH=/tmp/forum-dcr2026-\$RELEASE_SHA.tar.gz; AI_ENV_PATH=/tmp/forum-dcr2026-\$RELEASE_SHA-ai.env; mkdir -p \$RELEASE_DIR; tar -xzf \$ARCHIVE_PATH -C \$RELEASE_DIR; APP_DIR=\$APP_DIR RELEASE_SHA=\$RELEASE_SHA AI_ENV_PATH=\$AI_ENV_PATH bash \$RELEASE_DIR/scripts/deploy-production.sh"
+            "set -eu; APP_DIR=/opt/forum-dcr2026; RELEASE_SHA=$GITHUB_SHA; RELEASE_DIR=\$APP_DIR/releases/\$RELEASE_SHA; ARCHIVE_PATH=/tmp/forum-dcr2026-\$RELEASE_SHA.tar.gz; AI_ENV_PATH=/tmp/forum-dcr2026-\$RELEASE_SHA-ai.env; mkdir -p \$RELEASE_DIR; tar -xzf \$ARCHIVE_PATH -C \$RELEASE_DIR; APP_DIR=\$APP_DIR RELEASE_SHA=\$RELEASE_SHA AI_ENV_PATH=\$AI_ENV_PATH DEPLOY_ACTOR=$GITHUB_ACTOR DEPLOY_REPOSITORY=$GITHUB_REPOSITORY bash \$RELEASE_DIR/scripts/deploy-production.sh"

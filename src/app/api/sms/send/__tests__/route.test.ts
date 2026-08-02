@@ -8,6 +8,11 @@ vi.mock("@/lib/sms/verification", () => ({
   sendVerificationCode: (...args: unknown[]) =>
     mockSendVerificationCode(...args),
 }));
+vi.mock("@/lib/rate-limiter", () => ({
+  enforceRateLimit: vi.fn().mockResolvedValue(null),
+  rateLimitKeyForIP: (ip: string) => `ip:${ip}`,
+  requestIP: () => "127.0.0.1",
+}));
 
 import { POST } from "../route";
 

@@ -56,6 +56,7 @@ export interface PostData {
   tags: PostTag[];
   case_: { id: string; category: string; status: string; requestStatus: string } | null;
   isAuthor?: boolean;
+  canDelete?: boolean;
   isLiked: boolean;
   isBookmarked: boolean;
 }
@@ -185,6 +186,7 @@ export default function PostDetailPage() {
 
   const isAuthor = post?.isAuthor
     ?? Boolean(session?.user?.id && post?.author.id === session.user.id);
+  const canDelete = post?.canDelete ?? isAuthor;
 
   const handleDelete = useCallback(async () => {
     if (deleteLoading) return;
@@ -446,7 +448,7 @@ export default function PostDetailPage() {
                 />
               )}
 
-              {isAuthor && (
+              {canDelete && (
                 <Button
                   variant="ghost"
                   size="sm"

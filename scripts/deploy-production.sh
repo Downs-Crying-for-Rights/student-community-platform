@@ -366,6 +366,30 @@ systemctl restart forum-dcr2026-log-collector.service
 systemctl enable --now forum-dcr2026-qq-registration-cleanup.timer
 systemctl enable --now forum-dcr2026-identity-evidence-cleanup.timer
 
+if ! docker compose -p "$PROJECT_NAME" exec -T \
+  -e DEPLOY_ACTOR="${DEPLOY_ACTOR:-unknown}" \
+  -e DEPLOY_REPOSITORY="${DEPLOY_REPOSITORY:-Downs-Crying-for-Rights/unknown}" \
+  web node -e '
+    (async () => {
+      const response = await fetch("http://127.0.0.1:3000/v1/internal/deployment-notification", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.INTERNAL_API_TOKEN}`,
+        },
+        body: JSON.stringify({
+          release: process.env.APP_RELEASE,
+          actor: process.env.DEPLOY_ACTOR,
+          repository: process.env.DEPLOY_REPOSITORY,
+        }),
+      });
+      if (!response.ok) throw new Error(`deployment notification returned ${response.status}`);
+      console.log(await response.text());
+    })().catch((error) => { console.error(error); process.exit(1); });
+  '; then
+  echo "Deployment succeeded, but the administrator email notification could not be submitted" >&2
+fi
+
 find "$APP_DIR/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
   | sort -nr \
   | awk 'NR > 3 { sub(/^[^ ]+ /, ""); print }' \

@@ -72,6 +72,10 @@ function makePatchRequest(id: string, body: Record<string, unknown>): NextReques
   });
 }
 
+function makeDeleteRequest(id: string): NextRequest {
+  return new NextRequest(`http://localhost:3000/api/cases/${id}`, { method: "DELETE" });
+}
+
 function setSession(id: string, role: string) {
   mockGetServerSession.mockResolvedValue({
     user: { id, role },
@@ -402,6 +406,63 @@ describe("PATCH /api/cases/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(data.case.status).toBe("CLOSED");
+  });
+});
+
+describe("DELETE /api/cases/[id]", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  function deletableCase(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "case1",
+      submitterId: "user1",
+      status: "OPENED",
+      requestStatus: "PENDING",
+      handlerId: null,
+      accessApplication: { id: "application1", status: "PENDING" },
+      _count: { handlers: 0, posts: 0, messages: 0, mutualAidTasks: 0 },
+      ...overrides,
+    };
+  }
+
+  function mockDeleteTransaction(record: Record<string, unknown> | null) {
+    const accessApplicationDelete = vi.fn();
+    const caseDelete = vi.fn();
+    mockTransaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
+      $executeRaw: vi.fn(),
+      case: { findUnique: vi.fn().mockResolvedValue(record), delete: caseDelete },
+      accessApplication: { delete: accessApplicationDelete },
+      auditLog: { create: vi.fn() },
+    }));
+    return { accessApplicationDelete, caseDelete };
+  }
+
+  it("提交者可以删除尚未进入互助流程的委托表", async () => {
+    setSession("user1", "USER");
+    const transaction = mockDeleteTransaction(deletableCase());
+    const { DELETE } = await import("../[id]/route");
+    const response = await DELETE(makeDeleteRequest("case1"), { params: Promise.resolve({ id: "case1" }) } as never);
+    expect(response.status).toBe(200);
+    expect(transaction.accessApplicationDelete).toHaveBeenCalledWith({ where: { id: "application1" } });
+    expect(transaction.caseDelete).toHaveBeenCalledWith({ where: { id: "case1" } });
+  });
+
+  it("不能删除他人的委托表", async () => {
+    setSession("other", "USER");
+    const transaction = mockDeleteTransaction(deletableCase());
+    const { DELETE } = await import("../[id]/route");
+    const response = await DELETE(makeDeleteRequest("case1"), { params: Promise.resolve({ id: "case1" }) } as never);
+    expect(response.status).toBe(403);
+    expect(transaction.caseDelete).not.toHaveBeenCalled();
+  });
+
+  it("不能删除已通过审核的委托表", async () => {
+    setSession("user1", "USER");
+    const transaction = mockDeleteTransaction(deletableCase({ requestStatus: "APPROVED" }));
+    const { DELETE } = await import("../[id]/route");
+    const response = await DELETE(makeDeleteRequest("case1"), { params: Promise.resolve({ id: "case1" }) } as never);
+    expect(response.status).toBe(409);
+    expect(transaction.caseDelete).not.toHaveBeenCalled();
   });
 });
 

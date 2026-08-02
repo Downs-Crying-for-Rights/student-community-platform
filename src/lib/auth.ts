@@ -9,6 +9,13 @@ import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
 import { loginPasswordSchema } from "@/lib/validators";
 import { getCurrentPunishmentStatus } from "@/lib/punishment-service";
+import {
+  captchaTargetKey,
+  consumeEmailCaptchaVerified,
+  consumeRecentRegistration,
+  validateCaptchaProof,
+} from "@/lib/captcha";
+import { checkRateLimit } from "@/lib/rate-limiter";
 
 export function escapeHtmlAttribute(value: string): string {
   return value
@@ -44,6 +51,15 @@ export const authOptions: NextAuthOptions = {
       from: process.env.SMTP_FROM || "noreply@example.com",
       maxAge: 15 * 60,
       async sendVerificationRequest({ identifier: email, url, provider }) {
+        if (!await consumeEmailCaptchaVerified(email)) {
+          throw new Error("CaptchaRequired");
+        }
+        const emailLimit = await checkRateLimit(
+          `email-login:${captchaTargetKey(email)}`,
+          5,
+          60 * 60 * 1000,
+        );
+        if (!emailLimit.allowed) throw new Error("EmailRateLimited");
         const transport = nodemailer.createTransport(provider.server);
         const escapedUrl = escapeHtmlAttribute(url);
         await transport.sendMail({
@@ -70,12 +86,19 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         identifier: { label: "邮箱、用户名或手机号", type: "text" },
         password: { label: "密码", type: "password" },
+        captchaProof: { label: "图形验证码凭据", type: "text" },
       },
       async authorize(credentials) {
         const parsed = loginPasswordSchema.safeParse(credentials);
         if (!parsed.success) throw new Error("账号或密码错误");
         const { identifier, password } = parsed.data;
         const normalized = identifier.toLowerCase();
+        const loginLimit = await checkRateLimit(
+          `password-login:${captchaTargetKey(normalized)}`,
+          10,
+          15 * 60 * 1000,
+        );
+        if (!loginLimit.allowed) throw new Error("账号或密码错误");
         const user = await prisma.user.findFirst({
           where: { OR: [
             { email: identifier },
@@ -88,6 +111,10 @@ export const authOptions: NextAuthOptions = {
         if (!user || !user.passwordHash || user.deactivatedAt) throw new Error("账号或密码错误");
         const isValid = await bcrypt.compare(password, user.passwordHash);
         if (!isValid) throw new Error("账号或密码错误");
+        const captchaValid = await validateCaptchaProof(credentials?.captchaProof, "login-password");
+        if (!captchaValid && !await consumeRecentRegistration(user.id)) {
+          throw new Error("账号或密码错误");
+        }
         if (user.isBanned) {
           const punishmentStatus = await getCurrentPunishmentStatus(user.id);
           if (punishmentStatus?.isBanned) throw new Error("账号或密码错误");

@@ -257,7 +257,7 @@ describe("GET /api/posts/[id]", () => {
     expect(res.status).toBe(200);
   });
 
-  it("应允许版主查看已删除帖子", async () => {
+  it("版主也不能从普通详情页查看已删除帖子", async () => {
     setSession("mod1", "MODERATOR");
     mockPostFindUnique.mockResolvedValue({
       id: "p1",
@@ -270,7 +270,7 @@ describe("GET /api/posts/[id]", () => {
 
     const { GET } = await import("../../[id]/route");
     const res = await GET(makeRequest("GET"), { params: { id: "p1" } });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
   });
 
   it("心理帖子响应应隐藏真实作者身份，包括对版主", async () => {

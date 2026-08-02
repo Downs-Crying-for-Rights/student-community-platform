@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
+import { isAdminRole, withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { createNotification } from "@/lib/notification";
 import { sendAdminActionMail, sendUserMail } from "@/lib/mail";
@@ -116,6 +116,89 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
     return NextResponse.json({ case: caseRecord });
   } catch (error) {
     console.error("GET /api/cases/[id] error:", error);
+    return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
+  }
+});
+
+const DELETABLE_REQUEST_STATUSES = [
+  "PENDING",
+  "NEED_MORE_INFO",
+  "REJECTED",
+  "MANUAL_REVIEW",
+] as const;
+
+/**
+ * DELETE /api/cases/[id]
+ * Remove a delegation form before it enters the mutual-aid workflow.
+ * Approved or already-active cases are retained as workflow/audit records.
+ */
+export const DELETE = withAuth(async (req: AuthenticatedRequest, context) => {
+  try {
+    const userId = req.user.id;
+    const { id } = await context.params;
+
+    const deleted = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case:${id}`}))`;
+      const caseRecord = await tx.case.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          submitterId: true,
+          status: true,
+          requestStatus: true,
+          handlerId: true,
+          accessApplication: { select: { id: true, status: true } },
+          _count: {
+            select: {
+              handlers: true,
+              posts: true,
+              messages: true,
+              mutualAidTasks: true,
+            },
+          },
+        },
+      });
+
+      if (!caseRecord) return { result: "NOT_FOUND" as const };
+      if (caseRecord.submitterId !== userId && !isAdminRole(req.user.role)) {
+        return { result: "FORBIDDEN" as const };
+      }
+      const hasWorkflowRecords = caseRecord.status !== "OPENED"
+        || caseRecord.handlerId !== null
+        || Object.values(caseRecord._count).some((count) => count > 0);
+      if (
+        !DELETABLE_REQUEST_STATUSES.includes(caseRecord.requestStatus as typeof DELETABLE_REQUEST_STATUSES[number])
+        || hasWorkflowRecords
+      ) {
+        return { result: "ACTIVE" as const };
+      }
+
+      await logAudit(userId, "DELETE_CASE", AuditTargetType.CASE, id, {
+        requestStatus: caseRecord.requestStatus,
+        deletedBy: caseRecord.submitterId === userId ? "submitter" : "admin",
+      }, undefined, tx);
+      if (caseRecord.accessApplication) {
+        await tx.accessApplication.delete({ where: { id: caseRecord.accessApplication.id } });
+      }
+      await tx.case.delete({ where: { id } });
+      return { result: "DELETED" as const };
+    });
+
+    if (deleted.result === "NOT_FOUND") {
+      return NextResponse.json({ error: "委托表不存在" }, { status: 404 });
+    }
+    if (deleted.result === "FORBIDDEN") {
+      return NextResponse.json({ error: "无权删除此委托表" }, { status: 403 });
+    }
+    if (deleted.result === "ACTIVE") {
+      return NextResponse.json(
+        { error: "已通过审核或已进入互助流程的委托表不能删除" },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE /api/cases/[id] error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
 });

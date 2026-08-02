@@ -85,7 +85,7 @@ const validRequest = {
     description: "这是用于测试的完整委托情况描述，包含足够的信息供管理员审核。",
     feeStatus: "none",
     demands: ["停止补课"],
-    confirmations: [true, true, true],
+    confirmations: [true, true, true, true],
     riskPreference: "仅站内沟通",
   },
 };

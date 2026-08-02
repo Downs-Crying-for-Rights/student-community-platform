@@ -5,6 +5,10 @@ vi.mock("@/lib/system-config", () => ({
   getSmsVerificationEnabled: vi.fn().mockResolvedValue(true),
 }));
 
+vi.mock("@/lib/rate-limiter", () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60_000, limit: 5 }),
+}));
+
 // vi.mock factories are hoisted — use inline objects
 vi.mock("@/lib/redis", () => ({
   default: {

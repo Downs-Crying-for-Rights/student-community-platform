@@ -60,6 +60,7 @@ const CONFIRMATION_LABELS = [
   "我确认以上信息真实有效",
   "我已移除所有可识别个人信息",
   "我了解平台不组织、不指挥、不实施任何举报或对抗行动",
+  "我确认以上信息准确、完整，且没有包含对学校违规事宜的诉求，否则自愿接受平台的处罚",
 ];
 
 const textareaClass =
@@ -101,7 +102,7 @@ export default function DelegatePage() {
       feeDetails: "",
       demands: [],
       otherDemand: "",
-      confirmations: [false, false, false] as unknown as [true, true, true],
+      confirmations: [false, false, false, false] as unknown as [true, true, true, true],
     },
   });
 
@@ -156,7 +157,7 @@ export default function DelegatePage() {
           feeDetails: form.feeDetails ?? "",
           demands: form.demands ?? [],
           otherDemand: form.otherDemand ?? "",
-          confirmations: [false, false, false] as unknown as [true, true, true],
+          confirmations: [false, false, false, false] as unknown as [true, true, true, true],
           grade: caseRecord.grade ?? "",
           timeRange: caseRecord.timeRange ?? "",
           province: caseRecord.province ?? "",
@@ -209,7 +210,8 @@ export default function DelegatePage() {
     confirmations &&
     confirmations[0] === true &&
     confirmations[1] === true &&
-    confirmations[2] === true;
+    confirmations[2] === true &&
+    confirmations[3] === true;
 
   const onSubmit = async (data: FormValues) => {
     setError(null);
@@ -308,9 +310,9 @@ export default function DelegatePage() {
   };
 
   const handleConfirmationToggle = (index: number) => {
-    const current = confirmations ? [...confirmations] : [false, false, false];
+    const current = confirmations ? [...confirmations] : [false, false, false, false];
     current[index] = !current[index];
-    setValue("confirmations", current as [boolean, boolean, boolean] as unknown as [true, true, true], {
+    setValue("confirmations", current as [boolean, boolean, boolean, boolean] as unknown as [true, true, true, true], {
       shouldValidate: true,
     });
   };

@@ -56,7 +56,7 @@ const body = {
     description: "这是更新后的详细情况描述，包含足够的信息用于管理员重新审核。",
     feeStatus: "none",
     demands: ["停止补课"],
-    confirmations: [true, true, true],
+    confirmations: [true, true, true, true],
     grade: "高二",
     riskPreference: "仅站内沟通",
   },

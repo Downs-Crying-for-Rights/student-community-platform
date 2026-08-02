@@ -13,6 +13,7 @@ import {
 import prisma from "@/lib/prisma";
 import redis from "@/lib/redis";
 import { runSerializableTransaction } from "@/lib/serializable-transaction";
+import { markRecentRegistration } from "@/lib/captcha";
 
 const REGISTRATION_UNAVAILABLE = "注册凭据无效、已过期或已使用，请返回网站重新申请。";
 
@@ -52,10 +53,13 @@ export async function getQQRegistrationStatus(credential: string) {
   const config = getQQConfig();
   const grant = await prisma.qQGrant.findUnique({
     where: { tokenHash: hashQQGrant(credential, config.grantHmacKey) },
-    select: { purpose: true, expiresAt: true, consumedAt: true, pendingRegistration: { select: { consumedAt: true } } },
+    select: { purpose: true, expiresAt: true, consumedAt: true, pendingRegistration: { select: { consumedAt: true, userId: true } } },
   });
   if (!grant || grant.purpose !== "REGISTRATION_FINALIZE") return "EXPIRED" as const;
-  if (grant.consumedAt && grant.pendingRegistration?.consumedAt) return "COMPLETED" as const;
+  if (grant.consumedAt && grant.pendingRegistration?.consumedAt) {
+    if (grant.pendingRegistration.userId) await markRecentRegistration(grant.pendingRegistration.userId);
+    return "COMPLETED" as const;
+  }
   if (grant.expiresAt <= new Date()) return "EXPIRED" as const;
   return "PENDING" as const;
 }

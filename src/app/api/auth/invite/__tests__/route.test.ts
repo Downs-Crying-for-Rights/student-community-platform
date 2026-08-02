@@ -13,6 +13,10 @@ const mockVerifyCode = vi.fn();
 vi.mock("@/lib/sms/verification", () => ({
   verifyCode: (...args: unknown[]) => mockVerifyCode(...args),
 }));
+vi.mock("@/lib/captcha", () => ({
+  verifyCaptcha: vi.fn().mockResolvedValue(true),
+  markRecentRegistration: vi.fn().mockResolvedValue(undefined),
+}));
 
 // Mock Prisma client
 const mockFindUnique = vi.fn();

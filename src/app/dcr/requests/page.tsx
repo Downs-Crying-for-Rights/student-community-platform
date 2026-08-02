@@ -15,6 +15,7 @@ import {
   UserX,
   ShieldAlert,
   FileEdit,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -92,6 +93,7 @@ function RequestsContent() {
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<RequestStatus | "ALL">(
     statusParam && ["PENDING", "NEED_MORE_INFO", "APPROVED", "REJECTED", "MANUAL_REVIEW"].includes(statusParam)
       ? statusParam
@@ -124,6 +126,25 @@ function RequestsContent() {
   useEffect(() => {
     fetchCases();
   }, [fetchCases]);
+
+  const deleteCase = async (caseId: string) => {
+    if (!window.confirm("确定删除这份委托表吗？删除后无法恢复。")) return;
+    setDeletingId(caseId);
+    setError(null);
+    try {
+      const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}`, { method: "DELETE" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error || "删除委托表失败");
+        return;
+      }
+      setCases((current) => current.filter((item) => item.id !== caseId));
+    } catch {
+      setError("网络错误，请检查连接后重试");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
@@ -230,6 +251,21 @@ function RequestsContent() {
                       {c.requestStatus === "APPROVED" && (
                         <Button asChild variant="default" size="sm" className="shrink-0">
                           <Link href="/dcr/delegate">直接发布委托</Link>
+                        </Button>
+                      )}
+                      {c.requestStatus !== "APPROVED" && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="shrink-0 text-destructive hover:text-destructive"
+                          disabled={deletingId !== null}
+                          onClick={() => void deleteCase(c.id)}
+                        >
+                          {deletingId === c.id
+                            ? <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
+                            : <Trash2 className="mr-1 h-4 w-4" aria-hidden="true" />}
+                          删除
                         </Button>
                       )}
                     </div>

@@ -117,6 +117,13 @@ export const GET = withOptionalAuth(async (req: OptionalAuthRequest) => {
       ];
     }
 
+    // Deleted posts belong exclusively to the administration archive. They
+    // must never reappear in member feeds, including the author's own feed.
+    where.AND = [
+      ...((where.AND as Record<string, unknown>[] | undefined) ?? []),
+      { status: { not: PostStatus.DELETED } },
+    ];
+
     if (boardId) {
       where.boardId = boardId;
     } else if (caseIds && caseIds.length > 0) {

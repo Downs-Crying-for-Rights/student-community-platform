@@ -61,17 +61,16 @@ export const GET = withOptionalAuth(async (
     const isAuthor = post.authorId === userId;
     const isModerator = hasMinimumRole(req.user.role, "MODERATOR");
 
+    if (post.status === "DELETED") {
+      return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
+    }
+
     const contributionAccess = await canManageOwnContributionPost(userId, post);
     const access = await checkPostAccess(req.user, post, { skipZoneAccess: contributionAccess });
     if (!access.allowed) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
     if (post.board.zone === "DCR" && post.case_ && post.case_.requestStatus !== "APPROVED" && !isAuthor && !isModerator) {
-      return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
-    }
-
-    // Don't show DELETED posts unless moderator
-    if (post.status === "DELETED" && !isModerator) {
       return NextResponse.json({ error: "帖子不存在" }, { status: 404 });
     }
 
@@ -99,6 +98,7 @@ export const GET = withOptionalAuth(async (
         isLiked: !!like,
         isBookmarked: !!bookmark,
         isAuthor,
+        canDelete: isAuthor || isModerator,
       },
     });
   } catch (error) {
