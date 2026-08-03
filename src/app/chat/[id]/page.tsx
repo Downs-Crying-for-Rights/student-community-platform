@@ -4,11 +4,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { ArrowLeft, Send, LogIn, Users, Hash, Lock, Settings, UserX, BellOff, Bell, Loader2 } from "lucide-react";
+import { ArrowLeft, AtSign, Send, LogIn, Users, Hash, Lock, Settings, UserX, BellOff, Bell, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { ReportDialog } from "@/components/shared/ReportDialog";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -29,6 +30,7 @@ interface Member {
 
 interface RoomInfo {
   id: string;
+  roomNumber: string;
   name: string;
   description: string;
   type: "PUBLIC" | "PRIVATE";
@@ -37,6 +39,7 @@ interface RoomInfo {
   createdBy: { id: string; nickname: string; avatar: string | null };
   members: Member[];
   memberCount: number;
+  isMember: boolean;
 }
 
 function lsMutedRooms(): Set<string> {
@@ -80,6 +83,8 @@ export default function ChatRoomPage() {
   const [joinRequests, setJoinRequests] = useState<any[]>([]);
   const [manageLoading, setManageLoading] = useState(false);
   const [manageError, setManageError] = useState("");
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
   const [muted, setMuted] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -101,11 +106,11 @@ export default function ChatRoomPage() {
       if (!res.ok) { if (res.status === 401) { router.push("/login"); } return; }
       const data = await res.json();
       setRoom(data.room);
-      setIsMember(data.room.members.some((m: Member) => m.id === userId));
+      setIsMember(Boolean(data.room.isMember));
       setRequestStatus(data.room.joinRequest?.status ?? null);
       setMuted(isMuted(roomId));
     } catch { /* ignore */ }
-  }, [roomId, userId, router]);
+  }, [roomId, router]);
 
   const fetchMessages = useCallback(async (mode: "initial" | "older", cursor?: string, generation = generationRef.current) => {
     const controller = new AbortController();
@@ -230,11 +235,19 @@ export default function ChatRoomPage() {
     try {
       const res = await fetch(`/api/chat/rooms/${roomId}/messages`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: input.trim() }),
+        body: JSON.stringify({
+          content: input.trim(),
+          mentionedUserIds: mentionedUserIds.filter((mentionedId) => {
+            const member = room?.members.find((item) => item.id === mentionedId);
+            return member && input.includes(`@${member.nickname}`);
+          }),
+        }),
       });
       if (res.ok) {
         const data = await res.json();
         setInput("");
+        setMentionedUserIds([]);
+        setShowMentions(false);
         setMessages((current) => current.some((message) => message.id === data.message.id)
           ? current
           : [...current, data.message]);
@@ -283,7 +296,7 @@ export default function ChatRoomPage() {
             {room?.type === "PRIVATE" ? <Lock className="h-3.5 w-3.5 text-muted-foreground" /> : <Hash className="h-3.5 w-3.5 text-muted-foreground" />}
             <h1 className="text-sm font-semibold truncate">{room?.name ?? "加载中..."}</h1>
           </div>
-          <p className="text-xs text-muted-foreground">{room?.memberCount ?? 0} 名成员{room?.description ? ` · ${room.description}` : ""}</p>
+          <p className="text-xs text-muted-foreground">群号 {room?.roomNumber ?? "—"} · {room?.memberCount ?? 0} 名成员{room?.description ? ` · ${room.description}` : ""}</p>
         </div>
         {/* Mute toggle */}
         {isMember && (
@@ -292,7 +305,7 @@ export default function ChatRoomPage() {
             {muted ? <BellOff className="h-4 w-4 text-muted-foreground" /> : <Bell className="h-4 w-4" />}
           </Button>
         )}
-        {!isMember && requestStatus !== "PENDING" && room?.type === "PUBLIC" && (
+        {!isMember && requestStatus !== "PENDING" && room?.status === "APPROVED" && (
           <Button size="sm" onClick={handleJoin} disabled={joining}>
             <LogIn className="mr-1 h-4 w-4" />{joining ? "..." : room?.joinMode === "APPROVAL" ? "申请加入" : "加入"}
           </Button>
@@ -330,7 +343,7 @@ export default function ChatRoomPage() {
               <>
                 <Lock className="h-10 w-10 text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">{room?.type === "PRIVATE" ? "私密群聊" : "加入群聊以查看和发送消息"}</p>
-                {room?.type === "PUBLIC" && <Button onClick={handleJoin} disabled={joining}><LogIn className="mr-1 h-4 w-4" />{joining ? "..." : "加入群聊"}</Button>}
+                <Button onClick={handleJoin} disabled={joining}><LogIn className="mr-1 h-4 w-4" />{joining ? "..." : room?.joinMode === "APPROVAL" ? "申请加入" : "加入群聊"}</Button>
               </>
             )}
           </div>
@@ -339,6 +352,7 @@ export default function ChatRoomPage() {
         ) : (
           messages.map((msg) => (
             <div key={msg.id} className={`flex items-end gap-1 ${isOwnMessage(msg) ? "justify-end" : "justify-start"}`}>
+              {!isOwnMessage(msg) && <Link href={`/u/${msg.sender.id}`} className="shrink-0"><UserAvatar src={msg.sender.avatar} userId={msg.sender.id} name={msg.sender.nickname} size={32} /></Link>}
               <Card className={`max-w-[75%] px-3 py-1.5 ${isOwnMessage(msg) ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                 <Link
                   href={`/u/${msg.sender.id}`}
@@ -354,6 +368,7 @@ export default function ChatRoomPage() {
               {!isOwnMessage(msg) && (
                 <ReportDialog target={{ targetChatMessageId: msg.id }} label="举报群聊消息" compact />
               )}
+              {isOwnMessage(msg) && <Link href={`/u/${msg.sender.id}`} className="shrink-0"><UserAvatar src={msg.sender.avatar} userId={msg.sender.id} name={msg.sender.nickname} size={32} /></Link>}
             </div>
           ))
         )}
@@ -361,7 +376,20 @@ export default function ChatRoomPage() {
 
       {/* Input bar */}
       {isMember && room?.status === "APPROVED" && (
-        <form onSubmit={handleSend} className="flex shrink-0 items-center gap-2 border-t border-border/40 px-3 py-2 bg-background">
+        <form onSubmit={handleSend} className="relative flex shrink-0 items-center gap-2 border-t border-border/40 px-3 py-2 bg-background">
+          {showMentions && (
+            <div className="absolute bottom-full left-3 mb-2 max-h-56 w-64 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+              {room.members.filter((member) => member.id !== userId).length === 0 ? <p className="px-3 py-2 text-xs text-muted-foreground">暂无可提及成员</p> : room.members.filter((member) => member.id !== userId).map((member) => (
+                <button key={member.id} type="button" className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-muted" onClick={() => {
+                  const nickname = member.nickname?.trim() || "未命名用户";
+                  setInput((current) => `${current}${current && !current.endsWith(" ") ? " " : ""}@${nickname} `);
+                  setMentionedUserIds((current) => current.includes(member.id) ? current : [...current, member.id]);
+                  setShowMentions(false);
+                }}><UserAvatar src={member.avatar} userId={member.id} name={member.nickname} size={28} /><span className="truncate">{member.nickname || "未命名用户"}</span></button>
+              ))}
+            </div>
+          )}
+          <Button type="button" size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => setShowMentions((value) => !value)} aria-label="提及群成员"><AtSign className="h-4 w-4" /></Button>
           <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="输入消息..." maxLength={5000}
             className="flex-1 h-9" autoComplete="off" />
           <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={sending || !input.trim()}>

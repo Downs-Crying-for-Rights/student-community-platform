@@ -10,11 +10,13 @@ const mocks = vi.hoisted(() => ({
   requireConsent: vi.fn(),
   logAudit: vi.fn(),
   createNotification: vi.fn(),
+  userFindUnique: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({ default: {
   dMThread: { findUnique: mocks.threadFindUnique, update: mocks.threadUpdate },
   dMMessage: { create: mocks.messageCreate, findMany: vi.fn() },
+  user: { findUnique: mocks.userFindUnique },
   $transaction: mocks.transaction,
 } }));
 vi.mock("@/lib/sensitive-engine", () => ({ scanContent: mocks.scanContent }));
@@ -44,6 +46,7 @@ describe("POST /api/dm/thread/[threadId]", () => {
     mocks.transaction.mockResolvedValue([{ id: "message-1", senderId: "sender", content: "你好" }, {}]);
     mocks.logAudit.mockResolvedValue(undefined);
     mocks.createNotification.mockResolvedValue({});
+    mocks.userFindUnique.mockResolvedValue({ allowDirectMessages: true });
   });
 
   function request() {
@@ -78,5 +81,12 @@ describe("POST /api/dm/thread/[threadId]", () => {
       "Failed to create DM recipient notification",
       expect.any(Error),
     );
+  });
+
+  it("rejects incoming messages when the recipient disabled DMs", async () => {
+    mocks.userFindUnique.mockResolvedValue({ allowDirectMessages: false });
+    const response = await POST(request(), { params: { threadId: "thread-1" } });
+    expect(response.status).toBe(403);
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 vi.mock("next-auth/next", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
+vi.mock("@/lib/rate-limiter", () => ({ enforceRateLimit: vi.fn().mockResolvedValue(null) }));
 
 import { getServerSession } from "next-auth/next";
 import { GET } from "../route";
@@ -74,6 +75,16 @@ describe("GET /api/chat/rooms", () => {
           where: { room: { members: { some: { userId: "user-1" } } } },
         }),
       }),
+    }));
+  });
+
+  it("按完整群号精确查找已审核群聊", async () => {
+    mocks.roomFindMany.mockResolvedValue([]);
+    mocks.roomCount.mockResolvedValue(0);
+    const response = await GET(new NextRequest("http://localhost/api/chat/rooms?roomNumber=12345678"), { params: {} });
+    expect(response.status).toBe(200);
+    expect(mocks.roomFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ roomNumber: "12345678", OR: expect.arrayContaining([{ status: "APPROVED" }]) }),
     }));
   });
 });

@@ -19,13 +19,14 @@ import type { TimelineEvent } from "@/components/dcr/TimelineView";
 import { CaseActionButtons } from "@/components/dcr/CaseActionButtons";
 import { MessagePanel } from "@/components/dcr/MessagePanel";
 import type { CaseStatus } from "@/lib/dcr-ui-helpers";
+import { DELEGATION_FIELD_LABELS } from "@/lib/dcr-delegation-types";
 
 /* ========== Types ========== */
 
 export interface CaseDetail {
   id: string;
   category: string;
-  formData: Record<string, string>;
+  formData: Record<string, unknown>;
   status: string;
   pledgeText: string;
   createdAt: string;
@@ -101,18 +102,18 @@ export function formatDetailDate(dateStr: string): string {
 /**
  * Converts formData object keys to human-readable labels.
  */
-export const FORM_FIELD_LABELS: Record<string, string> = {
-  gradeLevel: "年级",
-  subject: "涉及科目",
-  feeType: "收费类型",
-  amount: "涉及金额",
-  situation: "当前情况",
-  description: "事项描述",
-  expectation: "期望结果",
-};
+export const FORM_FIELD_LABELS: Record<string, string> = DELEGATION_FIELD_LABELS;
 
 export function getFormFieldLabel(key: string): string {
-  return FORM_FIELD_LABELS[key] ?? key;
+  return FORM_FIELD_LABELS[key] ?? "其他信息";
+}
+
+function formatFormFieldValue(key: string, value: unknown): string {
+  if (key === "feeStatus") return ({ none: "未收费", charged: "已收费", unknown: "不清楚" } as Record<string, string>)[String(value)] ?? String(value);
+  if (key === "confirmations" && Array.isArray(value)) return value.every(Boolean) ? "已全部确认" : "未全部确认";
+  if (Array.isArray(value)) return value.map(String).join("、");
+  if (typeof value === "boolean") return value ? "是" : "否";
+  return value == null || value === "" ? "—" : String(value);
 }
 
 /**
@@ -374,7 +375,7 @@ export default function TicketDetailPage() {
                       {getFormFieldLabel(key)}
                     </dt>
                     <dd className="mt-0.5 text-sm text-foreground whitespace-pre-wrap">
-                      {value || "—"}
+                      {formatFormFieldValue(key, value)}
                     </dd>
                   </div>
                 ))}

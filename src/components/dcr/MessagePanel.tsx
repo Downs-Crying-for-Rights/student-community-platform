@@ -123,15 +123,18 @@ export function MessagePanel({ caseId, currentUserId, caseStatus, isSubmitter }:
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const mimeType = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"]
+        .find((candidate) => MediaRecorder.isTypeSupported(candidate));
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       recorderChunksRef.current = [];
       recorder.ondataavailable = (event) => { if (event.data.size) recorderChunksRef.current.push(event.data); };
       recorder.onstop = () => {
         const duration = Math.max(1, Math.round((Date.now() - recordingStartedAtRef.current) / 1000));
         const blob = new Blob(recorderChunksRef.current, { type: recorder.mimeType });
         stream.getTracks().forEach((track) => track.stop());
-        void uploadMedia(new File([blob], `recording-${Date.now()}.webm`, { type: recorder.mimeType }), duration);
+        const baseMime = recorder.mimeType.toLowerCase().split(";", 1)[0];
+        const extension = baseMime === "audio/ogg" ? "ogg" : baseMime === "audio/mp4" ? "m4a" : "webm";
+        void uploadMedia(new File([blob], `recording-${Date.now()}.${extension}`, { type: recorder.mimeType }), duration);
       };
       recorderRef.current = recorder;
       recordingStartedAtRef.current = Date.now();

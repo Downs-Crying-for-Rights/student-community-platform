@@ -74,6 +74,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       return NextResponse.json({ error: "用户不存在" }, { status: 404 });
     }
 
+    if (user.role === "DCR_HELPER") {
+      return NextResponse.json(
+        { error: "DCR 互助员只能帮助他人，不能发布委托" },
+        { status: 403 },
+      );
+    }
+
     const hasDelegationCapability = canSubmitDcrDelegation(user);
     if (!hasDelegationCapability && !user.phone) {
       return NextResponse.json(

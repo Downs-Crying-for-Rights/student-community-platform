@@ -4,9 +4,11 @@ import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { z } from "zod";
 import { scanContent } from "@/lib/sensitive-engine";
 import { cursorWhere, encodeCompoundCursor, parseCompoundCursor } from "@/lib/compound-cursor";
+import { createNotification } from "@/lib/notification";
 
 const sendMessageSchema = z.object({
   content: z.string().min(1).max(5000),
+  mentionedUserIds: z.array(z.string().min(1).max(191)).max(20).default([]),
 });
 
 /**
@@ -135,6 +137,7 @@ export const POST = withAuth(async (
     }
 
     const { content } = parsed.data;
+    const mentionedUserIds = [...new Set(parsed.data.mentionedUserIds)].filter((id) => id !== userId);
 
     // Verify membership
     const isMember = await prisma.chatRoomMember.findUnique({
@@ -142,6 +145,15 @@ export const POST = withAuth(async (
     });
     if (!isMember && req.user.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "请先加入群聊" }, { status: 403 });
+    }
+
+    if (mentionedUserIds.length > 0) {
+      const memberCount = await prisma.chatRoomMember.count({
+        where: { roomId, userId: { in: mentionedUserIds } },
+      });
+      if (memberCount !== mentionedUserIds.length) {
+        return NextResponse.json({ error: "只能提及当前群聊的成员" }, { status: 400 });
+      }
     }
 
     // Sensitive content scan
@@ -172,6 +184,14 @@ export const POST = withAuth(async (
       where: { id: userId },
       select: { id: true, nickname: true, avatar: true },
     });
+
+    await Promise.all(mentionedUserIds.map((mentionedUserId) => createNotification(
+      mentionedUserId,
+      "SYSTEM",
+      `你在群聊中被 ${sender?.nickname?.trim() || "一名成员"} 提及`,
+      content.slice(0, 120),
+      `/chat/${roomId}`,
+    ).catch((error) => console.error("Failed to create chat mention notification", error))));
 
     return NextResponse.json({
       message: {

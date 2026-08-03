@@ -355,7 +355,7 @@ export default function PostDetailPage() {
               <div className="mt-6 flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm">
                 {post.isAnonymous ? <UserAvatar name={displayName} size={40} anonymous /> : (
                   <Link href={`/u/${post.author.id}`} aria-label={`查看 ${displayName} 的主页`} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <UserAvatar src={post.author.avatar} name={displayName} size={40} administratorVerified={post.author.isAdministrator} />
+                    <UserAvatar src={post.author.avatar} userId={post.author.id} name={displayName} size={40} administratorVerified={post.author.isAdministrator} />
                   </Link>
                 )}
                 <div className="min-w-0 flex-1">

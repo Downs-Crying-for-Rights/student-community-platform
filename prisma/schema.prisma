@@ -170,6 +170,7 @@ model User {
   verifiedIdentityHash      String?   @unique
   dmConsentVersion          Int       @default(0)
   dmConsentAcceptedAt       DateTime?
+  allowDirectMessages       Boolean   @default(true)
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
   deactivatedAt             DateTime?
@@ -1558,6 +1559,7 @@ model TelemetryEvent {
 
 model ChatRoom {
   id          String   @id @default(cuid())
+  roomNumber  String   @unique
   name        String
   description String?  @default("")
   type        String   @default("PUBLIC") // PUBLIC | PRIVATE

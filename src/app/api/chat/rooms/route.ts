@@ -5,6 +5,8 @@ import { z } from "zod";
 import { sendAdminActionMail } from "@/lib/mail";
 import { getChatMonitoringConsent } from "@/lib/chat-monitoring-consent";
 import { logAudit } from "@/lib/audit";
+import { randomInt } from "node:crypto";
+import { enforceRateLimit } from "@/lib/rate-limiter";
 
 const createRoomSchema = z.object({
   name: z.string().min(1).max(50),
@@ -26,16 +28,33 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
     const pageSize = Math.min(50, Math.max(1, parseInt(searchParams.get("pageSize") ?? "20")));
-
-    const [rooms, total] = await Promise.all([
-      prisma.chatRoom.findMany({
-        where: {
+    const roomNumber = searchParams.get("roomNumber")?.trim();
+    if (roomNumber && !/^\d{8,12}$/.test(roomNumber)) {
+      return NextResponse.json({ error: "请输入正确的群号" }, { status: 400 });
+    }
+    if (roomNumber) {
+      const limited = await enforceRateLimit(`chat-room-search:${userId}`, 30, 60_000);
+      if (limited) return limited.response as unknown as NextResponse;
+    }
+    const where = roomNumber
+      ? {
+          roomNumber,
           OR: [
-            { type: "PUBLIC", status: "APPROVED" },
+            { status: "APPROVED" },
             { members: { some: { userId } } },
             { createdById: userId },
           ],
-        },
+        }
+      : {
+          OR: [
+            { members: { some: { userId } } },
+            { createdById: userId },
+          ],
+        };
+
+    const [rooms, total] = await Promise.all([
+      prisma.chatRoom.findMany({
+        where,
         include: {
           createdBy: { select: { id: true, nickname: true, avatar: true } },
           _count: { select: { members: true } },
@@ -57,13 +76,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         take: pageSize,
       }),
       prisma.chatRoom.count({
-        where: {
-          OR: [
-            { type: "PUBLIC", status: "APPROVED" },
-            { members: { some: { userId } } },
-            { createdById: userId },
-          ],
-        },
+        where,
       }),
     ]);
 
@@ -71,6 +84,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       const isMember = r.members.length > 0;
       return {
         id: r.id,
+        roomNumber: r.roomNumber,
         name: r.name,
         description: r.description,
         type: r.type,
@@ -119,6 +133,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     const room = await prisma.$transaction(async (tx) => {
       const created = await tx.chatRoom.create({
         data: {
+          roomNumber: String(randomInt(10000000, 100000000)),
           name,
           description: description ?? "",
           type,

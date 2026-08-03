@@ -16,6 +16,7 @@ import {
   Plus,
   MessageCircle,
   LogIn,
+  Search,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,11 +27,13 @@ import { ListSkeleton } from "@/components/shared/Skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
 import { DMConsentGate } from "@/components/dm/DMConsentDialog";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 
 /* ---------- Types ---------- */
 
 interface ChatRoom {
   id: string;
+  roomNumber: string;
   name: string;
   description: string;
   type: "PUBLIC" | "PRIVATE";
@@ -102,9 +105,7 @@ function DMThreadList() {
         <Link key={thread.id} href={`/messages/dm/${thread.id}`} className="block">
           <Card className="transition-colors hover:bg-muted/50">
             <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                <MessageCircle className="h-5 w-5 text-primary" />
-              </div>
+              <UserAvatar src={thread.other.avatar} userId={thread.other.id} name={thread.other.nickname} size={40} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{thread.other.nickname || "平台用户"}</p>
                 <p className="truncate text-xs text-muted-foreground">{thread.lastMessage?.content || "开始一对一交流"}</p>
@@ -211,6 +212,10 @@ function ChatRoomList() {
   const [createNotice, setCreateNotice] = useState("");
   const [monitoringConsent, setMonitoringConsent] = useState<ChatMonitoringConsent | null>(null);
   const [monitoringAccepted, setMonitoringAccepted] = useState(false);
+  const [roomNumberQuery, setRoomNumberQuery] = useState("");
+  const [searchResult, setSearchResult] = useState<ChatRoom | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchNotice, setSearchNotice] = useState("");
 
   const fetchRooms = useCallback(async () => {
     setLoading(true);
@@ -224,6 +229,38 @@ function ChatRoomList() {
   }, []);
 
   useEffect(() => { fetchRooms(); }, [fetchRooms]);
+
+  async function searchRoom(event: React.FormEvent) {
+    event.preventDefault();
+    const roomNumber = roomNumberQuery.trim();
+    if (!/^\d{8,12}$/.test(roomNumber)) {
+      setSearchResult(null); setSearchNotice("请输入 8 至 12 位数字群号"); return;
+    }
+    setSearching(true); setSearchNotice("");
+    try {
+      const response = await fetch(`/api/chat/rooms?roomNumber=${encodeURIComponent(roomNumber)}&pageSize=1`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "搜索失败");
+      const result = data.rooms?.[0] ?? null;
+      setSearchResult(result);
+      if (!result) setSearchNotice("未找到该群聊，请核对群号");
+    } catch (cause) {
+      setSearchResult(null); setSearchNotice(cause instanceof Error ? cause.message : "搜索失败");
+    } finally { setSearching(false); }
+  }
+
+  async function joinSearchResult() {
+    if (!searchResult || searchResult.isMember) return;
+    const url = searchResult.joinMode === "APPROVAL"
+      ? `/api/chat/rooms/${searchResult.id}/join-requests`
+      : `/api/chat/rooms/${searchResult.id}`;
+    const response = await fetch(url, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) { setSearchNotice(data.error || "加入失败"); return; }
+    setSearchNotice(searchResult.joinMode === "APPROVAL" ? "加入申请已提交" : "已加入群聊");
+    setSearchResult((current) => current && searchResult.joinMode === "DIRECT" ? { ...current, isMember: true } : current);
+    if (searchResult.joinMode === "DIRECT") void fetchRooms();
+  }
 
   useEffect(() => {
     if (!showCreate) return;
@@ -279,6 +316,18 @@ function ChatRoomList() {
           <Plus className="mr-1 h-4 w-4" />创建群聊
         </Button>
       </div>
+      <form onSubmit={searchRoom} className="mb-4 flex gap-2" role="search">
+        <Input value={roomNumberQuery} onChange={(event) => setRoomNumberQuery(event.target.value.replace(/\D/g, "").slice(0, 12))} inputMode="numeric" placeholder="输入群号查找群聊" aria-label="群号" />
+        <Button type="submit" variant="outline" disabled={searching || !roomNumberQuery.trim()}><Search className="h-4 w-4" /><span className="sr-only">搜索群聊</span></Button>
+      </form>
+      {searchResult && (
+        <Card className="mb-4 border-primary/40"><CardContent className="flex items-center gap-3 p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">{searchResult.type === "PRIVATE" ? <Lock className="h-5 w-5 text-primary" /> : <Hash className="h-5 w-5 text-primary" />}</div>
+          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{searchResult.name}</p><p className="text-xs text-muted-foreground">群号 {searchResult.roomNumber} · {searchResult.memberCount} 名成员</p></div>
+          {searchResult.isMember ? <Button asChild size="sm"><Link href={`/chat/${searchResult.id}`}>进入</Link></Button> : <Button type="button" size="sm" onClick={() => void joinSearchResult()}>{searchResult.joinMode === "APPROVAL" ? "申请加入" : "加入"}</Button>}
+        </CardContent></Card>
+      )}
+      {searchNotice && <p className="mb-4 text-sm text-muted-foreground" role="status">{searchNotice}</p>}
       {createNotice && (
         <p className="mb-4 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground" role="status">
           {createNotice}
@@ -320,6 +369,7 @@ function ChatRoomList() {
                       {room.status === "REJECTED" && <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">审核未通过</span>}
                       {room.joinMode === "APPROVAL" && <Shield className="h-3 w-3 text-amber-500 shrink-0" />}
                     </div>
+                    <p className="text-[11px] text-muted-foreground">群号 {room.roomNumber}</p>
                     {!room.isMember ? (
                       <p className="text-xs text-muted-foreground">加入群聊后查看消息</p>
                     ) : room.lastMessage ? (

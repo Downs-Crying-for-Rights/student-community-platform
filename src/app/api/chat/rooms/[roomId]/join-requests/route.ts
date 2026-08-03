@@ -75,7 +75,7 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "该群聊尚未通过平台审核" }, { status: 403 });
     }
 
-    if (room.joinMode !== "APPROVAL" || room.type !== "PUBLIC") {
+    if (room.joinMode !== "APPROVAL") {
       return NextResponse.json({ error: "此群聊不需要审核加入" }, { status: 400 });
     }
 

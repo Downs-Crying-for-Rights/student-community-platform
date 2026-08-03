@@ -54,13 +54,16 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     // Check recipient exists
     const recipient = await prisma.user.findUnique({
       where: { id: participantId },
-      select: { id: true },
+      select: { id: true, allowDirectMessages: true },
     });
     if (!recipient) {
       return NextResponse.json({ error: "接收用户不存在" }, { status: 404 });
     }
     if (recipient.id === SYSTEM_ANNOUNCEMENT_USER_ID) {
       return NextResponse.json({ error: "不能主动向平台公告账号发起私信" }, { status: 403 });
+    }
+    if (recipient.allowDirectMessages === false) {
+      return NextResponse.json({ error: "对方已关闭私信" }, { status: 403 });
     }
 
     // Find existing thread (order-independent)

@@ -44,4 +44,10 @@ describe("DCR contribution capabilities", () => {
     expect(canParticipateInDcrWorkflow({ role: "USER", dcrAccess: true, dcrPledgeSigned: true })).toBe(true);
     expect(canParticipateInDcrWorkflow({ role: "ADMIN", dcrAccess: false, dcrPledgeSigned: false })).toBe(true);
   });
+
+  it("keeps DCR helpers in a help-only role", () => {
+    const helper = { role: "DCR_HELPER", dcrAccess: true, dcrPledgeSigned: true, dcrContributionAccess: true };
+    expect(canUseDcrWorkspace(helper)).toBe(true);
+    expect(canSubmitDcrDelegation(helper)).toBe(false);
+  });
 });

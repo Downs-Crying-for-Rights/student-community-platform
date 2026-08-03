@@ -132,6 +132,14 @@ export const POST = withAuth(async (
     if (thread.isSystemReadOnly) {
       return NextResponse.json({ error: "平台公告私信不支持回复" }, { status: 403 });
     }
+    const recipientId = thread.participant1Id === userId ? thread.participant2Id : thread.participant1Id;
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientId },
+      select: { allowDirectMessages: true },
+    });
+    if (recipient?.allowDirectMessages === false) {
+      return NextResponse.json({ error: "对方已关闭私信" }, { status: 403 });
+    }
 
     // Sensitive content scan
     const matches = await scanContent(content);
@@ -162,7 +170,6 @@ export const POST = withAuth(async (
     ]);
 
     await logAudit(userId, "DM_MESSAGE_SEND", "DM_THREAD", threadId, { messageId: message.id });
-    const recipientId = thread.participant1Id === userId ? thread.participant2Id : thread.participant1Id;
     try {
       await createNotification(
         recipientId,

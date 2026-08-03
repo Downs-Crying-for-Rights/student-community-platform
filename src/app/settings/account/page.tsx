@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Loader2, Mail, Smartphone } from "lucide-react";
+import { AlertTriangle, Loader2, Mail, MessageCircle, Smartphone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,15 +31,20 @@ export default function AccountSettingsPage() {
   const [notice, setNotice] = useState({ title: "注销须知", content: "", revision: 0 });
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [noticeAccepted, setNoticeAccepted] = useState(false);
+  const [allowDirectMessages, setAllowDirectMessages] = useState(true);
+  const [privacySaving, setPrivacySaving] = useState(false);
+  const [privacyMessage, setPrivacyMessage] = useState("");
 
   const load = useCallback(async () => {
-    const [response, noticeResponse] = await Promise.all([
+    const [response, noticeResponse, privacyResponse] = await Promise.all([
       fetch("/api/account/deletion-request", { cache: "no-store" }),
       fetch("/api/site-content/account_deletion_notice", { cache: "no-store" }),
+      fetch("/api/users/me/privacy", { cache: "no-store" }),
     ]);
-    const [data, noticeData] = await Promise.all([response.json().catch(() => ({})), noticeResponse.json().catch(() => ({}))]);
+    const [data, noticeData, privacyData] = await Promise.all([response.json().catch(() => ({})), noticeResponse.json().catch(() => ({})), privacyResponse.json().catch(() => ({}))]);
     if (response.ok) setRequest(data.request ?? null);
     if (noticeResponse.ok) setNotice({ title: noticeData.title || "注销须知", content: noticeData.content || "", revision: noticeData.revision || 1 });
+    if (privacyResponse.ok) setAllowDirectMessages(privacyData.allowDirectMessages !== false);
     setLoading(false);
   }, []);
 
@@ -83,9 +88,33 @@ export default function AccountSettingsPage() {
     setSubmitting(false);
   }
 
+  async function updateDirectMessages(allowed: boolean) {
+    setPrivacySaving(true); setPrivacyMessage("");
+    const response = await fetch("/api/users/me/privacy", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowDirectMessages: allowed }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      setAllowDirectMessages(data.allowDirectMessages);
+      setPrivacyMessage(data.allowDirectMessages ? "已允许接收私信" : "已关闭私信");
+    } else setPrivacyMessage(data.error || "私信设置保存失败");
+    setPrivacySaving(false);
+  }
+
   return (
     <main className="mx-auto max-w-screen-md space-y-6 px-4 pb-24 pt-6">
       <h1 className="text-2xl font-bold">账号与注销</h1>
+      <Card>
+        <CardHeader><CardTitle className="flex items-center gap-2"><MessageCircle className="h-5 w-5" />私信设置</CardTitle></CardHeader>
+        <CardContent>
+          <label className="flex min-h-12 cursor-pointer items-center justify-between gap-4">
+            <span><span className="block text-sm font-medium">允许其他用户给我发私信</span><span className="mt-1 block text-xs text-muted-foreground">关闭后，其他用户无法新建会话或在现有会话中向你发送消息；你仍可查看并举报历史私信。</span></span>
+            <input type="checkbox" role="switch" checked={allowDirectMessages} disabled={loading || privacySaving} onChange={(event) => void updateDirectMessages(event.target.checked)} className="h-5 w-5 shrink-0 accent-primary" aria-label="允许接收私信" />
+          </label>
+          {privacyMessage && <p className="mt-3 text-sm text-muted-foreground" role="status">{privacyMessage}</p>}
+        </CardContent>
+      </Card>
       <Card className="border-destructive/40">
         <CardHeader><CardTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />申请注销账号</CardTitle></CardHeader>
         <CardContent className="space-y-4">

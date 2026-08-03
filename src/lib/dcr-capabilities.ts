@@ -18,5 +18,6 @@ export function canCreateDcrPost(user: DcrCapabilitySubject): boolean {
 }
 
 export function canSubmitDcrDelegation(user: DcrCapabilitySubject): boolean {
+  if (user.role === "DCR_HELPER") return false;
   return user.role === "ADMIN" || user.role === "SUPER_ADMIN" || user.dcrAccess || user.dcrContributionAccess === true;
 }

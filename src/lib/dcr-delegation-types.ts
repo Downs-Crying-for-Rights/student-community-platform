@@ -61,6 +61,33 @@ export const DEMAND_OPTIONS: string[] = [
   '其他',
 ];
 
+export const DELEGATION_FIELD_LABELS: Record<string, string> = {
+  contentType: '内容类型',
+  schoolName: '学校名称',
+  schoolCategory: '学校性质',
+  schoolType: '学校类型',
+  schoolAddress: '学校地址',
+  reportChannels: '已尝试的举报途径',
+  description: '详细描述',
+  feeStatus: '收费情况',
+  feeDetails: '收费详情',
+  demands: '诉求',
+  otherDemand: '其他诉求',
+  confirmations: '信息确认',
+  grade: '年级',
+  gradeLevel: '年级',
+  subject: '涉及科目',
+  timeRange: '相关时间',
+  province: '省份',
+  city: '城市',
+  expectedHelperProvince: '期望互助员省份',
+  riskPreference: '沟通方式偏好',
+  feeType: '收费类型',
+  amount: '涉及金额',
+  situation: '当前情况',
+  expectation: '期望结果',
+};
+
 /** 描述模板映射 */
 export const DESCRIPTION_TEMPLATES: Record<string, string> = {
   '补课': [

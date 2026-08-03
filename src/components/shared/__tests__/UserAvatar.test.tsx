@@ -15,6 +15,12 @@ describe("UserAvatar", () => {
     expect(renderToStaticMarkup(<UserAvatar name="用户" />)).not.toContain("<img");
   });
 
+  it("routes stored user avatars through the private avatar endpoint", () => {
+    const html = renderToStaticMarkup(<UserAvatar src="https://oss.example/avatar.webp" userId="user 1" name="用户" />);
+    expect(html).toContain("%2Fapi%2Fusers%2Fuser%25201%2Favatar");
+    expect(html).not.toContain("oss.example");
+  });
+
   it("never exposes a real avatar for an anonymous user", () => {
     expect(renderToStaticMarkup(<UserAvatar src="https://example.com/avatar.png" name="匿名用户" anonymous />)).not.toContain("avatar.png");
   });

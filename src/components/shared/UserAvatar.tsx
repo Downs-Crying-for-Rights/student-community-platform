@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 type UserAvatarProps = {
   src?: string | null;
+  userId?: string | null;
   name?: string | null;
   size?: number;
   anonymous?: boolean;
@@ -15,11 +16,12 @@ type UserAvatarProps = {
   className?: string;
 };
 
-export function UserAvatar({ src, name, size = 40, anonymous = false, administratorVerified = false, className }: UserAvatarProps) {
+export function UserAvatar({ src, userId, name, size = 40, anonymous = false, administratorVerified = false, className }: UserAvatarProps) {
+  const avatarSrc = userId && src ? `/api/users/${encodeURIComponent(userId)}/avatar` : src;
   return (
     <span className={cn("relative inline-flex shrink-0", className)} style={{ width: size, height: size }}>
-      {src && !anonymous ? (
-        <Image src={src} alt={`${name || "用户"} 头像`} width={size} height={size} className="h-full w-full rounded-full object-cover" />
+      {avatarSrc && !anonymous ? (
+        <Image src={avatarSrc} alt={`${name || "用户"} 头像`} width={size} height={size} className="h-full w-full rounded-full object-cover" />
       ) : (
         <span className="flex h-full w-full items-center justify-center rounded-full bg-muted" aria-hidden="true">
           <User className="h-1/2 w-1/2 text-muted-foreground" />

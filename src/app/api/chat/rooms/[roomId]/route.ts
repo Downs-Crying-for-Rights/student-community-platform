@@ -40,26 +40,28 @@ export const GET = withAuth(async (
     // Pending/rejected public rooms are visible only to members and moderators.
     const isMember = room.members.some((m) => m.userId === userId);
     const canReview = hasMinimumRole(req.user.role, "MODERATOR");
-    const isApprovedPublic = room.type === "PUBLIC" && room.status === "APPROVED";
-    if (!isApprovedPublic && !isMember && !canReview) {
+    const isApproved = room.status === "APPROVED";
+    if (!isApproved && !isMember && !canReview) {
       return NextResponse.json({ error: "无权访问此私密群聊" }, { status: 403 });
     }
 
     return NextResponse.json({
       room: {
         id: room.id,
+        roomNumber: room.roomNumber,
         name: room.name,
         description: room.description,
         type: room.type,
         status: room.status,
         joinMode: room.joinMode,
         createdBy: room.createdBy,
-        members: room.members.map((m) => ({
+        members: (isMember || canReview ? room.members : []).map((m) => ({
           role: m.role,
           joinedAt: m.joinedAt,
           ...m.user,
         })),
         memberCount: room._count.members,
+        isMember,
         updatedAt: room.updatedAt,
         joinRequest: room.joinRequests[0] ?? null,
       },
@@ -90,7 +92,7 @@ export const POST = withAuth(async (
       return NextResponse.json({ error: "群聊不存在" }, { status: 404 });
     }
 
-    if (room.type !== "PUBLIC" || room.status !== "APPROVED") {
+    if (room.status !== "APPROVED") {
       return NextResponse.json({ error: "该群聊尚未通过审核或不可公开加入" }, { status: 403 });
     }
 

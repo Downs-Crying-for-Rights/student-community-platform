@@ -92,6 +92,16 @@ describe("/api/dm", () => {
     expect(response.status).toBe(200);
   });
 
+  it("does not create a conversation when the recipient disabled DMs", async () => {
+    mocks.userFindUnique.mockResolvedValue({ id: otherUser, allowDirectMessages: false });
+    const response = await POST(new NextRequest("http://localhost/api/dm", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ participantId: otherUser }),
+    }), {} as never);
+    expect(response.status).toBe(403);
+    expect(mocks.threadUpsert).not.toHaveBeenCalled();
+  });
+
   it("never includes an administrator as a conversation participant", async () => {
     mocks.threadFindMany.mockResolvedValue([{
       id: "thread-1",

@@ -89,6 +89,7 @@ export default function DCREntryPage() {
   }, [reloadKey, sessionAccess, sessionStatus, update]);
 
   const mode = getDcrEntryMode(progress?.admission ?? null, loading, Boolean(error));
+  const isHelper = session?.user?.role === "DCR_HELPER";
 
   return (
     <div className="min-h-screen bg-slate-50/40 dark:bg-slate-950/10">
@@ -221,8 +222,8 @@ export default function DCREntryPage() {
             <div className="mb-5 flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50/50 p-4 dark:border-green-900/50 dark:bg-green-950/10">
               <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
               <div>
-                <h2 id="workspace-title" className="font-semibold text-green-900 dark:text-green-200">DCR 准入已完成</h2>
-                <p className="mt-1 text-sm text-green-800/80 dark:text-green-300/80">以下仅汇总你自己提交或实际参与的项目。</p>
+                <h2 id="workspace-title" className="font-semibold text-green-900 dark:text-green-200">{isHelper ? "DCR 互助员工作台" : "DCR 准入已完成"}</h2>
+                <p className="mt-1 text-sm text-green-800/80 dark:text-green-300/80">{isHelper ? "互助员身份只能认领并帮助他人，不能发布委托。" : "以下仅汇总你自己提交或实际参与的项目。"}</p>
               </div>
             </div>
 
@@ -233,7 +234,7 @@ export default function DCREntryPage() {
                 </div>
                 <div>
                   <h3 className="font-semibold">{DCR_TASK_HALL_CARD.title}</h3>
-                  <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{DCR_TASK_HALL_CARD.description}</p>
+                  <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{isHelper ? "浏览已审核委托，认领任务并为求助者提供信息互助。" : DCR_TASK_HALL_CARD.description}</p>
                 </div>
               </div>
               <Button asChild className="shrink-0">

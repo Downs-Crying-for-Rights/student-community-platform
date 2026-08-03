@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { z } from "zod";
@@ -68,6 +69,7 @@ const textareaClass =
 
 export default function DelegatePage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sensitiveMatches, setSensitiveMatches] = useState<SensitiveMatch[]>([]);
@@ -338,6 +340,18 @@ export default function DelegatePage() {
       setPublishingCaseId(null);
     }
   };
+
+  if (session?.user?.role === "DCR_HELPER") {
+    return (
+      <div className="mx-auto max-w-screen-md px-4 py-10">
+        <Card><CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+          <ShieldAlert className="h-10 w-10 text-primary" />
+          <div><h1 className="text-lg font-semibold">DCR 互助员不能发布委托</h1><p className="mt-2 text-sm text-muted-foreground">互助员身份用于认领和帮助他人的委托。</p></div>
+          <Button asChild><Link href="/dcr/tasks">前往互助任务大厅</Link></Button>
+        </CardContent></Card>
+      </div>
+    );
+  }
 
   if (submittedCaseId) {
     return (

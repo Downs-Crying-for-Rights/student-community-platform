@@ -85,7 +85,7 @@ function UserResultItem({ user }: { user: APIUser }) {
       className="flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`查看用户：${displayName}`}
     >
-      <UserAvatar src={user.avatar} name={displayName} size={40} administratorVerified={user.isAdministrator} />
+      <UserAvatar src={user.avatar} userId={user.id} name={displayName} size={40} administratorVerified={user.isAdministrator} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
         <p className="text-xs text-muted-foreground">{user._count.posts} 篇帖子</p>

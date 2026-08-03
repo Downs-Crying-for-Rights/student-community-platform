@@ -15,9 +15,11 @@ describe("群聊审核闭环", () => {
     expect(source).toContain("公开群聊已提交审核");
   });
 
-  it("普通列表只公开审核通过的群聊", () => {
+  it("普通列表只显示我的群聊，并支持按群号查找已审核群聊", () => {
     const source = read("app/api/chat/rooms/route.ts");
-    expect(source.match(/type: "PUBLIC", status: "APPROVED"/g)).toHaveLength(2);
+    expect(source).toContain('const roomNumber = searchParams.get("roomNumber")');
+    expect(source).toContain('{ members: { some: { userId } } }');
+    expect(source).toContain('{ status: "APPROVED" }');
     expect(source).toContain("status: r.status");
   });
 

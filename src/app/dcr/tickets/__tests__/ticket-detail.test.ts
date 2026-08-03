@@ -101,12 +101,12 @@ describe("getFormFieldLabel", () => {
     expect(getFormFieldLabel("feeType")).toBe("收费类型");
     expect(getFormFieldLabel("amount")).toBe("涉及金额");
     expect(getFormFieldLabel("situation")).toBe("当前情况");
-    expect(getFormFieldLabel("description")).toBe("事项描述");
+    expect(getFormFieldLabel("description")).toBe("详细描述");
     expect(getFormFieldLabel("expectation")).toBe("期望结果");
   });
 
-  it("returns raw key for unknown field", () => {
-    expect(getFormFieldLabel("unknownField")).toBe("unknownField");
+  it("does not expose an English key for an unknown field", () => {
+    expect(getFormFieldLabel("unknownField")).toBe("其他信息");
   });
 });
 

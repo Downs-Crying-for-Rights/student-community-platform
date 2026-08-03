@@ -276,7 +276,7 @@ export default function ProfilePage() {
           </div>
         ) : user ? (
           <div className="mb-6 flex flex-col items-center gap-3 py-8">
-            <UserAvatar src={user.avatar} name={user.nickname} size={80} administratorVerified={user.isAdministrator} />
+            <UserAvatar src={user.avatar} userId={user.id} name={user.nickname} size={80} administratorVerified={user.isAdministrator} />
             <h1 className="text-xl font-bold text-foreground">
               {user.nickname ?? "未命名用户"}
             </h1>
