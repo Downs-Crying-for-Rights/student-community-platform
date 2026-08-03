@@ -8,6 +8,7 @@ import {
   supportTicketSelect,
 } from "@/lib/support-ticket";
 import { containsBlockedSupportWord } from "@/lib/support-ticket-server";
+import { hasAcceptedSupportTicketAttestation } from "@/lib/support-ticket-policy";
 
 const CREATE_LIMIT = 5;
 const CREATE_WINDOW_MS = 60 * 60 * 1000;
@@ -31,6 +32,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const content = readRequiredText(body?.content, 5000);
   if (!subject || !content) {
     return noStoreJson({ error: "主题和问题描述不能为空，且不得超过长度限制" }, { status: 400 });
+  }
+  if (!hasAcceptedSupportTicketAttestation(body?.informationAttested)) {
+    return noStoreJson({ error: "请先勾选并确认工单信息声明" }, { status: 400 });
   }
   if (await containsBlockedSupportWord(`${subject}\n${content}`)) {
     return noStoreJson({ error: "内容包含不允许提交的词语，请修改后重试" }, { status: 400 });

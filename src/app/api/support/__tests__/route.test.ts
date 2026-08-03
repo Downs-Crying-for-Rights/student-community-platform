@@ -39,7 +39,7 @@ describe("/api/support", () => {
     mocks.create.mockResolvedValue({ id: "ticket-1" });
     const response = await POST(new NextRequest("http://localhost/api/support", {
       method: "POST",
-      body: JSON.stringify({ subject: "Account access", content: "My phone is 13800000000" }),
+      body: JSON.stringify({ subject: "Account access", content: "My phone is 13800000000", informationAttested: true }),
       headers: { "Content-Type": "application/json" },
     }), { params: {} });
     expect(response.status).toBe(201);
@@ -50,11 +50,22 @@ describe("/api/support", () => {
     }) }));
   });
 
+  it("requires the information attestation before creating a ticket", async () => {
+    const response = await POST(new NextRequest("http://localhost/api/support", {
+      method: "POST",
+      body: JSON.stringify({ subject: "Account access", content: "Please help" }),
+      headers: { "Content-Type": "application/json" },
+    }), { params: {} });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "请先勾选并确认工单信息声明" });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
   it("blocks configured words without echoing submitted content", async () => {
     mocks.scan.mockResolvedValue([{ word: "forbidden-value", category: "OTHER", startIndex: 0, endIndex: 15 }]);
     const response = await POST(new NextRequest("http://localhost/api/support", {
       method: "POST",
-      body: JSON.stringify({ subject: "forbidden-value", content: "private body" }),
+      body: JSON.stringify({ subject: "forbidden-value", content: "private body", informationAttested: true }),
       headers: { "Content-Type": "application/json" },
     }), { params: {} });
     const text = await response.text();
