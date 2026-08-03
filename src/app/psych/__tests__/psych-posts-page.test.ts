@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizePsychPost } from "../posts/page";
+import {
+  buildPsychPostsUrl,
+  getPsychPostingGuidelines,
+  normalizePsychPost,
+} from "../posts/page";
 
 describe("心理区帖子页", () => {
   it("normalizes the API tag relation for PostCard", () => {
@@ -18,5 +22,18 @@ describe("心理区帖子页", () => {
 
     expect(post.tags).toEqual([{ id: "tag-1", name: "情绪" }]);
     expect(post.board.zone).toBe("PSYCHOLOGY");
+  });
+
+  it("builds psychology-zone pagination and board filters", () => {
+    expect(buildPsychPostsUrl({ page: 2, boardId: "board-1", sort: "popular" })).toContain(
+      "zone=PSYCHOLOGY&page=2&pageSize=12&sort=popular&boardId=board-1",
+    );
+  });
+
+  it("publishes clear peer-support and privacy boundaries", () => {
+    const text = getPsychPostingGuidelines().map((item) => `${item.title}${item.description}`).join(" ");
+    expect(text).toContain("不诊断");
+    expect(text).toContain("隐私");
+    expect(text).toContain("12356");
   });
 });

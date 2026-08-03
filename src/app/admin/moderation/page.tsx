@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { Shield, FileText, AlertTriangle, User, Filter } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Shield, FileText, AlertTriangle, User, Filter, RefreshCw, ShieldAlert } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,7 +17,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ListSkeleton } from "@/components/shared/Skeleton";
-import { EmptyState } from "@/components/shared/EmptyState";
 import { AiReviewPanel } from "@/components/admin/AiReviewPanel";
 import { SafeMarkdown } from "@/components/shared/SafeMarkdown";
 import { cn } from "@/lib/utils";
@@ -36,6 +35,8 @@ export interface ModerationPost {
   revisionId?: string;
   currentTitle?: string;
   currentContent?: string;
+  safetyPriority?: "URGENT" | "ELEVATED" | "STANDARD";
+  safetyNotice?: string | null;
 }
 
 export interface BoardOption {
@@ -87,10 +88,35 @@ export function groupPostsByColumn(
 /** Filter posts by content type and board */
 export function filterPosts(
   posts: ModerationPost[],
-  filterBoard: string
+  filterBoard: string,
+  filterZone = "",
 ): ModerationPost[] {
-  if (!filterBoard) return posts;
-  return posts.filter((p) => p.board.id === filterBoard);
+  return posts.filter((post) =>
+    (!filterZone || post.board.zone === filterZone)
+    && (!filterBoard || post.board.id === filterBoard),
+  );
+}
+
+export function getModerationAuthorLabel(post: ModerationPost): string {
+  if (post.board.zone === "PSYCHOLOGY") return "心理区匿名用户";
+  return post.author.nickname ?? "匿名用户";
+}
+
+export function getZoneLabel(zone: string): string {
+  if (zone === "PSYCHOLOGY") return "心理区";
+  if (zone === "DCR") return "DCR";
+  return "公共区";
+}
+
+export function mergeBoardOptions(...groups: BoardOption[][]): BoardOption[] {
+  const boards = new Map<string, BoardOption>();
+  for (const group of groups) {
+    for (const board of group) boards.set(board.id, board);
+  }
+  return [...boards.values()].sort((a, b) =>
+    getZoneLabel(a.zone).localeCompare(getZoneLabel(b.zone), "zh-CN")
+    || a.name.localeCompare(b.name, "zh-CN"),
+  );
 }
 
 const ROLE_HIERARCHY: Record<string, number> = {
@@ -116,32 +142,44 @@ export default function ModerationPage() {
   const [posts, setPosts] = useState<ModerationPost[]>([]);
   const [boards, setBoards] = useState<BoardOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filterBoard, setFilterBoard] = useState("");
+  const [filterZone, setFilterZone] = useState("");
   const [selectedPost, setSelectedPost] = useState<ModerationPost | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [safetyAcknowledged, setSafetyAcknowledged] = useState(false);
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       // Fetch posts across all statuses for the kanban view
       const statuses = ["PENDING", "PUBLISHED", "REJECTED"];
-      const results = await Promise.all([
+      const responses = await Promise.all([
         ...statuses.map((status) =>
-          fetch(`/api/posts?status=${status}&pageSize=50`).then((r) =>
-            r.ok ? r.json() : { posts: [] }
-          )
+          fetch(`/api/moderation/queue?status=${status}&pageSize=50`, { cache: "no-store" })
         ),
-        fetch("/api/moderation/revisions").then((r) => r.ok ? r.json() : { revisions: [] }),
+        fetch("/api/moderation/revisions", { cache: "no-store" }),
       ]);
+      const results = await Promise.all(responses.map(async (response) => {
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(data?.error || "审核队列加载失败");
+        return data;
+      }));
       const allPosts: ModerationPost[] = [
         ...results.slice(0, statuses.length).flatMap((r) => r.posts ?? []),
         ...(results.at(-1)?.revisions ?? []),
       ];
       setPosts(allPosts);
-    } catch {
-      // silently ignore
+      setBoards((current) => mergeBoardOptions(
+        current,
+        allPosts.map((post) => post.board),
+      ));
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "审核队列加载失败");
     } finally {
       setLoading(false);
     }
@@ -152,7 +190,7 @@ export default function ModerationPage() {
       const res = await fetch("/api/boards");
       if (res.ok) {
         const data = await res.json();
-        setBoards(data.boards ?? []);
+        setBoards((current) => mergeBoardOptions(current, data.boards ?? []));
       }
     } catch {
       // silently ignore
@@ -196,22 +234,27 @@ export default function ModerationPage() {
     );
   }
 
-  const filtered = filterPosts(posts, filterBoard);
+  const filtered = filterPosts(posts, filterBoard, filterZone);
   const grouped = groupPostsByColumn(filtered);
+  const filteredBoards = filterZone ? boards.filter((board) => board.zone === filterZone) : boards;
 
   async function handleApprove(postId: string) {
     setActionLoading(true);
+    setActionError(null);
     try {
       const res = await fetch(`/api/moderation/${postId}/approve`, {
         method: "POST",
       });
+      const data = await res.json().catch(() => null);
       if (res.ok) {
         setDialogOpen(false);
         setSelectedPost(null);
         await fetchPosts();
+      } else {
+        setActionError(data?.error || "审核操作失败");
       }
     } catch {
-      // silently ignore
+      setActionError("网络错误，请重试");
     } finally {
       setActionLoading(false);
     }
@@ -220,20 +263,24 @@ export default function ModerationPage() {
   async function handleReject(postId: string) {
     if (!rejectReason.trim()) return;
     setActionLoading(true);
+    setActionError(null);
     try {
       const res = await fetch(`/api/moderation/${postId}/reject`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: rejectReason }),
       });
+      const data = await res.json().catch(() => null);
       if (res.ok) {
         setDialogOpen(false);
         setSelectedPost(null);
         setRejectReason("");
         await fetchPosts();
+      } else {
+        setActionError(data?.error || "审核操作失败");
       }
     } catch {
-      // silently ignore
+      setActionError("网络错误，请重试");
     } finally {
       setActionLoading(false);
     }
@@ -242,6 +289,8 @@ export default function ModerationPage() {
   function openDetail(post: ModerationPost) {
     setSelectedPost(post);
     setRejectReason("");
+    setActionError(null);
+    setSafetyAcknowledged(false);
     setDialogOpen(true);
   }
 
@@ -250,29 +299,62 @@ export default function ModerationPage() {
       <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4")}>
         {/* Header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
-            <Shield className="h-6 w-6" aria-hidden="true" />
-            审核看板
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
+              <Shield className="h-6 w-6" aria-hidden="true" />
+              审核看板
+            </h1>
+            <Button type="button" variant="ghost" size="icon" onClick={() => void fetchPosts()} aria-label="刷新审核队列" title="刷新审核队列">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
 
           {/* Filters */}
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <select
-              value={filterBoard}
-              onChange={(e) => setFilterBoard(e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
-              aria-label="按板块筛选"
-            >
-              <option value="">全部板块</option>
-              {boards.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex rounded-md border p-1" role="group" aria-label="按专区筛选">
+              {[
+                ["", "全部"],
+                ["PUBLIC", "公共区"],
+                ["PSYCHOLOGY", "心理区"],
+                ["DCR", "DCR"],
+              ].map(([value, label]) => (
+                <Button
+                  key={value || "all"}
+                  type="button"
+                  size="sm"
+                  variant={filterZone === value ? "secondary" : "ghost"}
+                  onClick={() => { setFilterZone(value); setFilterBoard(""); }}
+                  className="h-8 px-2.5"
+                >
+                  {label}
+                </Button>
               ))}
-            </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <select
+                value={filterBoard}
+                onChange={(e) => setFilterBoard(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label="按板块筛选"
+              >
+                <option value="">全部板块</option>
+                {filteredBoards.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
+
+        {loadError && (
+          <div role="alert" className="mb-4 flex items-center justify-between gap-3 border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            <span>{loadError}</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => void fetchPosts()}>重试</Button>
+          </div>
+        )}
 
         {/* Kanban Board */}
         {loading ? (
@@ -306,7 +388,7 @@ export default function ModerationPage() {
                     <div className="space-y-2">
                       {columnPosts.map((post) => (
                         <button
-                          key={post.id}
+                          key={`${post.id}:${post.revisionId ?? post.status}`}
                           type="button"
                           onClick={() => openDetail(post)}
                           className="w-full text-left"
@@ -318,9 +400,20 @@ export default function ModerationPage() {
                                 {post.title}
                               </p>
                               {post.revisionId && <p className="mt-1 text-[11px] font-medium text-blue-600">已发布帖修改待审</p>}
+                              {post.safetyPriority && post.safetyPriority !== "STANDARD" && (
+                                <p className={cn(
+                                  "mt-1 inline-flex items-center gap-1 text-[11px] font-semibold",
+                                  post.safetyPriority === "URGENT" ? "text-destructive" : "text-amber-700 dark:text-amber-400",
+                                )}>
+                                  <ShieldAlert className="h-3 w-3" />
+                                  {post.safetyPriority === "URGENT" ? "安全线索：优先复核" : "安全线索：谨慎复核"}
+                                </p>
+                              )}
                               <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                                 <User className="h-3 w-3" aria-hidden="true" />
-                                <span>{post.author.nickname ?? "匿名用户"}</span>
+                                <span>{getModerationAuthorLabel(post)}</span>
+                                <span>·</span>
+                                <span>{getZoneLabel(post.board.zone)}</span>
                                 <span>·</span>
                                 <span>{post.board.name}</span>
                               </div>
@@ -369,7 +462,7 @@ export default function ModerationPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">
-                      {selectedPost.author.nickname ?? "匿名用户"}
+                      {getModerationAuthorLabel(selectedPost)}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {new Date(selectedPost.createdAt).toLocaleString("zh-CN")}
@@ -381,6 +474,32 @@ export default function ModerationPage() {
                 <div className="rounded-lg border bg-muted/30 p-4">
                   <SafeMarkdown content={selectedPost.content} className="text-foreground" />
                 </div>
+
+                {selectedPost.safetyPriority && selectedPost.safetyPriority !== "STANDARD" && (
+                  <div role="alert" className={cn(
+                    "border p-4 text-sm",
+                    selectedPost.safetyPriority === "URGENT"
+                      ? "border-destructive/40 bg-destructive/5"
+                      : "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20",
+                  )}>
+                    <p className="flex items-center gap-2 font-semibold">
+                      <ShieldAlert className="h-4 w-4" />
+                      {selectedPost.safetyNotice}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">此提示不是诊断，也不代替人工判断。若存在即时危险，应先按平台紧急处置流程升级处理，不要仅以删帖代替处置。</p>
+                    {selectedPost.status === "PENDING" && selectedPost.safetyPriority === "URGENT" && (
+                      <label className="mt-3 flex min-h-[44px] cursor-pointer items-center gap-2 border-t pt-3">
+                        <input
+                          type="checkbox"
+                          checked={safetyAcknowledged}
+                          onChange={(event) => setSafetyAcknowledged(event.target.checked)}
+                          className="h-4 w-4"
+                        />
+                        <span>我已完成人工安全复核并确认后续处置</span>
+                      </label>
+                    )}
+                  </div>
+                )}
 
                 {/* Tags */}
                 {selectedPost.tags.length > 0 && (
@@ -414,6 +533,7 @@ export default function ModerationPage() {
                     />
                   </div>
                 )}
+                {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
               </div>
 
               {/* Action buttons (only for PENDING posts) */}
@@ -430,7 +550,7 @@ export default function ModerationPage() {
                   </Button>
                   <Button
                     onClick={() => handleApprove(selectedPost.id)}
-                    disabled={actionLoading}
+                    disabled={actionLoading || (selectedPost.safetyPriority === "URGENT" && !safetyAcknowledged)}
                     className="min-h-[44px]"
                   >
                     <FileText className="mr-1.5 h-4 w-4" />

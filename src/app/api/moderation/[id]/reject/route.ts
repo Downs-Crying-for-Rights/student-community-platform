@@ -5,6 +5,13 @@ import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { z } from "zod";
 import { sendUserMail } from "@/lib/mail";
 
+class ModerationConflictError extends Error {
+  constructor(message = "内容已被其他审核员处理，请刷新审核队列") {
+    super(message);
+    this.name = "ModerationConflictError";
+  }
+}
+
 const rejectSchema = z.object({
   reason: z.string().min(1, "拒绝原因不能为空").max(1000, "拒绝原因不能超过 1000 个字符"),
 });
@@ -65,40 +72,54 @@ export const POST = withAuth(async (
 
     const updatedPost = await prisma.$transaction(async (tx) => {
       if (revision) {
-        await tx.postRevision.update({
-          where: { id: revision.id },
+        const claimed = await tx.postRevision.updateMany({
+          where: { id: revision.id, status: "PENDING" },
           data: { status: "REJECTED", rejectionReason: reason, reviewerId: req.user.id, reviewedAt: new Date() },
         });
+        if (claimed.count !== 1) throw new ModerationConflictError();
         await logAudit(req.user.id, AuditAction.POST_REVISION_REJECT, AuditTargetType.POST, id, {
           revisionId: revision.id, reason,
         }, undefined, tx);
         return post;
       }
-      const updated = await tx.post.update({ where: { id }, data: { status: "REJECTED" } });
+      const claimed = await tx.post.updateMany({
+        where: { id, status: "PENDING" },
+        data: { status: "REJECTED" },
+      });
+      if (claimed.count !== 1) throw new ModerationConflictError();
       await logAudit(req.user.id, AuditAction.CONTENT_REJECT, AuditTargetType.POST, id, {
         previousStatus: "PENDING", newStatus: "REJECTED", title: post.title, reason,
       }, undefined, tx);
-      return updated;
+      return { ...post, status: "REJECTED" as const };
     });
 
-    // Create notification for the post author with rejection reason
-    await prisma.notification.create({
-      data: {
-        type: "SYSTEM",
-        title: "帖子审核未通过",
-        content: `您的帖子「${post.title}」${revision ? "修改版本" : ""}未通过审核，原因：${reason}`,
+    const sideEffects = await Promise.allSettled([
+      prisma.notification.create({
+        data: {
+          type: "SYSTEM",
+          title: "帖子审核未通过",
+          content: `您的帖子「${post.title}」${revision ? "修改版本" : ""}未通过审核，原因：${reason}`,
+          userId: post.authorId,
+          link: `/post/${post.id}`,
+        },
+      }),
+      sendUserMail({
         userId: post.authorId,
-        link: `/post/${post.id}`,
-      },
-    });
-    await sendUserMail({
-      userId: post.authorId,
-      subject: "帖子审核未通过",
-      text: `您的帖子「${post.title}」未通过审核，原因：${reason}。请登录平台查看详情。`,
-    });
+        subject: "帖子审核未通过",
+        text: `您的帖子「${post.title}」未通过审核，原因：${reason}。请登录平台查看详情。`,
+      }),
+    ]);
+    for (const sideEffect of sideEffects) {
+      if (sideEffect.status === "rejected") {
+        console.error("Moderation rejection side effect failed:", sideEffect.reason);
+      }
+    }
 
     return NextResponse.json({ post: updatedPost });
   } catch (error) {
+    if (error instanceof ModerationConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("POST /api/moderation/[id]/reject error:", error);
     return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }

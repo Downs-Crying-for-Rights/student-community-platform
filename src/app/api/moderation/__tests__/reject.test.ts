@@ -5,23 +5,33 @@ import { NextRequest } from "next/server";
 
 const mockPostFindUnique = vi.fn();
 const mockPostUpdate = vi.fn();
+const mockPostUpdateMany = vi.fn();
 const mockNotificationCreate = vi.fn();
 const mockRevisionFindFirst = vi.fn();
 const mockRevisionUpdate = vi.fn();
+const mockRevisionUpdateMany = vi.fn();
+const mockSendUserMail = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     post: {
       findUnique: (...args: unknown[]) => mockPostFindUnique(...args),
       update: (...args: unknown[]) => mockPostUpdate(...args),
+      updateMany: (...args: unknown[]) => mockPostUpdateMany(...args),
     },
     notification: {
       create: (...args: unknown[]) => mockNotificationCreate(...args),
     },
     postRevision: { findFirst: (...args: unknown[]) => mockRevisionFindFirst(...args) },
     $transaction: (callback: (tx: unknown) => unknown) => callback({
-      post: { update: (...args: unknown[]) => mockPostUpdate(...args) },
-      postRevision: { update: (...args: unknown[]) => mockRevisionUpdate(...args) },
+      post: {
+        update: (...args: unknown[]) => mockPostUpdate(...args),
+        updateMany: (...args: unknown[]) => mockPostUpdateMany(...args),
+      },
+      postRevision: {
+        update: (...args: unknown[]) => mockRevisionUpdate(...args),
+        updateMany: (...args: unknown[]) => mockRevisionUpdateMany(...args),
+      },
       auditLog: { create: vi.fn() },
     }),
   },
@@ -43,6 +53,10 @@ vi.mock("next-auth/next", () => ({
 
 vi.mock("@/lib/auth", () => ({
   authOptions: {},
+}));
+
+vi.mock("@/lib/mail", () => ({
+  sendUserMail: (...args: unknown[]) => mockSendUserMail(...args),
 }));
 
 import { getServerSession } from "next-auth/next";
@@ -76,6 +90,9 @@ describe("POST /api/moderation/[id]/reject", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRevisionFindFirst.mockResolvedValue(null);
+    mockPostUpdateMany.mockResolvedValue({ count: 1 });
+    mockRevisionUpdateMany.mockResolvedValue({ count: 1 });
+    mockSendUserMail.mockResolvedValue({ status: "SENT" });
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -266,8 +283,8 @@ describe("POST /api/moderation/[id]/reject", () => {
     expect(data.post.title).toBe("公开原标题");
     expect(data.post.status).toBe("PUBLISHED");
     expect(mockPostUpdate).not.toHaveBeenCalled();
-    expect(mockRevisionUpdate).toHaveBeenCalledWith({
-      where: { id: "revision1" },
+    expect(mockRevisionUpdateMany).toHaveBeenCalledWith({
+      where: { id: "revision1", status: "PENDING" },
       data: expect.objectContaining({
         status: "REJECTED",
         rejectionReason: "修改内容不合规",
@@ -303,5 +320,42 @@ describe("POST /api/moderation/[id]/reject", () => {
       { params: { id: "p1" } },
     );
     expect(res.status).toBe(200);
+  });
+
+  it("并发审核未抢到待审状态时返回 409 且不发送通知", async () => {
+    setSession("mod1", "MODERATOR");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      status: "PENDING",
+      title: "待审核帖子",
+      authorId: "u1",
+    });
+    mockPostUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    const { POST } = await import("../../moderation/[id]/reject/route");
+    const res = await POST(makeRequest({ reason: "内容不合规" }), { params: { id: "p1" } });
+
+    expect(res.status).toBe(409);
+    expect(mockNotificationCreate).not.toHaveBeenCalled();
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
+  it("通知失败不应推翻已完成的拒绝结果", async () => {
+    setSession("mod1", "MODERATOR");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      status: "PENDING",
+      title: "待审核帖子",
+      authorId: "u1",
+    });
+    mockNotificationCreate.mockRejectedValueOnce(new Error("notification unavailable"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const { POST } = await import("../../moderation/[id]/reject/route");
+    const res = await POST(makeRequest({ reason: "内容不合规" }), { params: { id: "p1" } });
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).post.status).toBe("REJECTED");
+    consoleError.mockRestore();
   });
 });

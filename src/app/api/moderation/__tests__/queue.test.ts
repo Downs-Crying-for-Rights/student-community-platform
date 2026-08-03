@@ -67,7 +67,9 @@ describe("GET /api/moderation/queue", () => {
       {
         id: "p1",
         title: "待审核帖子",
+        content: "普通内容",
         status: "PENDING",
+        createdAt: "2026-08-03T00:00:00.000Z",
         author: { id: "u1", nickname: "用户1", avatar: null },
         board: { id: "b1", name: "DCR区", zone: "DCR" },
         tags: [],
@@ -81,7 +83,9 @@ describe("GET /api/moderation/queue", () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data.posts).toEqual(posts);
+    expect(data.posts).toEqual([
+      expect.objectContaining({ ...posts[0], safetyPriority: "STANDARD", safetyNotice: null }),
+    ]);
     expect(data.total).toBe(1);
     expect(data.page).toBe(1);
     expect(data.pageSize).toBe(20);
@@ -135,5 +139,53 @@ describe("GET /api/moderation/queue", () => {
     expect(mockPostCount).toHaveBeenCalledWith({
       where: { status: "PENDING" },
     });
+  });
+
+  it("应支持按专区和状态筛选", async () => {
+    setSession("mod1", "MODERATOR");
+    mockPostFindMany.mockResolvedValue([]);
+    mockPostCount.mockResolvedValue(0);
+
+    const { GET } = await import("../../moderation/queue/route");
+    const url = "http://localhost:3000/api/moderation/queue?status=REJECTED&zone=PSYCHOLOGY";
+    const res = await GET(makeRequest(url), { params: {} });
+
+    expect(res.status).toBe(200);
+    expect(mockPostFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { status: "REJECTED", board: { zone: "PSYCHOLOGY" } },
+    }));
+  });
+
+  it("应将心理区即时安全线索排在普通内容之前", async () => {
+    setSession("mod1", "MODERATOR");
+    mockPostFindMany.mockResolvedValue([
+      {
+        id: "normal",
+        title: "考试压力",
+        content: "最近压力很大",
+        status: "PENDING",
+        createdAt: "2026-08-01T00:00:00.000Z",
+        author: { id: "u1", nickname: "用户1", avatar: null },
+        board: { id: "b1", name: "心理树洞", zone: "PSYCHOLOGY" },
+        tags: [],
+      },
+      {
+        id: "urgent",
+        title: "撑不住了",
+        content: "我不想活下去了",
+        status: "PENDING",
+        createdAt: "2026-08-02T00:00:00.000Z",
+        author: { id: "u2", nickname: "用户2", avatar: null },
+        board: { id: "b1", name: "心理树洞", zone: "PSYCHOLOGY" },
+        tags: [],
+      },
+    ]);
+    mockPostCount.mockResolvedValue(2);
+
+    const { GET } = await import("../../moderation/queue/route");
+    const data = await (await GET(makeRequest(), { params: {} })).json();
+
+    expect(data.posts.map((post: { id: string }) => post.id)).toEqual(["urgent", "normal"]);
+    expect(data.posts[0].safetyPriority).toBe("URGENT");
   });
 });

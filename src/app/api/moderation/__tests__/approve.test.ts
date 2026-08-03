@@ -5,26 +5,36 @@ import { NextRequest } from "next/server";
 
 const mockPostFindUnique = vi.fn();
 const mockPostUpdate = vi.fn();
+const mockPostUpdateMany = vi.fn();
 const mockNotificationCreate = vi.fn();
 const mockRevisionFindFirst = vi.fn();
 const mockRevisionUpdate = vi.fn();
+const mockRevisionUpdateMany = vi.fn();
 const mockPostEditHistoryCreate = vi.fn();
 const mockPostTagDeleteMany = vi.fn();
 const mockPostTagCreateMany = vi.fn();
+const mockSendUserMail = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     post: {
       findUnique: (...args: unknown[]) => mockPostFindUnique(...args),
       update: (...args: unknown[]) => mockPostUpdate(...args),
+      updateMany: (...args: unknown[]) => mockPostUpdateMany(...args),
     },
     notification: {
       create: (...args: unknown[]) => mockNotificationCreate(...args),
     },
     postRevision: { findFirst: (...args: unknown[]) => mockRevisionFindFirst(...args) },
     $transaction: (callback: (tx: unknown) => unknown) => callback({
-      post: { update: (...args: unknown[]) => mockPostUpdate(...args) },
-      postRevision: { update: (...args: unknown[]) => mockRevisionUpdate(...args) },
+      post: {
+        update: (...args: unknown[]) => mockPostUpdate(...args),
+        updateMany: (...args: unknown[]) => mockPostUpdateMany(...args),
+      },
+      postRevision: {
+        update: (...args: unknown[]) => mockRevisionUpdate(...args),
+        updateMany: (...args: unknown[]) => mockRevisionUpdateMany(...args),
+      },
       postEditHistory: { create: (...args: unknown[]) => mockPostEditHistoryCreate(...args) },
       postTag: {
         deleteMany: (...args: unknown[]) => mockPostTagDeleteMany(...args),
@@ -53,6 +63,10 @@ vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 
+vi.mock("@/lib/mail", () => ({
+  sendUserMail: (...args: unknown[]) => mockSendUserMail(...args),
+}));
+
 import { getServerSession } from "next-auth/next";
 const mockGetServerSession = vi.mocked(getServerSession);
 
@@ -77,6 +91,9 @@ describe("POST /api/moderation/[id]/approve", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRevisionFindFirst.mockResolvedValue(null);
+    mockPostUpdateMany.mockResolvedValue({ count: 1 });
+    mockRevisionUpdateMany.mockResolvedValue({ count: 1 });
+    mockSendUserMail.mockResolvedValue({ status: "SENT" });
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -232,12 +249,12 @@ describe("POST /api/moderation/[id]/approve", () => {
     expect(mockPostEditHistoryCreate).toHaveBeenCalledWith({
       data: { postId: "p1", oldTitle: "原标题", oldContent: "原内容" },
     });
-    expect(mockPostUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "p1" },
+    expect(mockPostUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: "p1", updatedAt: baseUpdatedAt }),
       data: expect.objectContaining({ title: "修订标题", content: "修订内容", status: "PUBLISHED" }),
     }));
-    expect(mockRevisionUpdate).toHaveBeenCalledWith({
-      where: { id: "revision1" },
+    expect(mockRevisionUpdateMany).toHaveBeenCalledWith({
+      where: { id: "revision1", status: "PENDING" },
       data: expect.objectContaining({ status: "APPROVED", reviewerId: "mod1" }),
     });
     expect(mockLogAudit).toHaveBeenCalledWith(
@@ -266,5 +283,42 @@ describe("POST /api/moderation/[id]/approve", () => {
     const { POST } = await import("../../moderation/[id]/approve/route");
     const res = await POST(makeRequest(), { params: { id: "p1" } });
     expect(res.status).toBe(200);
+  });
+
+  it("并发审核未抢到待审状态时返回 409 且不发送通知", async () => {
+    setSession("mod1", "MODERATOR");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      status: "PENDING",
+      title: "待审核帖子",
+      authorId: "u1",
+    });
+    mockPostUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    const { POST } = await import("../../moderation/[id]/approve/route");
+    const res = await POST(makeRequest(), { params: { id: "p1" } });
+
+    expect(res.status).toBe(409);
+    expect(mockNotificationCreate).not.toHaveBeenCalled();
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
+  it("通知失败不应推翻已完成的审核结果", async () => {
+    setSession("mod1", "MODERATOR");
+    mockPostFindUnique.mockResolvedValue({
+      id: "p1",
+      status: "PENDING",
+      title: "待审核帖子",
+      authorId: "u1",
+    });
+    mockNotificationCreate.mockRejectedValueOnce(new Error("notification unavailable"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const { POST } = await import("../../moderation/[id]/approve/route");
+    const res = await POST(makeRequest(), { params: { id: "p1" } });
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).post.status).toBe("PUBLISHED");
+    consoleError.mockRestore();
   });
 });

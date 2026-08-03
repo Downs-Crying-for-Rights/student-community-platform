@@ -1,4 +1,10 @@
 import { describe, it, expect } from "vitest";
+import {
+  filterPosts as filterPostsActual,
+  getModerationAuthorLabel,
+  getZoneLabel,
+  mergeBoardOptions,
+} from "../page";
 
 /**
  * 审核看板页面逻辑测试
@@ -187,6 +193,39 @@ describe("审核看板页面逻辑", () => {
       const result = filterPosts(posts, "b2");
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("p2");
+    });
+
+    it("实际页面逻辑可以按专区和板块组合筛选", () => {
+      const mixed = [
+        makePost({ id: "public", board: { id: "b1", name: "技术", zone: "PUBLIC" } }),
+        makePost({ id: "psych", board: { id: "b2", name: "心理树洞", zone: "PSYCHOLOGY" } }),
+      ];
+      expect(filterPostsActual(mixed, "", "PSYCHOLOGY").map((post) => post.id)).toEqual(["psych"]);
+      expect(filterPostsActual(mixed, "b1", "PUBLIC").map((post) => post.id)).toEqual(["public"]);
+    });
+
+    it("心理区审核卡片隐藏作者昵称", () => {
+      const post = makePost({
+        author: { id: "u1", nickname: "真实昵称", avatar: null },
+        board: { id: "b2", name: "心理树洞", zone: "PSYCHOLOGY" },
+      });
+      expect(getModerationAuthorLabel(post)).toBe("心理区匿名用户");
+      expect(getZoneLabel("PSYCHOLOGY")).toBe("心理区");
+    });
+
+    it("将审核队列中的私密专区板块合并到筛选项", () => {
+      expect(mergeBoardOptions(
+        [{ id: "public", name: "公共讨论", zone: "PUBLIC" }],
+        [{ id: "psych", name: "心理树洞", zone: "PSYCHOLOGY" }],
+        [{ id: "psych", name: "心理树洞", zone: "PSYCHOLOGY" }],
+      )).toEqual(expect.arrayContaining([
+        { id: "public", name: "公共讨论", zone: "PUBLIC" },
+        { id: "psych", name: "心理树洞", zone: "PSYCHOLOGY" },
+      ]));
+      expect(mergeBoardOptions(
+        [{ id: "public", name: "公共讨论", zone: "PUBLIC" }],
+        [{ id: "psych", name: "心理树洞", zone: "PSYCHOLOGY" }],
+      )).toHaveLength(2);
     });
   });
 
