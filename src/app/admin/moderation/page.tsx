@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { Shield, FileText, AlertTriangle, User, Filter, RefreshCw, ShieldAlert, BadgeCheck } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Shield, FileText, AlertTriangle, User, Filter, RefreshCw, ShieldAlert, BadgeCheck, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -54,44 +53,21 @@ export interface BoardOption {
   zone: string;
 }
 
-export type KanbanColumn = "PENDING" | "PUBLISHED" | "REJECTED";
+export const MODERATION_STATUS_FILTERS = [
+  { value: "", label: "全部" },
+  { value: "PENDING", label: "待审核" },
+  { value: "PUBLISHED", label: "已通过" },
+  { value: "REJECTED", label: "已拒绝" },
+] as const;
 
-export const COLUMN_CONFIG: Record<
-  KanbanColumn,
-  { label: string; color: string; bgColor: string }
-> = {
-  PENDING: { label: "待审核", color: "text-yellow-600", bgColor: "bg-yellow-50 dark:bg-yellow-950/30" },
-  PUBLISHED: { label: "已通过", color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950/30" },
-  REJECTED: { label: "已拒绝", color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-950/30" },
+const STATUS_STYLES: Record<string, string> = {
+  PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300",
+  PUBLISHED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300",
+  REJECTED: "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300",
 };
 
-/** Map API post status to kanban column */
-export function mapStatusToColumn(status: string): KanbanColumn {
-  switch (status) {
-    case "PUBLISHED":
-      return "PUBLISHED";
-    case "REJECTED":
-      return "REJECTED";
-    case "PENDING":
-    default:
-      return "PENDING";
-  }
-}
-
-/** Group posts into kanban columns */
-export function groupPostsByColumn(
-  posts: ModerationPost[]
-): Record<KanbanColumn, ModerationPost[]> {
-  const groups: Record<KanbanColumn, ModerationPost[]> = {
-    PENDING: [],
-    PUBLISHED: [],
-    REJECTED: [],
-  };
-  for (const post of posts) {
-    const col = mapStatusToColumn(post.status);
-    groups[col].push(post);
-  }
-  return groups;
+export function getModerationStatusLabel(status: string): string {
+  return MODERATION_STATUS_FILTERS.find((item) => item.value === status)?.label ?? status;
 }
 
 /** Filter posts by content type and board */
@@ -99,10 +75,12 @@ export function filterPosts(
   posts: ModerationPost[],
   filterBoard: string,
   filterZone = "",
+  filterStatus = "",
 ): ModerationPost[] {
   return posts.filter((post) =>
     (!filterZone || post.board.zone === filterZone)
-    && (!filterBoard || post.board.id === filterBoard),
+    && (!filterBoard || post.board.id === filterBoard)
+    && (!filterStatus || post.status === filterStatus),
   );
 }
 
@@ -167,6 +145,7 @@ export default function ModerationPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filterBoard, setFilterBoard] = useState("");
   const [filterZone, setFilterZone] = useState("");
+  const [filterStatus, setFilterStatus] = useState("PENDING");
   const [selectedPost, setSelectedPost] = useState<ModerationPost | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -178,7 +157,7 @@ export default function ModerationPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      // Fetch posts across all statuses for the kanban view
+      // Fetch all statuses once so list filters switch without another request.
       const statuses = ["PENDING", "PUBLISHED", "REJECTED"];
       const responses = await Promise.all([
         ...statuses.map((status) =>
@@ -256,8 +235,7 @@ export default function ModerationPage() {
     );
   }
 
-  const filtered = filterPosts(posts, filterBoard, filterZone);
-  const grouped = groupPostsByColumn(filtered);
+  const filtered = filterPosts(posts, filterBoard, filterZone, filterStatus);
   const filteredBoards = filterZone ? boards.filter((board) => board.zone === filterZone) : boards;
 
   async function handleApprove(postId: string) {
@@ -320,53 +298,73 @@ export default function ModerationPage() {
     <div className="min-h-screen bg-background">
       <main className={cn("mx-auto max-w-screen-xl px-4 pb-24 pt-4")}>
         {/* Header */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
-              <Shield className="h-6 w-6" aria-hidden="true" />
-              审核看板
-            </h1>
-            <Button type="button" variant="ghost" size="icon" onClick={() => void fetchPosts()} aria-label="刷新审核队列" title="刷新审核队列">
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+        <div className="mb-5 flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
+                <Shield className="h-6 w-6" aria-hidden="true" />
+                内容审核
+              </h1>
+              <Button type="button" variant="ghost" size="icon" onClick={() => void fetchPosts()} aria-label="刷新审核队列" title="刷新审核队列">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <span className="text-sm tabular-nums text-muted-foreground">{filtered.length} 条</span>
           </div>
 
           {/* Filters */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="flex rounded-md border p-1" role="group" aria-label="按专区筛选">
-              {[
-                ["", "全部"],
-                ["PUBLIC", "公共区"],
-                ["PSYCHOLOGY", "心理区"],
-                ["DCR", "DCR"],
-              ].map(([value, label]) => (
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex max-w-full overflow-x-auto rounded-md border p-1" role="group" aria-label="按审核状态筛选">
+              {MODERATION_STATUS_FILTERS.map(({ value, label }) => (
                 <Button
                   key={value || "all"}
                   type="button"
                   size="sm"
-                  variant={filterZone === value ? "secondary" : "ghost"}
-                  onClick={() => { setFilterZone(value); setFilterBoard(""); }}
-                  className="h-8 px-2.5"
+                  variant={filterStatus === value ? "secondary" : "ghost"}
+                  onClick={() => setFilterStatus(value)}
+                  className="h-8 shrink-0 px-3"
                 >
                   {label}
                 </Button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              <select
-                value={filterBoard}
-                onChange={(e) => setFilterBoard(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
-                aria-label="按板块筛选"
-              >
-                <option value="">全部板块</option>
-                {filteredBoards.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex rounded-md border p-1" role="group" aria-label="按专区筛选">
+                {[
+                  ["", "全部"],
+                  ["PUBLIC", "公共区"],
+                  ["PSYCHOLOGY", "心理区"],
+                  ["DCR", "DCR"],
+                ].map(([value, label]) => (
+                  <Button
+                    key={value || "all"}
+                    type="button"
+                    size="sm"
+                    variant={filterZone === value ? "secondary" : "ghost"}
+                    onClick={() => { setFilterZone(value); setFilterBoard(""); }}
+                    className="h-8 px-2.5"
+                  >
+                    {label}
+                  </Button>
                 ))}
-              </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <select
+                  value={filterBoard}
+                  onChange={(e) => setFilterBoard(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                  aria-label="按板块筛选"
+                >
+                  <option value="">全部板块</option>
+                  {filteredBoards.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -378,94 +376,69 @@ export default function ModerationPage() {
           </div>
         )}
 
-        {/* Kanban Board */}
+        {/* Moderation list */}
         {loading ? (
           <ListSkeleton count={4} />
+        ) : filtered.length === 0 ? (
+          <div className="border-y py-16 text-center text-sm text-muted-foreground sm:rounded-md sm:border">
+            暂无符合条件的内容
+          </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {(Object.keys(COLUMN_CONFIG) as KanbanColumn[]).map((col) => {
-              const config = COLUMN_CONFIG[col];
-              const columnPosts = grouped[col];
-              return (
-                <div key={col} className={cn("rounded-2xl p-3", config.bgColor)}>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h2 className={cn("text-sm font-semibold", config.color)}>
-                      {config.label}
-                    </h2>
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-xs font-medium",
-                        config.color
-                      )}
-                    >
-                      {columnPosts.length}
-                    </span>
-                  </div>
-
-                  {columnPosts.length === 0 ? (
-                    <p className="py-8 text-center text-xs text-muted-foreground">
-                      暂无内容
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {columnPosts.map((post) => (
-                        <button
-                          key={`${post.id}:${post.revisionId ?? post.status}`}
-                          type="button"
-                          onClick={() => openDetail(post)}
-                          className="w-full text-left"
-                          aria-label={`查看帖子：${post.title}`}
-                        >
-                          <Card className="cursor-pointer transition-shadow hover:shadow-md">
-                            <CardContent className="p-3">
-                              <p className="line-clamp-2 text-sm font-medium text-foreground">
-                                {post.title}
-                              </p>
-                              {post.revisionId && <p className="mt-1 text-[11px] font-medium text-blue-600">已发布帖修改待审</p>}
-                              {post.safetyPriority && post.safetyPriority !== "STANDARD" && (
-                                <p className={cn(
-                                  "mt-1 inline-flex items-center gap-1 text-[11px] font-semibold",
-                                  post.safetyPriority === "URGENT" ? "text-destructive" : "text-amber-700 dark:text-amber-400",
-                                )}>
-                                  <ShieldAlert className="h-3 w-3" />
-                                  {post.safetyPriority === "URGENT" ? "安全线索：优先复核" : "安全线索：谨慎复核"}
-                                </p>
-                              )}
-                              <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                                <User className="h-3 w-3" aria-hidden="true" />
-                                <span>{getModerationAuthorLabel(post)}</span>
-                                <span>·</span>
-                                <span>{getZoneLabel(post.board.zone)}</span>
-                                <span>·</span>
-                                <span>{post.board.name}</span>
-                              </div>
-                              {post.status === "PUBLISHED" && getApprovalOperatorLabel(post) && (
-                                <div className="mt-1.5 flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
-                                  <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                                  <span>通过人：{getApprovalOperatorLabel(post)}</span>
-                                </div>
-                              )}
-                              {post.tags.length > 0 && (
-                                <div className="mt-1.5 flex flex-wrap gap-1">
-                                  {post.tags.slice(0, 3).map((t) => (
-                                    <span
-                                      key={t.tag.id}
-                                      className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
-                                    >
-                                      {t.tag.name}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        </button>
-                      ))}
+          <div className="overflow-hidden border-y sm:rounded-md sm:border">
+            <div className="hidden grid-cols-[minmax(0,1.6fr)_90px_minmax(140px,0.8fr)_minmax(160px,1fr)_130px_20px] gap-4 border-b bg-muted/40 px-4 py-2.5 text-xs font-medium text-muted-foreground md:grid">
+              <span>内容</span><span>状态</span><span>作者 / 专区</span><span>审核记录</span><span>提交时间</span><span />
+            </div>
+            <div className="divide-y">
+              {filtered.map((post) => {
+                const approvalLabel = getApprovalOperatorLabel(post);
+                return (
+                  <button
+                    key={`${post.id}:${post.revisionId ?? post.status}`}
+                    type="button"
+                    onClick={() => openDetail(post)}
+                    className="grid w-full gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:grid-cols-[minmax(0,1.6fr)_90px_minmax(140px,0.8fr)_minmax(160px,1fr)_130px_20px] md:items-center md:gap-4"
+                    aria-label={`查看帖子：${post.title}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{post.title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                        {post.revisionId && <span className="font-medium text-blue-600">已发布帖修改待审</span>}
+                        {post.safetyPriority && post.safetyPriority !== "STANDARD" && (
+                          <span className={cn(
+                            "inline-flex items-center gap-1 font-semibold",
+                            post.safetyPriority === "URGENT" ? "text-destructive" : "text-amber-700 dark:text-amber-400",
+                          )}>
+                            <ShieldAlert className="h-3 w-3" />
+                            {post.safetyPriority === "URGENT" ? "安全线索：优先复核" : "安全线索：谨慎复核"}
+                          </span>
+                        )}
+                        {post.tags.slice(0, 2).map((item) => <span key={item.tag.id}>#{item.tag.name}</span>)}
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    <div>
+                      <span className={cn("inline-flex rounded-full px-2 py-1 text-xs font-medium", STATUS_STYLES[post.status] ?? "bg-muted text-muted-foreground")}>
+                        {getModerationStatusLabel(post.status)}
+                      </span>
+                    </div>
+                    <div className="min-w-0 text-xs text-muted-foreground">
+                      <p className="flex items-center gap-1 truncate text-foreground"><User className="h-3.5 w-3.5 shrink-0" />{getModerationAuthorLabel(post)}</p>
+                      <p className="mt-1 truncate">{getZoneLabel(post.board.zone)} · {post.board.name}</p>
+                    </div>
+                    <div className="min-w-0 text-xs">
+                      {post.status === "PUBLISHED" && approvalLabel ? (
+                        <p className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><BadgeCheck className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{approvalLabel}</span></p>
+                      ) : post.status === "PENDING" ? (
+                        <span className="text-amber-700 dark:text-amber-400">等待人工审核</span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </div>
+                    <time className="text-xs text-muted-foreground">{new Date(post.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time>
+                    <ChevronRight className="hidden h-4 w-4 text-muted-foreground md:block" aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </main>

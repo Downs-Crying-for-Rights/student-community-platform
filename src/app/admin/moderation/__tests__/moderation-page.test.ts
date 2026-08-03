@@ -1,20 +1,23 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
   filterPosts as filterPostsActual,
   getApprovalOperatorLabel,
   getModerationAuthorLabel,
+  getModerationStatusLabel,
   getModeratorRoleLabel,
   getZoneLabel,
   mergeBoardOptions,
+  MODERATION_STATUS_FILTERS,
 } from "../page";
 
 /**
  * 审核看板页面逻辑测试
  *
  * 验证审核看板的核心逻辑：
- * - 帖子按状态分组到看板列
- * - 状态到看板列的映射
- * - 板块筛选逻辑
+ * - 状态、专区和板块列表筛选
+ * - 状态中文显示
  * - 权限检查（Moderator/Admin 可访问，其他角色返回 403）
  *
  * Validates: Requirements 34.1, 34.2, 34.3, 34.5
@@ -31,37 +34,6 @@ interface ModerationPost {
   author: { id: string; nickname: string | null; avatar: string | null };
   board: { id: string; name: string; zone: string };
   tags: Array<{ tag: { id: string; name: string } }>;
-}
-
-type KanbanColumn = "PENDING" | "PUBLISHED" | "REJECTED";
-
-/* ---------- Extracted logic matching page.tsx ---------- */
-
-function mapStatusToColumn(status: string): KanbanColumn {
-  switch (status) {
-    case "PUBLISHED":
-      return "PUBLISHED";
-    case "REJECTED":
-      return "REJECTED";
-    case "PENDING":
-    default:
-      return "PENDING";
-  }
-}
-
-function groupPostsByColumn(
-  posts: ModerationPost[]
-): Record<KanbanColumn, ModerationPost[]> {
-  const groups: Record<KanbanColumn, ModerationPost[]> = {
-    PENDING: [],
-    PUBLISHED: [],
-    REJECTED: [],
-  };
-  for (const post of posts) {
-    const col = mapStatusToColumn(post.status);
-    groups[col].push(post);
-  }
-  return groups;
 }
 
 function filterPosts(
@@ -104,72 +76,6 @@ function makePost(overrides: Partial<ModerationPost> = {}): ModerationPost {
 /* ---------- Tests ---------- */
 
 describe("审核看板页面逻辑", () => {
-  describe("状态到看板列映射 (mapStatusToColumn)", () => {
-    it("PENDING 映射到 PENDING 列", () => {
-      expect(mapStatusToColumn("PENDING")).toBe("PENDING");
-    });
-
-    it("PUBLISHED 映射到 PUBLISHED 列", () => {
-      expect(mapStatusToColumn("PUBLISHED")).toBe("PUBLISHED");
-    });
-
-    it("REJECTED 映射到 REJECTED 列", () => {
-      expect(mapStatusToColumn("REJECTED")).toBe("REJECTED");
-    });
-
-    it("未知状态默认映射到 PENDING 列", () => {
-      expect(mapStatusToColumn("UNKNOWN")).toBe("PENDING");
-    });
-
-    it("DRAFT 状态映射到 PENDING 列", () => {
-      expect(mapStatusToColumn("DRAFT")).toBe("PENDING");
-    });
-  });
-
-  describe("帖子分组 (groupPostsByColumn)", () => {
-    it("空数组返回三个空列", () => {
-      const result = groupPostsByColumn([]);
-      expect(result.PENDING).toEqual([]);
-      expect(result.PUBLISHED).toEqual([]);
-      expect(result.REJECTED).toEqual([]);
-    });
-
-    it("正确将帖子分组到对应列", () => {
-      const posts = [
-        makePost({ id: "p1", status: "PENDING" }),
-        makePost({ id: "p2", status: "PUBLISHED" }),
-        makePost({ id: "p3", status: "REJECTED" }),
-        makePost({ id: "p4", status: "PENDING" }),
-      ];
-      const result = groupPostsByColumn(posts);
-      expect(result.PENDING).toHaveLength(2);
-      expect(result.PUBLISHED).toHaveLength(1);
-      expect(result.REJECTED).toHaveLength(1);
-    });
-
-    it("分组后帖子 ID 正确", () => {
-      const posts = [
-        makePost({ id: "p1", status: "PENDING" }),
-        makePost({ id: "p2", status: "PUBLISHED" }),
-      ];
-      const result = groupPostsByColumn(posts);
-      expect(result.PENDING[0].id).toBe("p1");
-      expect(result.PUBLISHED[0].id).toBe("p2");
-    });
-
-    it("所有帖子同一状态时只有一列有数据", () => {
-      const posts = [
-        makePost({ id: "p1", status: "PENDING" }),
-        makePost({ id: "p2", status: "PENDING" }),
-        makePost({ id: "p3", status: "PENDING" }),
-      ];
-      const result = groupPostsByColumn(posts);
-      expect(result.PENDING).toHaveLength(3);
-      expect(result.PUBLISHED).toHaveLength(0);
-      expect(result.REJECTED).toHaveLength(0);
-    });
-  });
-
   describe("板块筛选 (filterPosts)", () => {
     const posts = [
       makePost({ id: "p1", board: { id: "b1", name: "技术", zone: "PUBLIC" } }),
@@ -204,6 +110,17 @@ describe("审核看板页面逻辑", () => {
       ];
       expect(filterPostsActual(mixed, "", "PSYCHOLOGY").map((post) => post.id)).toEqual(["psych"]);
       expect(filterPostsActual(mixed, "b1", "PUBLIC").map((post) => post.id)).toEqual(["public"]);
+    });
+
+    it("列表可以按审核状态筛选", () => {
+      const mixed = [
+        makePost({ id: "pending", status: "PENDING" }),
+        makePost({ id: "published", status: "PUBLISHED" }),
+        makePost({ id: "rejected", status: "REJECTED" }),
+      ];
+      expect(filterPostsActual(mixed, "", "", "PENDING").map((post) => post.id)).toEqual(["pending"]);
+      expect(filterPostsActual(mixed, "", "", "PUBLISHED").map((post) => post.id)).toEqual(["published"]);
+      expect(filterPostsActual(mixed, "", "", "")).toHaveLength(3);
     });
 
     it("心理区审核卡片隐藏作者昵称", () => {
@@ -278,36 +195,23 @@ describe("审核看板页面逻辑", () => {
     });
   });
 
-  describe("看板列配置", () => {
-    const COLUMN_CONFIG: Record<
-      KanbanColumn,
-      { label: string; color: string; bgColor: string }
-    > = {
-      PENDING: { label: "待审核", color: "text-yellow-600", bgColor: "bg-yellow-50 dark:bg-yellow-950/30" },
-      PUBLISHED: { label: "已通过", color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950/30" },
-      REJECTED: { label: "已拒绝", color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-950/30" },
-    };
-
-    it("包含三个看板列", () => {
-      const columns = Object.keys(COLUMN_CONFIG);
-      expect(columns).toHaveLength(3);
-      expect(columns).toContain("PENDING");
-      expect(columns).toContain("PUBLISHED");
-      expect(columns).toContain("REJECTED");
+  describe("列表状态筛选", () => {
+    it("使用单列表布局而不是三列卡片看板", () => {
+      const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
+      expect(source).toContain('aria-label="按审核状态筛选"');
+      expect(source).toContain('className="divide-y"');
+      expect(source).not.toContain("md:grid-cols-3");
+      expect(source).not.toContain("<Card");
     });
 
-    it("每列都有标签、颜色和背景色", () => {
-      for (const col of Object.values(COLUMN_CONFIG)) {
-        expect(col.label).toBeTruthy();
-        expect(col.color).toBeTruthy();
-        expect(col.bgColor).toBeTruthy();
-      }
+    it("包含全部、待审核、已通过和已拒绝", () => {
+      expect(MODERATION_STATUS_FILTERS.map((item) => item.label)).toEqual(["全部", "待审核", "已通过", "已拒绝"]);
     });
 
-    it("列标签使用中文", () => {
-      expect(COLUMN_CONFIG.PENDING.label).toBe("待审核");
-      expect(COLUMN_CONFIG.PUBLISHED.label).toBe("已通过");
-      expect(COLUMN_CONFIG.REJECTED.label).toBe("已拒绝");
+    it("状态标签使用中文", () => {
+      expect(getModerationStatusLabel("PENDING")).toBe("待审核");
+      expect(getModerationStatusLabel("PUBLISHED")).toBe("已通过");
+      expect(getModerationStatusLabel("REJECTED")).toBe("已拒绝");
     });
   });
 });
