@@ -303,22 +303,23 @@ export default function SettingsProfilePage() {
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Avatar upload */}
-                <div className="flex items-center gap-4">
-                  <div className="relative">
+                <div>
+                  <div className="flex items-center gap-4">
                     <UserAvatar src={form.avatar} name={form.nickname} size={64} />
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
                       onClick={() => avatarInputRef.current?.click()}
                       disabled={avatarUploading}
-                      className="absolute -bottom-1 -left-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
-                      aria-label="上传头像"
+                      className="min-h-[44px] shrink-0"
                     >
                       {avatarUploading ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
-                        <Camera className="h-3.5 w-3.5" />
+                        <Camera className="mr-2 h-4 w-4" />
                       )}
-                    </button>
+                      {avatarUploading ? "上传中..." : "更换头像"}
+                    </Button>
                     <input
                       ref={avatarInputRef}
                       type="file"
@@ -328,13 +329,12 @@ export default function SettingsProfilePage() {
                       aria-label="选择头像图片"
                     />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">头像</p>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">{avatarUploading ? "正在上传..." : "点击相机按钮更换"}</p>
-                    {errors.avatar && (
-                      <p className="mt-1 text-sm text-destructive">{errors.avatar}</p>
-                    )}
-                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    支持 JPG、PNG、WebP、GIF，图片不超过 10MB
+                  </p>
+                  {errors.avatar && (
+                    <p className="mt-1 text-sm text-destructive">{errors.avatar}</p>
+                  )}
                 </div>
 
                 {/* Nickname */}

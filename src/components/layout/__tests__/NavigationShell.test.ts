@@ -88,9 +88,12 @@ describe("统一会员导航壳", () => {
 
   it("全局导航只由 MemberShell 挂载", () => {
     const shell = read("components/layout/MemberShell.tsx");
-    expect(shell.match(/<TopBar \/>/g)).toHaveLength(1);
+    expect(shell.match(/<TopBar[^>]*\/>/g)).toHaveLength(1);
     expect(shell.match(/<Sidebar[^>]*\/>/g)).toHaveLength(1);
     expect(shell.match(/<BottomNav[^>]*\/>/g)).toHaveLength(1);
+    expect(shell).toContain("data-navigation-region");
+    expect(shell).toContain("data-content-region");
+    expect(shell).toContain("<TopBar unreadCount={unreadCount} />");
     expect(shell).toContain("<Sidebar unreadCount={unreadCount} />");
     expect(shell).toContain("<BottomNav unreadCount={unreadCount} />");
 
@@ -119,5 +122,11 @@ describe("统一会员导航壳", () => {
       const source = fs.readFileSync(file, "utf8");
       expect(source, `${path.relative(SRC, file)} 不应重复设置 lg:ml-60`).not.toContain("lg:ml-60");
     }
+  });
+
+  it("桌面导航层与内容层彼此独立，内容层统一避让侧栏", () => {
+    const shell = read("components/layout/MemberShell.tsx");
+    expect(shell).toMatch(/data-navigation-region[\s\S]*?<Sidebar[\s\S]*?<BottomNav[\s\S]*?<\/div>/);
+    expect(shell).toMatch(/data-content-region[\s\S]*?lg:ml-60[\s\S]*?<TopBar[\s\S]*?id="main-content"/);
   });
 });

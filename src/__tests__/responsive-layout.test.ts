@@ -104,6 +104,16 @@ describe("响应式布局验证", () => {
     }
   });
 
+  describe("个人设置头像操作", () => {
+    const source = readSourceFile("app/settings/profile/page.tsx");
+
+    it("头像旁应显示更换头像按钮，不再叠加悬浮相机按钮", () => {
+      expect(source).toContain('variant="outline"');
+      expect(source).toContain("更换头像");
+      expect(source).not.toContain("absolute -bottom-1 -left-1");
+    });
+  });
+
   describe("帖子详情页宽度限制", () => {
     const source = readSourceFile("app/post/[id]/page.tsx");
 

@@ -114,13 +114,18 @@ export function MemberShell({ children }: MemberShellProps) {
 
   // 会员页面 — 完整的导航壳
   return (
-    <div className="min-h-screen bg-background pb-24 lg:pb-6">
-      <TopBar />
-      <Sidebar unreadCount={unreadCount} />
-      <div id="main-content" className="lg:ml-60">
-        {children}
+    <div className="min-h-screen bg-background">
+      <div data-navigation-region>
+        <Sidebar unreadCount={unreadCount} />
+        <BottomNav unreadCount={unreadCount} />
       </div>
-      <BottomNav unreadCount={unreadCount} />
+
+      <div data-content-region className="min-h-screen lg:ml-60">
+        <TopBar unreadCount={unreadCount} />
+        <div id="main-content" className="pb-24 lg:pb-6">
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
