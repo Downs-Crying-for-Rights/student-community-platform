@@ -91,4 +91,17 @@ describe("RBAC request completion telemetry", () => {
       persist: false,
     }));
   });
+
+  it("passes explicit full-capture policy to completed request filtering", async () => {
+    getServerSession.mockResolvedValue({ user: { id: "root", role: "SUPER_ADMIN", phone: "13800138000" } });
+    const response = await withAuth(
+      async () => NextResponse.json({ error: "需要审计" }, { status: 403 }),
+      "SUPER_ADMIN",
+      { captureAllTelemetry: true },
+    )(request(), { params: {} });
+
+    expect(completed).toHaveBeenCalledWith(expect.anything(), response, expect.any(Number), expect.objectContaining({
+      captureAllTelemetry: true,
+    }));
+  });
 });

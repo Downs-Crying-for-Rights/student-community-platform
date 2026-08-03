@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Activity, CalendarDays, KeyRound, Search, ShieldCheck, UserRound, X } from "lucide-react";
+import { readApiErrorMessage } from "@/lib/api-response";
 
 interface UserItem {
   id: string;
@@ -257,6 +258,7 @@ export default function AdminUsersPage() {
   const [profileTicketId, setProfileTicketId] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [userPosts, setUserPosts] = useState<AdminPostItem[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -314,24 +316,40 @@ export default function AdminUsersPage() {
   const handleRoleChange = async (userId: string, newRole: string) => {
     const reason = window.prompt("请输入角色变更原因：");
     if (!reason?.trim()) return;
-    const res = await fetch(`/api/admin/users/${userId}/role`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: newRole, reason: reason.trim() }),
-    });
-    if (res.ok) fetchUsers();
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/role`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole, reason: reason.trim() }),
+      });
+      if (!res.ok) {
+        setActionError(await readApiErrorMessage(res, "角色变更失败"));
+        return;
+      }
+      await fetchUsers();
+    } catch {
+      setActionError("网络连接失败，角色变更未完成");
+    }
   };
 
   const handleBan = async (userId: string, action: "ban" | "unban", shadowBan = false) => {
     const promptText = action === "unban" ? "请输入解除处罚的原因：" : shadowBan ? "请输入帖子影子隐藏的处罚原因：" : "请输入账号封禁的处罚原因：";
     const reason = window.prompt(promptText);
     if (!reason?.trim()) return;
-    const res = await fetch(`/api/admin/users/${userId}/ban`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, shadowBan, reason: reason.trim() }),
-    });
-    if (res.ok) fetchUsers();
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/ban`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, shadowBan, reason: reason.trim() }),
+      });
+      if (!res.ok) {
+        setActionError(await readApiErrorMessage(res, "处罚操作失败"));
+        return;
+      }
+      await fetchUsers();
+    } catch {
+      setActionError("网络连接失败，处罚操作未完成");
+    }
   };
 
   const handleOpenDetails = async (user: UserItem) => {
@@ -882,6 +900,14 @@ export default function AdminUsersPage() {
                 <Button size="sm" variant="outline" onClick={() => setShowConfirmDialog(false)}>取消</Button>
               </div>
           </div>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(actionError)} onOpenChange={(open) => { if (!open) setActionError(""); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>操作未完成</DialogTitle></DialogHeader>
+          <p role="alert" className="border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{actionError}</p>
+          <Button type="button" variant="outline" onClick={() => setActionError("")}>关闭</Button>
         </DialogContent>
       </Dialog>
     </div>

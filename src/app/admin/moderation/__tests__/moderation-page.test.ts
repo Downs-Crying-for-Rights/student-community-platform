@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   filterPosts as filterPostsActual,
+  getApprovalOperatorLabel,
   getModerationAuthorLabel,
+  getModeratorRoleLabel,
   getZoneLabel,
   mergeBoardOptions,
 } from "../page";
@@ -226,6 +228,23 @@ describe("审核看板页面逻辑", () => {
         [{ id: "public", name: "公共讨论", zone: "PUBLIC" }],
         [{ id: "psych", name: "心理树洞", zone: "PSYCHOLOGY" }],
       )).toHaveLength(2);
+    });
+
+    it("格式化通过人身份用于后台审计展示", () => {
+      const post = makePost({ status: "PUBLISHED" }) as ModerationPost & {
+        approvalAudit: {
+          createdAt: string;
+          operator: { id: string; nickname: string | null; username: string | null; role: string };
+        };
+      };
+      post.approvalAudit = {
+        createdAt: "2026-08-03T01:00:00.000Z",
+        operator: { id: "admin1", nickname: "审核员", username: "admin", role: "ADMIN" },
+      };
+
+      expect(getApprovalOperatorLabel(post)).toBe("审核员（管理员）");
+      expect(getModeratorRoleLabel("SUPER_ADMIN")).toBe("超级管理员");
+      expect(getModeratorRoleLabel("MODERATOR")).toBe("版主");
     });
   });
 

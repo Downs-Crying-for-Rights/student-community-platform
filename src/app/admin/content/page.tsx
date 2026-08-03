@@ -17,6 +17,15 @@ interface PostItem {
   createdAt: string;
   author: { id: string; nickname: string | null; email: string | null };
   board: { id: string; name: string };
+  approvalAudit: {
+    createdAt: string;
+    operator: {
+      id: string;
+      nickname: string | null;
+      username: string | null;
+      role: string;
+    };
+  } | null;
 }
 
 interface CommentItem {
@@ -46,6 +55,12 @@ const STATUS_COLORS: Record<string, string> = {
   PUBLISHED: "bg-green-100 text-green-700",
   REJECTED: "bg-red-100 text-red-700",
   DELETED: "bg-red-200 text-red-800",
+};
+
+const MODERATOR_ROLE_LABELS: Record<string, string> = {
+  MODERATOR: "版主",
+  ADMIN: "管理员",
+  SUPER_ADMIN: "超级管理员",
 };
 
 export default function AdminContentPage() {
@@ -269,6 +284,7 @@ export default function AdminContentPage() {
                           <th className="text-left p-3">作者</th>
                           <th className="text-left p-3">板块</th>
                           <th className="text-left p-3">状态</th>
+                          <th className="text-left p-3">审核通过</th>
                           <th className="text-left p-3">发布时间</th>
                           <th className="text-left p-3">操作</th>
                         </tr>
@@ -296,6 +312,28 @@ export default function AdminContentPage() {
                                 {STATUS_LABELS[post.status] || post.status}
                               </span>
                             </td>
+                            <td className="p-3 text-xs">
+                              {post.status === "PUBLISHED" ? (
+                                post.approvalAudit ? (
+                                  <div className="min-w-[150px]">
+                                    <p className="font-medium">
+                                      {post.approvalAudit.operator.nickname || post.approvalAudit.operator.username || "管理员"}
+                                      <span className="ml-1 text-muted-foreground">
+                                        （{MODERATOR_ROLE_LABELS[post.approvalAudit.operator.role] || post.approvalAudit.operator.role}）
+                                      </span>
+                                    </p>
+                                    <p className="mt-0.5 text-muted-foreground">
+                                      {new Date(post.approvalAudit.createdAt).toLocaleString("zh-CN")}
+                                    </p>
+                                    <p className="mt-0.5 text-muted-foreground">ID：{post.approvalAudit.operator.id}</p>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">无通过记录</span>
+                                )
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
                             <td className="p-3 text-xs text-muted-foreground">
                               {new Date(post.createdAt).toLocaleDateString("zh-CN")}
                             </td>
@@ -316,7 +354,7 @@ export default function AdminContentPage() {
                         ))}
                         {posts.length === 0 && (
                           <tr>
-                            <td colSpan={6} className="p-8 text-center text-muted-foreground">暂无数据</td>
+                            <td colSpan={7} className="p-8 text-center text-muted-foreground">暂无数据</td>
                           </tr>
                         )}
                       </tbody>

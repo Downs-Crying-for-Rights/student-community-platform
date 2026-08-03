@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { withAuth, type AuthenticatedRequest } from "@/lib/rbac";
 import { paginationSchema } from "@/lib/validators";
+import { getLatestPostApprovalAudits } from "@/lib/post-approval-audit";
 import { z } from "zod";
 
 const querySchema = paginationSchema.extend({
@@ -61,9 +62,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       }),
       prisma.post.count({ where }),
     ]);
+    const latestApprovalByPost = await getLatestPostApprovalAudits(posts.map((post) => post.id));
 
     return NextResponse.json({
-      posts,
+      posts: posts.map((post) => ({
+        ...post,
+        approvalAudit: latestApprovalByPost.get(post.id) ?? null,
+      })),
       total,
       page,
       pageSize,

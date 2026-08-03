@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { Shield, FileText, AlertTriangle, User, Filter, RefreshCw, ShieldAlert } from "lucide-react";
+import { Shield, FileText, AlertTriangle, User, Filter, RefreshCw, ShieldAlert, BadgeCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +37,15 @@ export interface ModerationPost {
   currentContent?: string;
   safetyPriority?: "URGENT" | "ELEVATED" | "STANDARD";
   safetyNotice?: string | null;
+  approvalAudit?: {
+    createdAt: string;
+    operator: {
+      id: string;
+      nickname: string | null;
+      username: string | null;
+      role: string;
+    };
+  } | null;
 }
 
 export interface BoardOption {
@@ -106,6 +115,19 @@ export function getZoneLabel(zone: string): string {
   if (zone === "PSYCHOLOGY") return "心理区";
   if (zone === "DCR") return "DCR";
   return "公共区";
+}
+
+export function getModeratorRoleLabel(role: string): string {
+  if (role === "SUPER_ADMIN") return "超级管理员";
+  if (role === "ADMIN") return "管理员";
+  if (role === "MODERATOR") return "版主";
+  return role;
+}
+
+export function getApprovalOperatorLabel(post: ModerationPost): string | null {
+  const operator = post.approvalAudit?.operator;
+  if (!operator) return null;
+  return `${operator.nickname || operator.username || "管理员"}（${getModeratorRoleLabel(operator.role)}）`;
 }
 
 export function mergeBoardOptions(...groups: BoardOption[][]): BoardOption[] {
@@ -417,6 +439,12 @@ export default function ModerationPage() {
                                 <span>·</span>
                                 <span>{post.board.name}</span>
                               </div>
+                              {post.status === "PUBLISHED" && getApprovalOperatorLabel(post) && (
+                                <div className="mt-1.5 flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
+                                  <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                                  <span>通过人：{getApprovalOperatorLabel(post)}</span>
+                                </div>
+                              )}
                               {post.tags.length > 0 && (
                                 <div className="mt-1.5 flex flex-wrap gap-1">
                                   {post.tags.slice(0, 3).map((t) => (
@@ -469,6 +497,19 @@ export default function ModerationPage() {
                     </p>
                   </div>
                 </div>
+
+                {selectedPost.status === "PUBLISHED" && selectedPost.approvalAudit && (
+                  <div className="border border-green-200 bg-green-50 p-3 text-sm dark:border-green-900 dark:bg-green-950/20">
+                    <p className="flex items-center gap-2 font-medium text-green-800 dark:text-green-300">
+                      <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+                      通过人：{getApprovalOperatorLabel(selectedPost)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      通过时间：{new Date(selectedPost.approvalAudit.createdAt).toLocaleString("zh-CN")}
+                      <span className="ml-2">管理员 ID：{selectedPost.approvalAudit.operator.id}</span>
+                    </p>
+                  </div>
+                )}
 
                 {/* Post content */}
                 <div className="rounded-lg border bg-muted/30 p-4">

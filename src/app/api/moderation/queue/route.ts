@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { withAuth, hasMinimumRole, type AuthenticatedRequest } from "@/lib/rbac";
 import { paginationSchema } from "@/lib/validators";
 import { assessPsychContentSafety, psychSafetyPriorityRank } from "@/lib/psych-moderation";
+import { getLatestPostApprovalAudits } from "@/lib/post-approval-audit";
 import { z } from "zod";
 
 const moderationQueueQuerySchema = paginationSchema.extend({
@@ -61,6 +62,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       prisma.post.count({ where }),
     ]);
 
+    const latestApprovalByPost = await getLatestPostApprovalAudits(posts.map((post) => post.id));
+
     const prioritizedPosts = posts
       .map((post) => {
         const safety = post.board.zone === "PSYCHOLOGY"
@@ -68,6 +71,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           : { priority: "STANDARD" as const, notice: null };
         return {
           ...post,
+          approvalAudit: latestApprovalByPost.get(post.id) ?? null,
           safetyPriority: safety.priority,
           safetyNotice: safety.notice,
         };

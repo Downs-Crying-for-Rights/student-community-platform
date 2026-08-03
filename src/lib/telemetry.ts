@@ -9,6 +9,8 @@ export interface RouteTelemetryOptions {
   route?: string;
   params?: Record<string, string | string[]>;
   persist?: boolean;
+  /** Keep handled 4xx responses for endpoints that explicitly require full request auditing. */
+  captureAllTelemetry?: boolean;
 }
 
 type TelemetryMetadata = Record<string, string | number | boolean | null>;
@@ -164,6 +166,8 @@ export function recordCompletedRequest(
   options: RouteTelemetryOptions & { requestId: string; userId?: string; thrown?: boolean; error?: unknown },
 ): void {
   if (options.persist === false) return;
+  const status = response?.status ?? 500;
+  if (!options.thrown && status >= 400 && status < 500 && !options.captureAllTelemetry) return;
   const route = normalizeTelemetryRoute(options.route ?? new URL(request.url).pathname, options.params);
   const duration = Math.max(0, performance.now() - startedAt);
   void responseErrorMetadata(response).then((responseMetadata) => {
@@ -175,7 +179,7 @@ export function recordCompletedRequest(
       name: `${request.method} ${route}`,
       route,
       duration,
-      status: response?.status ?? 500,
+      status,
       userId: options.userId,
       force: true,
       metadata: {

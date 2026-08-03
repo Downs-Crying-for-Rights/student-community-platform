@@ -39,7 +39,7 @@ describe("fetchWithToast", () => {
     const result = await fetchWithToast("/api/test");
     expect(result.data).toBeNull();
     expect(result.error).not.toBeNull();
-    expect(result.error!.message).toBe("服务器错误，请稍后重试");
+    expect(result.error!.message).toBe("服务器错误，请稍后重试（HTTP 500）");
   });
 
   it("403 错误返回无权限消息", async () => {
@@ -52,7 +52,7 @@ describe("fetchWithToast", () => {
     );
 
     const result = await fetchWithToast("/api/test");
-    expect(result.error!.message).toBe("无权限访问");
+    expect(result.error!.message).toBe("无权限访问（HTTP 403）");
   });
 
   it("404 错误返回资源不存在消息", async () => {
@@ -65,7 +65,7 @@ describe("fetchWithToast", () => {
     );
 
     const result = await fetchWithToast("/api/test");
-    expect(result.error!.message).toBe("请求的资源不存在");
+    expect(result.error!.message).toBe("请求的资源不存在（HTTP 404）");
   });
 
   it("其他 HTTP 错误返回通用错误消息", async () => {
@@ -78,7 +78,7 @@ describe("fetchWithToast", () => {
     );
 
     const result = await fetchWithToast("/api/test");
-    expect(result.error!.message).toBe("请求失败 (422)");
+    expect(result.error!.message).toBe("请求失败 (422)（HTTP 422）");
   });
 
   it("网络错误返回网络连接失败消息", async () => {
@@ -90,6 +90,19 @@ describe("fetchWithToast", () => {
     const result = await fetchWithToast("/api/test");
     expect(result.data).toBeNull();
     expect(result.error!.message).toBe("网络连接失败，请检查网络后重试");
+  });
+
+  it("优先返回服务端提供的具体错误信息", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(
+        JSON.stringify({ error: "仅超级管理员可修改管理员账号" }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      )),
+    );
+
+    const result = await fetchWithToast("/api/admin/users/admin1/role");
+    expect(result.error!.message).toBe("仅超级管理员可修改管理员账号");
   });
 
   it("error.retry 可以重新发起请求", async () => {

@@ -67,7 +67,7 @@ describe("telemetry privacy helpers", () => {
     const returned = telemetry.withTelemetry(async () => Response.json({
       error: "invalid",
       details: { password: "hidden", field: ["required"] },
-    }, { status: 422 }), { route: "/api/items/[id]" });
+    }, { status: 422 }), { route: "/api/items/[id]", captureAllTelemetry: true });
     const response = await returned(new Request("https://example.test/api/items/private-value", {
       method: "POST",
       headers: { "x-request-id": "known-request" },
@@ -96,6 +96,24 @@ describe("telemetry privacy helpers", () => {
     }));
     expect(JSON.stringify(mockTelemetryEventCreate.mock.calls)).toContain("secret body");
     expect(JSON.stringify(mockTelemetryEventCreate.mock.calls)).not.toContain("token=nope");
+  });
+
+  it("does not persist handled 4xx responses unless full capture is requested", async () => {
+    const handled = telemetry.withTelemetry(
+      async () => Response.json({ error: "未登录" }, { status: 401 }),
+      { route: "/api/punishments/status" },
+    );
+    await handled(new Request("https://example.test/api/punishments/status"));
+    expect(mockTelemetryEventCreate).not.toHaveBeenCalled();
+
+    const audited = telemetry.withTelemetry(
+      async () => Response.json({ error: "签名无效" }, { status: 401 }),
+      { route: "/api/callback", captureAllTelemetry: true },
+    );
+    await audited(new Request("https://example.test/api/callback"));
+    await vi.waitFor(() => expect(mockTelemetryEventCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ route: "/api/callback", status: 401 }),
+    }));
   });
 
   it("exempts ingestion persistence while exposing logical health", async () => {

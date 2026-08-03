@@ -5,12 +5,16 @@ import { NextRequest } from "next/server";
 
 const mockPostFindMany = vi.fn();
 const mockPostCount = vi.fn();
+const mockAuditLogFindMany = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     post: {
       findMany: (...args: unknown[]) => mockPostFindMany(...args),
       count: (...args: unknown[]) => mockPostCount(...args),
+    },
+    auditLog: {
+      findMany: (...args: unknown[]) => mockAuditLogFindMany(...args),
     },
   },
 }));
@@ -45,6 +49,7 @@ function setSession(id: string, role: string) {
 describe("GET /api/moderation/queue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAuditLogFindMany.mockResolvedValue([]);
   });
 
   it("应返回 401 当用户未登录", async () => {
@@ -99,6 +104,52 @@ describe("GET /api/moderation/queue", () => {
     const { GET } = await import("../../moderation/queue/route");
     const res = await GET(makeRequest(), { params: {} });
     expect(res.status).toBe(200);
+  });
+
+  it("应为已通过帖子返回最近的通过人审计记录", async () => {
+    setSession("admin1", "ADMIN");
+    mockPostFindMany.mockResolvedValue([
+      {
+        id: "p1",
+        title: "已通过帖子",
+        content: "正文",
+        status: "PUBLISHED",
+        createdAt: "2026-08-03T00:00:00.000Z",
+        author: { id: "u1", nickname: "用户1", avatar: null },
+        board: { id: "b1", name: "公共讨论", zone: "PUBLIC" },
+        tags: [],
+      },
+    ]);
+    mockPostCount.mockResolvedValue(1);
+    mockAuditLogFindMany.mockResolvedValue([
+      {
+        targetId: "p1",
+        createdAt: "2026-08-03T01:00:00.000Z",
+        operator: { id: "admin1", nickname: "审核员", username: "admin", role: "ADMIN" },
+      },
+      {
+        targetId: "p1",
+        createdAt: "2026-08-02T01:00:00.000Z",
+        operator: { id: "mod1", nickname: "旧审核员", username: "mod", role: "MODERATOR" },
+      },
+    ]);
+
+    const { GET } = await import("../../moderation/queue/route");
+    const res = await GET(makeRequest("http://localhost:3000/api/moderation/queue?status=PUBLISHED"), { params: {} });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockAuditLogFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        targetType: "POST",
+        targetId: { in: ["p1"] },
+        action: { in: ["CONTENT_APPROVE", "POST_REVISION_APPROVE"] },
+      },
+      orderBy: { createdAt: "desc" },
+    }));
+    expect(data.posts[0].approvalAudit).toEqual(expect.objectContaining({
+      operator: expect.objectContaining({ id: "admin1", nickname: "审核员" }),
+    }));
   });
 
   it("应支持分页参数", async () => {

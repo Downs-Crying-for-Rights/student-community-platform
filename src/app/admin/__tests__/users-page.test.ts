@@ -107,6 +107,14 @@ describe("AdminUsersPage", () => {
     expect(source).toContain("max-h-[90vh] overflow-y-auto sm:max-w-6xl");
     expect(source).not.toContain('<Card className="relative mt-6 overflow-hidden" data-testid="override-panel">');
   });
+
+  it("角色和处罚接口失败时弹窗显示服务端具体错误", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../users/page.tsx"), "utf8");
+    expect(source).toContain('readApiErrorMessage(res, "角色变更失败")');
+    expect(source).toContain('readApiErrorMessage(res, "处罚操作失败")');
+    expect(source).toContain("open={Boolean(actionError)}");
+    expect(source).toContain("{actionError}");
+  });
 });
 
 describe("AdminUsersPage SUPER_ADMIN 条件渲染", () => {

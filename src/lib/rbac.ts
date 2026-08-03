@@ -256,11 +256,13 @@ export function withAuth(
       response.headers.set("X-Request-Id", requestId);
       recordCompletedRequest(req, response, startedAt, {
         requestId, userId, route: options?.route, params: context.params, persist: options?.persist,
+        captureAllTelemetry: options?.captureAllTelemetry,
       });
       return response;
     } catch (error) {
       recordCompletedRequest(req, undefined, startedAt, {
-        requestId, userId, route: options?.route, params: context.params, persist: options?.persist, thrown: true, error,
+        requestId, userId, route: options?.route, params: context.params, persist: options?.persist,
+        captureAllTelemetry: options?.captureAllTelemetry, thrown: true, error,
       });
       throw error;
     }

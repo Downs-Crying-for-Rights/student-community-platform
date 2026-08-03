@@ -20,7 +20,7 @@ export async function fetchWithToast<T>(
     try {
       const res = await fetch(input, init);
       if (!res.ok) {
-        const message =
+        const fallback =
           res.status >= 500
             ? "服务器错误，请稍后重试"
             : res.status === 403
@@ -28,6 +28,7 @@ export async function fetchWithToast<T>(
               : res.status === 404
                 ? "请求的资源不存在"
                 : `请求失败 (${res.status})`;
+        const message = await readApiErrorMessage(res, fallback);
         return { data: null, error: { message, retry: doFetch } };
       }
       const data = (await res.json()) as T;
@@ -42,3 +43,4 @@ export async function fetchWithToast<T>(
 
   return doFetch();
 }
+import { readApiErrorMessage } from "@/lib/api-response";
