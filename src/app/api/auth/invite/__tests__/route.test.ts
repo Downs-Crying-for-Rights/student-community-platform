@@ -238,6 +238,7 @@ describe("POST /api/auth/invite", () => {
       mockTransaction.mockImplementation(async (fn: Function) => {
         const tx = {
           user: {
+            findFirst: mockUserFindFirst,
             create: mockCreate.mockResolvedValue(mockUser),
           },
           inviteCode: {
@@ -295,7 +296,7 @@ describe("POST /api/auth/invite", () => {
     it("应复制 DCR 投稿权限但不授予完整准入", async () => {
       mockFindUnique.mockResolvedValue(buildInviteCode({ dcrContributionAccess: true }));
       mockTransaction.mockImplementation(async (fn: Function) => fn({
-        user: { create: mockCreate.mockResolvedValue({ id: "contributor" }) },
+        user: { findFirst: mockUserFindFirst, create: mockCreate.mockResolvedValue({ id: "contributor" }) },
         inviteCode: { update: mockUpdate.mockResolvedValue({}) },
       }));
 
@@ -317,7 +318,7 @@ describe("POST /api/auth/invite", () => {
 
       mockTransaction.mockImplementation(async (fn: Function) => {
         const tx = {
-          user: { create: mockCreate.mockResolvedValue({ id: "user1" }) },
+          user: { findFirst: mockUserFindFirst, create: mockCreate.mockResolvedValue({ id: "user1" }) },
           inviteCode: { update: mockUpdate.mockResolvedValue({}) },
           session: { create: mockSessionCreate.mockResolvedValue({}) },
         };
@@ -341,7 +342,7 @@ describe("POST /api/auth/invite", () => {
 
       mockTransaction.mockImplementation(async (fn: Function) => {
         const tx = {
-          user: { create: mockCreate.mockResolvedValue({ id: "user1" }) },
+          user: { findFirst: mockUserFindFirst, create: mockCreate.mockResolvedValue({ id: "user1" }) },
           inviteCode: { update: mockUpdate.mockResolvedValue({}) },
           session: { create: mockSessionCreate.mockResolvedValue({}) },
         };

@@ -13,7 +13,11 @@ vi.mock("@/lib/punishment-challenge", () => ({ verifyPunishmentChallenge: mocks.
 vi.mock("@/lib/punishment-service", () => ({ canAppealPunishment: () => true }));
 vi.mock("@/lib/support-ticket-server", () => ({ containsBlockedSupportWord: vi.fn().mockResolvedValue(false) }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.audit }));
-vi.mock("@/lib/rate-limiter", () => ({ enforceRateLimit: vi.fn().mockResolvedValue(null), rateLimitKeyForIP: (value: string) => value }));
+vi.mock("@/lib/rate-limiter", () => ({
+  enforceRateLimit: vi.fn().mockResolvedValue(null),
+  rateLimitKeyForIP: (value: string) => value,
+  requestIP: (request: Request) => request.headers.get("x-real-ip") || "unknown",
+}));
 vi.mock("@/lib/telemetry", () => ({ withTelemetry: (handler: unknown) => handler }));
 
 import { GET, POST } from "./route";

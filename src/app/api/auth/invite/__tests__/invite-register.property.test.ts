@@ -19,6 +19,10 @@ const mockVerifyCode = vi.fn();
 vi.mock("@/lib/sms/verification", () => ({
   verifyCode: (...args: unknown[]) => mockVerifyCode(...args),
 }));
+vi.mock("@/lib/captcha", () => ({
+  verifyCaptcha: vi.fn().mockResolvedValue(true),
+  markRecentRegistration: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -131,6 +135,7 @@ describe("邀请码注册属性测试", () => {
         mockTransaction.mockImplementation(async (fn: Function) => {
           const tx = {
             user: {
+              findFirst: mockUserFindFirst,
               create: vi
                 .fn()
                 .mockImplementation(

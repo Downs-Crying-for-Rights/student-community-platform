@@ -2,6 +2,7 @@ import redis from "@/lib/redis";
 import { sendUserMail } from "@/lib/mail";
 import { generateCode } from "@/lib/sms/verification";
 import { checkRateLimit } from "@/lib/rate-limiter";
+import { isEmailVerificationTestMode } from "@/lib/email-verification-test-mode";
 
 const PURPOSE = "account-deletion";
 
@@ -17,7 +18,7 @@ export async function sendAccountDeletionEmailCode(userId: string) {
     return { success: false, error: "验证码发送次数已达上限，请稍后再试" };
   }
 
-  const code = process.env.EMAIL_VERIFICATION_TEST_MODE === "true" ? "888888" : await generateCode();
+  const code = isEmailVerificationTestMode() ? "888888" : await generateCode();
   await redis.set(codeKey(userId), code, "EX", 300);
   await redis.set(limitKey(userId), "1", "EX", 60);
   const result = await sendUserMail({
@@ -33,7 +34,7 @@ export async function sendAccountDeletionEmailCode(userId: string) {
 }
 
 export async function verifyAccountDeletionEmailCode(userId: string, code: string) {
-  if (process.env.EMAIL_VERIFICATION_TEST_MODE === "true" && code === "888888") return true;
+  if (isEmailVerificationTestMode() && code === "888888") return true;
   const key = codeKey(userId);
   const stored = await redis.get(key);
   if (!stored || stored !== code) return false;

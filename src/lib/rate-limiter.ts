@@ -1,9 +1,30 @@
 import redis from "@/lib/redis";
 import { hashIP } from "@/lib/utils";
+import { randomBytes } from "node:crypto";
 
 /** Default rate limit: 60 requests per 60-second window */
 const DEFAULT_LIMIT = 60;
 const DEFAULT_WINDOW_MS = 60 * 1000;
+
+const SLIDING_WINDOW_SCRIPT = `
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window_start = tonumber(ARGV[2])
+local window_ms = tonumber(ARGV[3])
+local limit = tonumber(ARGV[4])
+local member = ARGV[5]
+
+redis.call("ZREMRANGEBYSCORE", key, 0, window_start)
+local count = redis.call("ZCARD", key)
+if count >= limit then
+  local oldest = redis.call("ZRANGE", key, 0, 0, "WITHSCORES")
+  return {0, count, oldest[2] or 0}
+end
+
+redis.call("ZADD", key, now, member)
+redis.call("PEXPIRE", key, window_ms)
+return {1, count + 1, 0}
+`;
 
 export interface RateLimitResult {
   /** Whether the request is allowed */
@@ -38,39 +59,34 @@ export async function checkRateLimit(
   const windowStart = now - windowMs;
   const key = `ratelimit:${identifier}`;
 
-  // Atomic pipeline: remove expired → count → conditionally add
-  const pipeline = redis.pipeline();
-  pipeline.zremrangebyscore(key, 0, windowStart);
-  pipeline.zcard(key);
-  const results = await pipeline.exec();
+  const member = `${now}:${randomBytes(8).toString("hex")}`;
+  const raw = await redis.eval(
+    SLIDING_WINDOW_SCRIPT,
+    1,
+    key,
+    String(now),
+    String(windowStart),
+    String(windowMs),
+    String(limit),
+    member,
+  );
+  if (!Array.isArray(raw) || raw.length < 3) throw new Error("RATE_LIMIT_SCRIPT_INVALID_RESULT");
+  const allowed = Number(raw[0]) === 1;
+  const count = Number(raw[1]);
+  const oldestScore = Number(raw[2]);
 
-  // results[1] = [err, count]
-  const currentCount = (results?.[1]?.[1] as number) ?? 0;
-
-  if (currentCount >= limit) {
-    // Over limit – find the oldest entry to compute reset time
-    const oldest = await redis.zrange(key, 0, 0, "WITHSCORES");
-    const resetAt =
-      oldest.length >= 2 ? Number(oldest[1]) + windowMs : now + windowMs;
-
+  if (!allowed) {
     return {
       allowed: false,
       remaining: 0,
-      resetAt,
+      resetAt: oldestScore > 0 ? oldestScore + windowMs : now + windowMs,
       limit,
     };
   }
 
-  // Under limit – record this request
-  const member = `${now}:${Math.random().toString(36).slice(2, 8)}`;
-  const addPipeline = redis.pipeline();
-  addPipeline.zadd(key, now, member);
-  addPipeline.pexpire(key, windowMs);
-  await addPipeline.exec();
-
   return {
     allowed: true,
-    remaining: limit - currentCount - 1,
+    remaining: Math.max(0, limit - count),
     resetAt: now + windowMs,
     limit,
   };

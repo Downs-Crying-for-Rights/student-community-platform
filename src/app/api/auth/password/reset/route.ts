@@ -4,15 +4,9 @@ import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 import { resetPasswordSchema } from "@/lib/validators";
 import { verifyCode } from "@/lib/sms/verification";
-import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
+import { enforceRateLimit, rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
 import { logAudit, AuditAction, AuditTargetType } from "@/lib/audit";
 import { withTelemetry } from "@/lib/telemetry";
-
-function requestIp(request: NextRequest) {
-  return request.headers.get("x-forwarded-for")?.split(",")[0].trim()
-    || request.headers.get("x-real-ip")
-    || "unknown";
-}
 
 const post = async (request: NextRequest) => {
   try {
@@ -23,7 +17,7 @@ const post = async (request: NextRequest) => {
     const { phone, code, password } = parsed.data;
     const phoneHash = createHash("sha256").update(phone).digest("hex");
     const limits = await Promise.all([
-      enforceRateLimit(`password-reset:${rateLimitKeyForIP(requestIp(request))}`, 20, 60 * 60 * 1000),
+      enforceRateLimit(`password-reset:${rateLimitKeyForIP(requestIP(request))}`, 20, 60 * 60 * 1000),
       enforceRateLimit(`password-reset:phone:${phoneHash}`, 5, 15 * 60 * 1000),
     ]);
     if (limits.some(Boolean)) {

@@ -7,16 +7,24 @@ import {
   verifyCaptcha,
   type CaptchaPurpose,
 } from "@/lib/captcha";
+import { CAPTCHA_PURPOSES } from "@/lib/captcha-policy";
 import { enforceRateLimit, rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
 import { withTelemetry } from "@/lib/telemetry";
+import { phoneSchema } from "@/lib/validators";
 
-const purposeSchema = z.enum(["login-email", "login-password", "register"]);
+const purposeSchema = z.enum(CAPTCHA_PURPOSES);
 const verifySchema = z.object({
   captchaId: z.string(),
   captchaCode: z.string(),
   purpose: purposeSchema,
-  subject: z.string().email().optional(),
+  subject: z.string().trim().min(1).max(320),
 });
+
+function isValidSubject(purpose: CaptchaPurpose, subject: string): boolean {
+  if (purpose === "login-email") return z.string().email().safeParse(subject).success;
+  if (purpose === "login-password") return subject.length <= 255;
+  return phoneSchema.safeParse(subject).success;
+}
 
 function noStore(response: NextResponse) {
   response.headers.set("Cache-Control", "no-store");
@@ -52,16 +60,16 @@ export const POST = withTelemetry(async (request: Request) => {
   if (limited) return limitedResponse(limited.response);
 
   const parsed = verifySchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success || (parsed.data.purpose === "login-email" && !parsed.data.subject)) {
+  if (!parsed.success || !isValidSubject(parsed.data.purpose, parsed.data.subject)) {
     return noStore(NextResponse.json({ error: "验证码参数无效" }, { status: 400 }));
   }
   const valid = await verifyCaptcha(parsed.data.captchaId, parsed.data.captchaCode, parsed.data.purpose);
   if (!valid) return noStore(NextResponse.json({ error: "图形验证码错误或已过期" }, { status: 400 }));
 
   if (parsed.data.purpose === "login-email") {
-    await markEmailCaptchaVerified(parsed.data.subject!);
+    await markEmailCaptchaVerified(parsed.data.subject);
     return noStore(NextResponse.json({ success: true }));
   }
-  const proof = await issueCaptchaProof(parsed.data.purpose);
+  const proof = await issueCaptchaProof(parsed.data.purpose, parsed.data.subject);
   return noStore(NextResponse.json({ success: true, proof }));
 }, { route: "/api/auth/captcha" });

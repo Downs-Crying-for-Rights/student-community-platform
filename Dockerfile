@@ -19,7 +19,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Install prisma CLI into an isolated flat directory (no symlinks)
-RUN mkdir -p /prisma-cli && cd /prisma-cli && npm init -y && npm install prisma@6.19.2 --save-exact --registry=https://registry.npmmirror.com
+RUN mkdir -p /prisma-cli && cd /prisma-cli && npm init -y && npm install prisma@6.19.3 --save-exact --registry=https://registry.npmmirror.com
 
 # Production image, copy all the files and run next
 FROM base AS runner

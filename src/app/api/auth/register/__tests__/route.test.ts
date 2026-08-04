@@ -135,7 +135,9 @@ describe("POST /api/auth/register", () => {
 
     expect(res.status).toBe(201);
     expect(verifyCode).not.toHaveBeenCalled();
-    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(prisma.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ deactivatedAt: null }),
+    }));
     expect(prisma.user.create).toHaveBeenCalledWith({
       data: {
         email: "test@example.com",

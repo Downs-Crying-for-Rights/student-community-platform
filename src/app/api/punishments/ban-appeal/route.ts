@@ -5,7 +5,7 @@ import { canAppealPunishment } from "@/lib/punishment-service";
 import { noStoreJson, readRequiredText } from "@/lib/support-ticket";
 import { containsBlockedSupportWord } from "@/lib/support-ticket-server";
 import { logAudit } from "@/lib/audit";
-import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
+import { enforceRateLimit, rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
 import { withTelemetry } from "@/lib/telemetry";
 import { PUNISHMENT_TYPE_LABELS } from "@/lib/punishment-policy";
 
@@ -39,8 +39,7 @@ export const GET = withTelemetry(async (req: NextRequest) => {
 }, { route: "/api/punishments/ban-appeal" });
 
 export const POST = withTelemetry(async (req: NextRequest) => {
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const limited = await enforceRateLimit(`ban-appeal:${rateLimitKeyForIP(forwarded || "unknown")}`, 5, 60 * 60 * 1000);
+  const limited = await enforceRateLimit(`ban-appeal:${rateLimitKeyForIP(requestIP(req))}`, 5, 60 * 60 * 1000);
   if (limited) return new Response(limited.response.body, { status: limited.response.status, headers: limited.response.headers });
   const userId = verifyPunishmentChallenge(req.cookies.get("punishment_appeal")?.value);
   if (!userId) return noStoreJson({ error: "申诉凭证已失效，请重新验证账号密码" }, { status: 401 });

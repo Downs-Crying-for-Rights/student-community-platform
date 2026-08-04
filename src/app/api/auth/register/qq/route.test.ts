@@ -13,6 +13,7 @@ vi.mock("@/lib/qq-registration", () => ({
 }));
 vi.mock("@/lib/rate-limiter", () => ({
   rateLimitKeyForIP: (ip: string) => `hashed:${ip}`,
+  requestIP: (request: Request) => request.headers.get("x-real-ip") || "unknown",
 }));
 vi.mock("@/lib/captcha", () => ({ verifyCaptcha: vi.fn().mockResolvedValue(true) }));
 vi.mock("@/lib/prisma", () => ({ default: { siteContent: { findMany: mocks.siteContentFindMany, upsert: mocks.siteContentUpsert } } }));
@@ -20,7 +21,7 @@ vi.mock("@/lib/prisma", () => ({ default: { siteContent: { findMany: mocks.siteC
 function request(body: unknown) {
   return new Request("http://localhost/api/auth/register/qq", {
     method: "POST",
-    headers: { "content-type": "application/json", "x-forwarded-for": "127.0.0.1" },
+    headers: { "content-type": "application/json", "x-real-ip": "127.0.0.1" },
     body: JSON.stringify(body),
   });
 }

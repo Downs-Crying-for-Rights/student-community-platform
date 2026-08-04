@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
+  userFindFirst: vi.fn(),
   userUpdate: vi.fn(),
   auditCreate: vi.fn(),
   logAudit: vi.fn(),
@@ -16,7 +17,7 @@ vi.mock("@/lib/prisma", () => {
   };
   return {
     default: {
-      user: { findUnique: mocks.userFindUnique },
+      user: { findUnique: mocks.userFindUnique, findFirst: mocks.userFindFirst },
       $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
     },
   };
@@ -51,6 +52,7 @@ describe("PATCH /api/admin/users/[id]/profile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.scanContent.mockResolvedValue([]);
+    mocks.userFindFirst.mockResolvedValue(null);
   });
 
   it("只有超级管理员可以修改身份资料", async () => {

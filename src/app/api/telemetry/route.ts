@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
+import { enforceRateLimit, rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
 import { normalizeTelemetryRoute, sanitizeTelemetryMetadata, sanitizeTelemetryName, withTelemetry } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
@@ -41,8 +41,7 @@ const post = async (req: Request) => {
     return NextResponse.json({ error: "来源无效" }, { status: 403 });
   }
 
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const limited = await enforceRateLimit(`telemetry:${rateLimitKeyForIP(forwarded)}`, 30, 60_000);
+  const limited = await enforceRateLimit(`telemetry:${rateLimitKeyForIP(requestIP(req))}`, 30, 60_000);
   if (limited) return limited.response;
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));

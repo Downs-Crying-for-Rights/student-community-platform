@@ -117,7 +117,7 @@ export const authOptions: NextAuthOptions = {
         if (!user || !user.passwordHash || user.deactivatedAt) throw new Error("账号或密码错误");
         const isValid = await bcrypt.compare(password, user.passwordHash);
         if (!isValid) throw new Error("账号或密码错误");
-        const captchaValid = await validateCaptchaProof(credentials?.captchaProof, "login-password");
+        const captchaValid = await validateCaptchaProof(credentials?.captchaProof, "login-password", identifier);
         if (!captchaValid && !await consumeRecentRegistration(user.id)) {
           throw new Error("账号或密码错误");
         }

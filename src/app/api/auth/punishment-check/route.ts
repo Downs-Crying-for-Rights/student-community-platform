@@ -4,23 +4,22 @@ import prisma from "@/lib/prisma";
 import { loginPasswordSchema } from "@/lib/validators";
 import { createPunishmentChallenge } from "@/lib/punishment-challenge";
 import { getCurrentPunishmentStatus } from "@/lib/punishment-service";
-import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
+import { enforceRateLimit, rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
 import { asNextResponse } from "@/lib/support-ticket";
 import { withTelemetry } from "@/lib/telemetry";
 import { issueCaptchaProof, validateCaptchaProof } from "@/lib/captcha";
 import { buildNicknameIdentifierWhere, buildPrimaryAccountIdentifierWhere } from "@/lib/auth/account-name";
 
 export const POST = withTelemetry(async (req: Request) => {
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const limited = await enforceRateLimit(`punishment-check:${rateLimitKeyForIP(forwarded || "unknown")}`, 10, 15 * 60 * 1000);
+  const limited = await enforceRateLimit(`punishment-check:${rateLimitKeyForIP(requestIP(req))}`, 10, 15 * 60 * 1000);
   if (limited) return asNextResponse(limited.response);
   const body = await req.json().catch(() => null);
-  if (!await validateCaptchaProof(body?.captchaProof, "login-password")) {
-    return NextResponse.json({ valid: false }, { status: 401 });
-  }
   const parsed = loginPasswordSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ valid: false }, { status: 401 });
   const identifier = parsed.data.identifier;
+  if (!await validateCaptchaProof(body?.captchaProof, "login-password", identifier)) {
+    return NextResponse.json({ valid: false }, { status: 401 });
+  }
   const select = { id: true, passwordHash: true } as const;
   let user = await prisma.user.findFirst({
     where: buildPrimaryAccountIdentifierWhere(identifier),
@@ -38,7 +37,7 @@ export const POST = withTelemetry(async (req: Request) => {
     return NextResponse.json({
       valid: true,
       banned: false,
-      captchaProof: await issueCaptchaProof("login-password"),
+      captchaProof: await issueCaptchaProof("login-password", identifier),
     });
   }
   const punishment = await prisma.userPunishment.findFirst({

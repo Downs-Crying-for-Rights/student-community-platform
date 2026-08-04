@@ -259,7 +259,8 @@ export const qqRegistrationStatusSchema = z.object({
 export const sendCodeSchema = z.object({
   phone: phoneSchema,
   purpose: z.enum(["register", "bindphone"]),
-});
+  captchaProof: z.string().regex(/^[A-Za-z0-9_-]{32}$/, "图形验证码凭据无效"),
+}).strict();
 
 export const resetPasswordSchema = z.object({
   phone: phoneSchema,

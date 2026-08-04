@@ -3,9 +3,24 @@ import { sendCodeSchema } from "@/lib/validators";
 import { sendVerificationCode } from "@/lib/sms/verification";
 import { withTelemetry } from "@/lib/telemetry";
 import { enforceRateLimit, rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
+import { validateCaptchaProof } from "@/lib/captcha";
 
 const post = async (request: NextRequest) => {
   try {
+    const body = await request.json();
+
+    const parsed = sendCodeSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "参数校验失败", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const { phone, purpose, captchaProof } = parsed.data;
+    if (!await validateCaptchaProof(captchaProof, purpose, phone)) {
+      return NextResponse.json({ error: "图形验证码错误或已过期" }, { status: 400 });
+    }
     const limited = await enforceRateLimit(
       `sms-send:${rateLimitKeyForIP(requestIP(request))}`,
       10,
@@ -17,17 +32,6 @@ const post = async (request: NextRequest) => {
         headers: limited.response.headers,
       });
     }
-    const body = await request.json();
-
-    const parsed = sendCodeSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "参数校验失败", details: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
-    }
-
-    const { phone, purpose } = parsed.data;
 
     const result = await sendVerificationCode(phone, purpose);
 

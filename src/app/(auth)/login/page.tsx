@@ -3,7 +3,6 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,8 +26,6 @@ import {
   UserPlus,
   Bot,
   Copy,
-  RefreshCw,
-  Loader2,
 } from "lucide-react";
 import {
   loginPasswordSchema,
@@ -43,6 +40,8 @@ import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required"
 import { verificationCodeSchema } from "@/lib/validators";
 import { LOGIN_POLICIES, REGISTRATION_POLICY_KEYS, type LoginPolicyId } from "@/lib/login-policies";
 import { DEFAULT_REGISTRATION_ACCESS_POLICY, type RegistrationAccessPolicy } from "@/lib/phone-policy-shared";
+import { CaptchaField } from "@/components/auth/CaptchaField";
+import { CAPTCHA_CODE_LENGTH, type CaptchaPurpose } from "@/lib/captcha-policy";
 
 type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
 export type LoginTab = "email" | "password";
@@ -68,45 +67,6 @@ export function getEmptyFormState(): LoginFormState {
     pwErrors: {},
     errorMessage: "",
   };
-}
-
-function CaptchaField({
-  image,
-  code,
-  loading,
-  onCodeChange,
-  onRefresh,
-}: {
-  image: string;
-  code: string;
-  loading: boolean;
-  onCodeChange: (value: string) => void;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor="graphical-captcha">图形验证码</Label>
-      <div className="flex items-stretch gap-2">
-        <Input
-          id="graphical-captcha"
-          value={code}
-          onChange={(event) => onCodeChange(event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 5))}
-          placeholder="输入图中字符"
-          autoComplete="off"
-          maxLength={5}
-          className="min-w-0 uppercase"
-          disabled={loading}
-          required
-        />
-        <div className="flex h-12 w-[145px] shrink-0 items-center justify-center overflow-hidden rounded-md border bg-slate-50">
-          {image ? <Image src={image} alt="图形验证码" width={145} height={48} unoptimized className="h-12 w-[145px] object-contain" /> : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
-        </div>
-        <Button type="button" variant="outline" size="icon" className="h-12 w-12 shrink-0" onClick={onRefresh} title="换一张验证码" aria-label="换一张验证码">
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-        </Button>
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -203,8 +163,9 @@ function LoginContent() {
   const [agreementContent, setAgreementContent] = useState("");
   const [allKeys, setAllKeys] = useState<{ key: string; title: string; revision: number }[]>([]);
 
-  const currentCaptchaPurpose = view === "register"
+  const currentCaptchaPurpose: CaptchaPurpose = view === "register"
     ? "register"
+    : view === "reset-password" ? "password-reset"
     : activeTab === "email" ? "login-email" : "login-password";
 
   const refreshCaptcha = useCallback(async (purpose = currentCaptchaPurpose) => {
@@ -226,15 +187,15 @@ function LoginContent() {
   }, [currentCaptchaPurpose]);
 
   useEffect(() => {
-    if (view === "form" || view === "register") void refreshCaptcha(currentCaptchaPurpose);
+    if (view === "form" || view === "register" || view === "reset-password") void refreshCaptcha(currentCaptchaPurpose);
   }, [view, activeTab, currentCaptchaPurpose, refreshCaptcha]);
 
-  const verifyLoginCaptcha = async (purpose: "login-email" | "login-password", subject?: string) => {
-    if (!captchaId || captchaCode.length !== 5) throw new Error("请输入 5 位图形验证码");
+  const verifyCaptchaChallenge = async (purpose: CaptchaPurpose, subject: string) => {
+    if (!captchaId || captchaCode.length !== CAPTCHA_CODE_LENGTH) throw new Error("请输入 5 位图形验证码");
     const response = await fetch("/api/auth/captcha", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ captchaId, captchaCode, purpose, ...(subject ? { subject } : {}) }),
+      body: JSON.stringify({ captchaId, captchaCode, purpose, subject }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "图形验证码错误或已过期");
@@ -385,7 +346,7 @@ function LoginContent() {
     setErrorMessage("");
 
     try {
-      await verifyLoginCaptcha("login-email", email.trim());
+      await verifyCaptchaChallenge("login-email", email.trim());
       const result = await signIn("email", {
         email: email.trim(),
         redirect: false,
@@ -432,7 +393,7 @@ function LoginContent() {
     setLoading(true);
 
     try {
-      const captchaProof = await verifyLoginCaptcha("login-password");
+      const captchaProof = await verifyCaptchaChallenge("login-password", pwEmail.trim());
       const check = await fetch("/api/auth/punishment-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -479,10 +440,11 @@ function LoginContent() {
     }
     setLoading(true);
     try {
+      const captchaProof = await verifyCaptchaChallenge("password-reset", resetPhone.trim());
       const response = await fetch("/api/auth/password/reset/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: resetPhone.trim() }),
+        body: JSON.stringify({ phone: resetPhone.trim(), captchaProof }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -501,10 +463,11 @@ function LoginContent() {
           return previous - 1;
         });
       }, 1000);
-    } catch {
-      setResetErrors({ phone: "网络错误，请稍后重试" });
+    } catch (reason) {
+      setResetErrors({ captcha: reason instanceof Error ? reason.message : "网络错误，请稍后重试" });
     } finally {
       setLoading(false);
+      void refreshCaptcha("password-reset");
     }
   }
 
@@ -576,12 +539,13 @@ function LoginContent() {
       return;
     }
     setLoading(true);
-    setRegErrors((current) => ({ ...current, phone: "", code: "" }));
+    setRegErrors((current) => ({ ...current, phone: "", code: "", captcha: "" }));
     try {
+      const captchaProof = await verifyCaptchaChallenge("register", regPhone.trim());
       const response = await fetch("/api/sms/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: regPhone.trim(), purpose: "register" }),
+        body: JSON.stringify({ phone: regPhone.trim(), purpose: "register", captchaProof }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -600,10 +564,11 @@ function LoginContent() {
           return previous - 1;
         });
       }, 1000);
-    } catch {
-      setRegErrors((current) => ({ ...current, phone: "网络错误，请稍后重试" }));
+    } catch (reason) {
+      setRegErrors((current) => ({ ...current, captcha: reason instanceof Error ? reason.message : "网络错误，请稍后重试" }));
     } finally {
       setLoading(false);
+      void refreshCaptcha("register");
     }
   }
 
@@ -863,6 +828,17 @@ function LoginContent() {
                 </div>
                 {resetErrors.phone && <p className="text-xs text-red-500" role="alert">{resetErrors.phone}</p>}
               </div>
+              {verificationRequired && <div className="space-y-1">
+                <CaptchaField
+                  inputId="reset-graphical-captcha"
+                  image={captchaImage}
+                  code={captchaCode}
+                  loading={captchaLoading || loading}
+                  onCodeChange={setCaptchaCode}
+                  onRefresh={() => void refreshCaptcha("password-reset")}
+                />
+                {resetErrors.captcha && <p className="text-xs text-red-500" role="alert">{resetErrors.captcha}</p>}
+              </div>}
               {verificationRequired && <div className="space-y-2">
                 <Label htmlFor="reset-code">验证码</Label>
                 <Input id="reset-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={resetCode} onChange={(event) => setResetCode(event.target.value)} disabled={loading} />
@@ -1078,6 +1054,7 @@ function LoginContent() {
                 onCodeChange={setCaptchaCode}
                 onRefresh={() => void refreshCaptcha("register")}
               />
+              {regErrors.captcha && <p className="text-xs text-red-500" role="alert">{regErrors.captcha}</p>}
 
               {/* 用户协议 */}
               <div className="space-y-2">
