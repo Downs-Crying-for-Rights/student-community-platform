@@ -20,10 +20,10 @@ import {
 describe("graphical captcha", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("issues a short-lived graphical challenge without returning its answer", async () => {
+  it("issues a short-lived rasterized challenge without leaking its answer", async () => {
     const challenge = await issueCaptcha("register");
     expect(challenge.captchaId).toMatch(/^[A-Za-z0-9_-]{24}$/);
-    expect(challenge.image).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect(challenge.image).toMatch(/^data:image\/png;base64,/);
     expect(challenge.expiresIn).toBe(300);
     expect(mocks.set).toHaveBeenCalledWith(
       `captcha:challenge:${challenge.captchaId}`,
@@ -31,6 +31,10 @@ describe("graphical captcha", () => {
       "EX",
       300,
     );
+    const storedAnswer = (mocks.set.mock.calls[0][1] as string).split(":")[1];
+    const decoded = Buffer.from(challenge.image.split(",")[1]!, "base64");
+    expect(decoded.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
+    expect(decoded.includes(Buffer.from(storedAnswer))).toBe(false);
   });
 
   it("consumes a challenge and binds it to its purpose", async () => {

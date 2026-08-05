@@ -4,7 +4,10 @@ const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
-  serverExternalPackages: ["nodemailer", "bcryptjs"],
+  serverExternalPackages: ["nodemailer", "bcryptjs", "svg-captcha", "opentype.js"],
+  outputFileTracingIncludes: {
+    "/api/auth/captcha": ["node_modules/svg-captcha/fonts/**/*"],
+  },
   // Allow up to 10MB uploads for image upload API
   experimental: {
     serverActions: {
