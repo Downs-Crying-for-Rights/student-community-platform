@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
+import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { phoneSchema } from "@/lib/validators";
 import { sendVerificationCode } from "@/lib/sms/verification";
-import { enforceRateLimit, rateLimitKeyForIP } from "@/lib/rate-limiter";
+import { enforceRateLimit, rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
 import { withTelemetry } from "@/lib/telemetry";
+import { validateCaptchaProof } from "@/lib/captcha";
 
-function requestIp(request: NextRequest) {
-  return request.headers.get("x-forwarded-for")?.split(",")[0].trim()
-    || request.headers.get("x-real-ip")
-    || "unknown";
-}
+const requestSchema = z.object({
+  phone: phoneSchema,
+  captchaProof: z.string().regex(/^[A-Za-z0-9_-]{32}$/),
+}).strict();
 
 function phoneKey(phone: string) {
   return createHash("sha256").update(phone).digest("hex");
@@ -18,13 +19,16 @@ function phoneKey(phone: string) {
 
 const post = async (request: NextRequest) => {
   try {
-    const parsed = phoneSchema.safeParse((await request.json()).phone);
+    const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json({ error: "请输入有效的手机号" }, { status: 400 });
+      return NextResponse.json({ error: "手机号或图形验证码参数无效" }, { status: 400 });
     }
-    const phone = parsed.data;
+    const { phone, captchaProof } = parsed.data;
+    if (!await validateCaptchaProof(captchaProof, "password-reset", phone)) {
+      return NextResponse.json({ error: "图形验证码错误或已过期" }, { status: 400 });
+    }
     const limits = await Promise.all([
-      enforceRateLimit(`password-reset-send:${rateLimitKeyForIP(requestIp(request))}`, 10, 60 * 60 * 1000),
+      enforceRateLimit(`password-reset-send:${rateLimitKeyForIP(requestIP(request))}`, 10, 60 * 60 * 1000),
       enforceRateLimit(`password-reset-send:phone:${phoneKey(phone)}`, 3, 60 * 60 * 1000),
     ]);
     if (limits.some(Boolean)) {

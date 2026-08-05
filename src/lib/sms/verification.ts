@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import redis from "@/lib/redis";
 import { getSmsProvider } from "@/lib/sms";
+import { isSmsTestMode } from "@/lib/sms/test-mode";
 import { getSmsVerificationEnabled } from "@/lib/system-config";
 import { checkRateLimit } from "@/lib/rate-limiter";
 
@@ -47,7 +48,7 @@ export async function sendVerificationCode(
   }
 
   // 测试模式使用固定验证码，否则生成随机码
-  const isTestMode = process.env.SMS_TEST_MODE === "true";
+  const isTestMode = isSmsTestMode();
   const code = isTestMode ? "888888" : await generateCode();
 
   // 存储验证码到 Redis，TTL 300 秒
@@ -93,7 +94,7 @@ export async function verifyCode(
   if (!code) return false;
 
   // 测试模式固定验证码 888888
-  if (process.env.SMS_TEST_MODE === "true" && code === "888888") {
+  if (isSmsTestMode() && code === "888888") {
     return true;
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,8 @@ import { Smartphone, AlertCircle } from "lucide-react";
 import { phoneSchema, verificationCodeSchema } from "@/lib/validators";
 import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required";
 import { getSafeCallbackUrl } from "@/lib/safe-callback-url";
+import { CaptchaField } from "@/components/auth/CaptchaField";
+import { CAPTCHA_CODE_LENGTH } from "@/lib/captcha-policy";
 
 export default function BindPhonePage() {
   return (
@@ -42,11 +44,37 @@ function BindPhoneContent() {
 
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaImage, setCaptchaImage] = useState("");
+  const [captchaCode, setCaptchaCode] = useState("");
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refreshCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptchaCode("");
+    try {
+      const response = await fetch("/api/auth/captcha?purpose=bindphone", { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "验证码加载失败");
+      setCaptchaId(data.captchaId || "");
+      setCaptchaImage(data.image || "");
+    } catch {
+      setCaptchaId("");
+      setCaptchaImage("");
+      setErrorMessage("图形验证码加载失败，请稍后重试");
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (verificationRequired) void refreshCaptcha();
+  }, [verificationRequired, refreshCaptcha]);
 
   // Cleanup countdown on unmount
   useEffect(() => {
@@ -97,14 +125,28 @@ function BindPhoneContent() {
       setErrors({ phone: result.error.issues[0].message });
       return;
     }
+    if (!captchaId || captchaCode.length !== CAPTCHA_CODE_LENGTH) {
+      setErrors({ captcha: "请输入 5 位图形验证码" });
+      return;
+    }
 
     setLoading(true);
 
     try {
+      const captchaResponse = await fetch("/api/auth/captcha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captchaId, captchaCode, purpose: "bindphone", subject: phone.trim() }),
+      });
+      const captchaData = await captchaResponse.json().catch(() => ({}));
+      if (!captchaResponse.ok || !captchaData.proof) {
+        setErrors({ captcha: captchaData.error || "图形验证码错误或已过期" });
+        return;
+      }
       const res = await fetch("/api/sms/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone.trim(), purpose: "bindphone" }),
+        body: JSON.stringify({ phone: phone.trim(), purpose: "bindphone", captchaProof: captchaData.proof }),
       });
 
       if (res.status === 429) {
@@ -135,6 +177,7 @@ function BindPhoneContent() {
       setErrors({ phone: "网络错误，请检查网络连接后重试" });
     } finally {
       setLoading(false);
+      void refreshCaptcha();
     }
   }
 
@@ -255,6 +298,21 @@ function BindPhoneContent() {
                 </p>
               )}
             </div>
+
+            {verificationRequired && <div className="space-y-1">
+              <CaptchaField
+                inputId="bindphone-graphical-captcha"
+                image={captchaImage}
+                code={captchaCode}
+                loading={captchaLoading || loading}
+                onCodeChange={(value) => {
+                  setCaptchaCode(value);
+                  if (errors.captcha) setErrors((previous) => ({ ...previous, captcha: "" }));
+                }}
+                onRefresh={() => void refreshCaptcha()}
+              />
+              {errors.captcha && <p className="text-xs text-red-500" role="alert">{errors.captcha}</p>}
+            </div>}
 
             {/* Verification code input */}
             {verificationRequired && <div className="space-y-2">

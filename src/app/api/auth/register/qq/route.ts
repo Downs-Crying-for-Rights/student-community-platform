@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
 import { claimQQRegistrationRateLimit, createPendingQQRegistration } from "@/lib/qq-registration";
-import { rateLimitKeyForIP } from "@/lib/rate-limiter";
+import { rateLimitKeyForIP, requestIP } from "@/lib/rate-limiter";
 import { qqRegistrationSchema } from "@/lib/validators";
 import prisma from "@/lib/prisma";
 import { LOGIN_POLICIES, REGISTRATION_POLICY_KEYS } from "@/lib/login-policies";
@@ -21,7 +21,7 @@ function noStore(response: NextResponse) {
 }
 
 const post = async (request: Request) => {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const ip = requestIP(request);
   const parsed = qqRegistrationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return noStore(NextResponse.json({ error: "参数校验失败", details: parsed.error.flatten().fieldErrors }, { status: 400 }));

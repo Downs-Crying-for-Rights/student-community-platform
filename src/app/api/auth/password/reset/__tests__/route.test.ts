@@ -14,6 +14,7 @@ vi.mock("@/lib/sms/verification", () => ({ verifyCode: mocks.verifyCode }));
 vi.mock("@/lib/rate-limiter", () => ({
   enforceRateLimit: mocks.rateLimit,
   rateLimitKeyForIP: (ip: string) => `ip:${ip}`,
+  requestIP: (request: Request) => request.headers.get("x-real-ip") || "unknown",
 }));
 vi.mock("bcryptjs", () => ({ default: { hash: mocks.hash } }));
 vi.mock("@/lib/audit", () => ({
@@ -34,7 +35,7 @@ vi.mock("@/lib/prisma", () => {
 function request(body: Record<string, unknown>) {
   return new NextRequest("http://localhost:3000/api/auth/password/reset", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-forwarded-for": "127.0.0.1" },
+    headers: { "Content-Type": "application/json", "x-real-ip": "127.0.0.1" },
     body: JSON.stringify(body),
   });
 }

@@ -199,7 +199,7 @@ describe("注册方式分流", () => {
   it("QQ 机器人注册只发送一次性凭据且支持用户名登录", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../page.tsx"), "utf8");
     expect(source).toContain("qqRegistration.command");
-    expect(source).toContain('identifier: regNickname.trim()');
+    expect(source).toContain("identifier: registeredUsername");
     expect(source).toContain("凭据 15 分钟内有效");
     expect(source).not.toContain('`注册 ${regPassword}`');
   });

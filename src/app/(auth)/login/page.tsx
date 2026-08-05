@@ -3,7 +3,6 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,8 +26,7 @@ import {
   UserPlus,
   Bot,
   Copy,
-  RefreshCw,
-  Loader2,
+  LogIn,
 } from "lucide-react";
 import {
   loginPasswordSchema,
@@ -43,6 +41,8 @@ import { useSmsVerificationRequired } from "@/lib/sms/use-verification-required"
 import { verificationCodeSchema } from "@/lib/validators";
 import { LOGIN_POLICIES, REGISTRATION_POLICY_KEYS, type LoginPolicyId } from "@/lib/login-policies";
 import { DEFAULT_REGISTRATION_ACCESS_POLICY, type RegistrationAccessPolicy } from "@/lib/phone-policy-shared";
+import { CaptchaField } from "@/components/auth/CaptchaField";
+import { CAPTCHA_CODE_LENGTH, type CaptchaPurpose } from "@/lib/captcha-policy";
 
 type ViewState = "form" | "verify" | "expired" | "error" | "register" | "reset-password";
 export type LoginTab = "email" | "password";
@@ -68,45 +68,6 @@ export function getEmptyFormState(): LoginFormState {
     pwErrors: {},
     errorMessage: "",
   };
-}
-
-function CaptchaField({
-  image,
-  code,
-  loading,
-  onCodeChange,
-  onRefresh,
-}: {
-  image: string;
-  code: string;
-  loading: boolean;
-  onCodeChange: (value: string) => void;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor="graphical-captcha">图形验证码</Label>
-      <div className="flex items-stretch gap-2">
-        <Input
-          id="graphical-captcha"
-          value={code}
-          onChange={(event) => onCodeChange(event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 5))}
-          placeholder="输入图中字符"
-          autoComplete="off"
-          maxLength={5}
-          className="min-w-0 uppercase"
-          disabled={loading}
-          required
-        />
-        <div className="flex h-12 w-[145px] shrink-0 items-center justify-center overflow-hidden rounded-md border bg-slate-50">
-          {image ? <Image src={image} alt="图形验证码" width={145} height={48} unoptimized className="h-12 w-[145px] object-contain" /> : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
-        </div>
-        <Button type="button" variant="outline" size="icon" className="h-12 w-12 shrink-0" onClick={onRefresh} title="换一张验证码" aria-label="换一张验证码">
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-        </Button>
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -202,9 +163,11 @@ function LoginContent() {
   const [agreementTitle, setAgreementTitle] = useState("");
   const [agreementContent, setAgreementContent] = useState("");
   const [allKeys, setAllKeys] = useState<{ key: string; title: string; revision: number }[]>([]);
+  const [oauthLoading, setOauthLoading] = useState("");
 
-  const currentCaptchaPurpose = view === "register"
+  const currentCaptchaPurpose: CaptchaPurpose = view === "register"
     ? "register"
+    : view === "reset-password" ? "password-reset"
     : activeTab === "email" ? "login-email" : "login-password";
 
   const refreshCaptcha = useCallback(async (purpose = currentCaptchaPurpose) => {
@@ -226,15 +189,15 @@ function LoginContent() {
   }, [currentCaptchaPurpose]);
 
   useEffect(() => {
-    if (view === "form" || view === "register") void refreshCaptcha(currentCaptchaPurpose);
+    if (view === "form" || view === "register" || view === "reset-password") void refreshCaptcha(currentCaptchaPurpose);
   }, [view, activeTab, currentCaptchaPurpose, refreshCaptcha]);
 
-  const verifyLoginCaptcha = async (purpose: "login-email" | "login-password", subject?: string) => {
-    if (!captchaId || captchaCode.length !== 5) throw new Error("请输入 5 位图形验证码");
+  const verifyCaptchaChallenge = async (purpose: CaptchaPurpose, subject: string) => {
+    if (!captchaId || captchaCode.length !== CAPTCHA_CODE_LENGTH) throw new Error("请输入 5 位图形验证码");
     const response = await fetch("/api/auth/captcha", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ captchaId, captchaCode, purpose, ...(subject ? { subject } : {}) }),
+      body: JSON.stringify({ captchaId, captchaCode, purpose, subject }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "图形验证码错误或已过期");
@@ -385,7 +348,7 @@ function LoginContent() {
     setErrorMessage("");
 
     try {
-      await verifyLoginCaptcha("login-email", email.trim());
+      await verifyCaptchaChallenge("login-email", email.trim());
       const result = await signIn("email", {
         email: email.trim(),
         redirect: false,
@@ -432,7 +395,7 @@ function LoginContent() {
     setLoading(true);
 
     try {
-      const captchaProof = await verifyLoginCaptcha("login-password");
+      const captchaProof = await verifyCaptchaChallenge("login-password", pwEmail.trim());
       const check = await fetch("/api/auth/punishment-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -479,10 +442,11 @@ function LoginContent() {
     }
     setLoading(true);
     try {
+      const captchaProof = await verifyCaptchaChallenge("password-reset", resetPhone.trim());
       const response = await fetch("/api/auth/password/reset/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: resetPhone.trim() }),
+        body: JSON.stringify({ phone: resetPhone.trim(), captchaProof }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -501,10 +465,11 @@ function LoginContent() {
           return previous - 1;
         });
       }, 1000);
-    } catch {
-      setResetErrors({ phone: "网络错误，请稍后重试" });
+    } catch (reason) {
+      setResetErrors({ captcha: reason instanceof Error ? reason.message : "网络错误，请稍后重试" });
     } finally {
       setLoading(false);
+      void refreshCaptcha("password-reset");
     }
   }
 
@@ -576,12 +541,13 @@ function LoginContent() {
       return;
     }
     setLoading(true);
-    setRegErrors((current) => ({ ...current, phone: "", code: "" }));
+    setRegErrors((current) => ({ ...current, phone: "", code: "", captcha: "" }));
     try {
+      const captchaProof = await verifyCaptchaChallenge("register", regPhone.trim());
       const response = await fetch("/api/sms/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: regPhone.trim(), purpose: "register" }),
+        body: JSON.stringify({ phone: regPhone.trim(), purpose: "register", captchaProof }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -600,10 +566,11 @@ function LoginContent() {
           return previous - 1;
         });
       }, 1000);
-    } catch {
-      setRegErrors((current) => ({ ...current, phone: "网络错误，请稍后重试" }));
+    } catch (reason) {
+      setRegErrors((current) => ({ ...current, captcha: reason instanceof Error ? reason.message : "网络错误，请稍后重试" }));
     } finally {
       setLoading(false);
+      void refreshCaptcha("register");
     }
   }
 
@@ -733,6 +700,25 @@ function LoginContent() {
     setErrorMessage("");
   }
 
+  // ===== OAuth 聚合登录 =====
+  async function handleOAuthLogin(type: string) {
+    setOauthLoading(type);
+    setErrorMessage("");
+    try {
+      const res = await fetch(`/api/auth/oauth/connect?type=${encodeURIComponent(type)}&redirect_uri=${encodeURIComponent(window.location.origin + "/api/auth/oauth/callback")}`);
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        setErrorMessage(data.error || "获取登录地址失败");
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setErrorMessage("网络错误，请稍后重试");
+    } finally {
+      setOauthLoading("");
+    }
+  }
+
   // Loading spinner component
   const LoadingSpinner = () => (
     <svg
@@ -756,6 +742,47 @@ function LoginContent() {
       />
     </svg>
   );
+
+  // Brand SVG icons for OAuth providers
+  function OAuthIcon({ type }: { type: string }) {
+    switch (type) {
+      case "qq":
+        return (
+          <img
+            src="/qq-logo.png"
+            alt="QQ"
+            className="h-5 w-5 object-contain"
+          />
+        );
+      case "wx":
+        return (
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none">
+            <path d="M13.5 3C9.9 3 7 5.7 7 9c0 1.6.7 3 1.9 4l-.6 2 2.2-1.2c.9.3 1.9.5 3 .5.2 0 .5 0 .7 0-.2-.5-.3-1-.3-1.6 0-3 2.7-5.4 6.1-5.4.5 0 .9 0 1.3.2C20.7 5 17.5 3 13.5 3z" fill="#07C160" />
+            <path d="M9.5 8.5c-.4 0-.7.3-.7.7s.3.7.7.7.7-.3.7-.7-.3-.7-.7-.7zm3.5 0c-.4 0-.7.3-.7.7s.3.7.7.7.7-.3.7-.7-.3-.7-.7-.7zm-3.5 4c-.4 0-.7.3-.7.7s.3.7.7.7.7-.3.7-.7-.3-.7-.7-.7zm4 0c-.4 0-.7.3-.7.7s.3.7.7.7.7-.3.7-.7-.3-.7-.7-.7z" fill="white" />
+            <path d="M18 12c-2.8 0-5 2-5 4.5s2.2 4.5 5 4.5c.7 0 1.3-.1 1.9-.4l1.5.9-.4-1.4c1-.8 1.7-2 1.7-3.3 0-2.5-2.2-4.8-4.7-4.8zm-2 2.5c.4 0 .7.3.7.7s-.3.7-.7.7-.7-.3-.7-.7.3-.7.7-.7zm4 0c.4 0 .7.3.7.7s-.3.7-.7.7-.7-.3-.7-.7.3-.7.7-.7z" fill="white" />
+          </svg>
+        );
+      case "google":
+        return (
+          <svg className="h-5 w-5" viewBox="0 0 24 24">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+          </svg>
+        );
+      case "feishu":
+        return (
+          <img
+            src="/feishu-logo.png"
+            alt="飞书"
+            className="h-5 w-5 object-contain"
+          />
+        );
+      default:
+        return <LogIn className="h-5 w-5" />;
+    }
+  }
 
   // ===== Verify view (email magic link sent) =====
   if (view === "verify") {
@@ -863,6 +890,17 @@ function LoginContent() {
                 </div>
                 {resetErrors.phone && <p className="text-xs text-red-500" role="alert">{resetErrors.phone}</p>}
               </div>
+              {verificationRequired && <div className="space-y-1">
+                <CaptchaField
+                  inputId="reset-graphical-captcha"
+                  image={captchaImage}
+                  code={captchaCode}
+                  loading={captchaLoading || loading}
+                  onCodeChange={setCaptchaCode}
+                  onRefresh={() => void refreshCaptcha("password-reset")}
+                />
+                {resetErrors.captcha && <p className="text-xs text-red-500" role="alert">{resetErrors.captcha}</p>}
+              </div>}
               {verificationRequired && <div className="space-y-2">
                 <Label htmlFor="reset-code">验证码</Label>
                 <Input id="reset-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={resetCode} onChange={(event) => setResetCode(event.target.value)} disabled={loading} />
@@ -1078,6 +1116,7 @@ function LoginContent() {
                 onCodeChange={setCaptchaCode}
                 onRefresh={() => void refreshCaptcha("register")}
               />
+              {regErrors.captcha && <p className="text-xs text-red-500" role="alert">{regErrors.captcha}</p>}
 
               {/* 用户协议 */}
               <div className="space-y-2">
@@ -1336,6 +1375,45 @@ function LoginContent() {
             </TabsContent>
 
           </Tabs>
+
+          {/* OAuth 第三方登录 */}
+          <div className="space-y-3">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-card px-2 text-muted-foreground">
+                  第三方登录
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {(["qq", "wx", "google", "feishu"] as const).map((type) => (
+                <Button
+                  key={type}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!!oauthLoading}
+                  onClick={() => handleOAuthLogin(type)}
+                  className="flex-col gap-1 h-auto py-2"
+                >
+                  {oauthLoading === type ? (
+                    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <OAuthIcon type={type} />
+                  )}
+                  <span className="text-xs">
+                    {type === "qq" ? "QQ" : type === "wx" ? "微信" : type === "google" ? "Google" : "飞书"}
+                  </span>
+                </Button>
+              ))}
+            </div>
+          </div>
 
           <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3">
             <input

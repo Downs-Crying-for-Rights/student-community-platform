@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 // Mock sendVerificationCode before importing the route
 const mockSendVerificationCode = vi.fn();
+const mockValidateCaptchaProof = vi.fn();
 
 vi.mock("@/lib/sms/verification", () => ({
   sendVerificationCode: (...args: unknown[]) =>
@@ -13,13 +14,16 @@ vi.mock("@/lib/rate-limiter", () => ({
   rateLimitKeyForIP: (ip: string) => `ip:${ip}`,
   requestIP: () => "127.0.0.1",
 }));
+vi.mock("@/lib/captcha", () => ({
+  validateCaptchaProof: (...args: unknown[]) => mockValidateCaptchaProof(...args),
+}));
 
 import { POST } from "../route";
 
 function createRequest(body: Record<string, unknown>): NextRequest {
   return new NextRequest("http://localhost:3000/api/sms/send", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ captchaProof: "P".repeat(32), ...body }),
     headers: { "Content-Type": "application/json" },
   });
 }
@@ -27,6 +31,7 @@ function createRequest(body: Record<string, unknown>): NextRequest {
 describe("POST /api/sms/send", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockValidateCaptchaProof.mockResolvedValue(true);
   });
 
   // ========== 成功发送 ==========
@@ -45,6 +50,7 @@ describe("POST /api/sms/send", () => {
         "13800138000",
         "register"
       );
+      expect(mockValidateCaptchaProof).toHaveBeenCalledWith("P".repeat(32), "register", "13800138000");
     });
 
     it("应使用有效手机号和 bindphone 目的成功发送", async () => {
@@ -63,6 +69,22 @@ describe("POST /api/sms/send", () => {
         "15912345678",
         "bindphone"
       );
+    });
+  });
+
+  describe("图形验证码凭据", () => {
+    it("应拒绝缺少 proof 的直接发送请求", async () => {
+      const res = await POST(createRequest({ phone: "13800138000", purpose: "register", captchaProof: undefined }));
+      expect(res.status).toBe(400);
+      expect(mockSendVerificationCode).not.toHaveBeenCalled();
+    });
+
+    it("应拒绝与手机号或用途不匹配的 proof", async () => {
+      mockValidateCaptchaProof.mockResolvedValue(false);
+      const res = await POST(createRequest({ phone: "13800138000", purpose: "register" }));
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({ error: "图形验证码错误或已过期" });
+      expect(mockSendVerificationCode).not.toHaveBeenCalled();
     });
   });
 

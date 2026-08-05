@@ -1,7 +1,9 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import sharp from "sharp";
 import redis from "@/lib/redis";
+import type { CaptchaPurpose } from "@/lib/captcha-policy";
 
-export type CaptchaPurpose = "login-email" | "login-password" | "register";
+export type { CaptchaPurpose } from "@/lib/captcha-policy";
 
 const CAPTCHA_TTL_SECONDS = 5 * 60;
 const PROOF_TTL_SECONDS = 2 * 60;
@@ -50,9 +52,12 @@ export async function issueCaptcha(purpose: CaptchaPurpose) {
   const id = randomToken(18);
   const answer = Array.from({ length: 5 }, () => CAPTCHA_ALPHABET[randomInt(0, CAPTCHA_ALPHABET.length)]).join("");
   await redis.set(`captcha:challenge:${id}`, `${purpose}:${answer}`, "EX", CAPTCHA_TTL_SECONDS);
+  const image = await sharp(Buffer.from(buildSvg(answer)))
+    .png({ compressionLevel: 9, palette: true })
+    .toBuffer();
   return {
     captchaId: id,
-    image: `data:image/svg+xml;base64,${Buffer.from(buildSvg(answer)).toString("base64")}`,
+    image: `data:image/png;base64,${image.toString("base64")}`,
     expiresIn: CAPTCHA_TTL_SECONDS,
   };
 }
@@ -68,21 +73,26 @@ export async function verifyCaptcha(
   return Boolean(stored && safeEqual(stored, `${purpose}:${captchaCode.toUpperCase()}`));
 }
 
-export async function issueCaptchaProof(purpose: CaptchaPurpose): Promise<string> {
+function proofValue(purpose: CaptchaPurpose, target: string): string {
+  return JSON.stringify({ purpose, target: digest(target.trim().toLowerCase()) });
+}
+
+export async function issueCaptchaProof(purpose: CaptchaPurpose, target: string): Promise<string> {
   const proof = randomToken();
-  await redis.set(`captcha:proof:${digest(proof)}`, purpose, "EX", PROOF_TTL_SECONDS);
+  await redis.set(`captcha:proof:${digest(proof)}`, proofValue(purpose, target), "EX", PROOF_TTL_SECONDS);
   return proof;
 }
 
 export async function validateCaptchaProof(
   proof: unknown,
   purpose: CaptchaPurpose,
+  target: string,
   consume = true,
 ): Promise<boolean> {
   if (typeof proof !== "string" || !/^[A-Za-z0-9_-]{32}$/.test(proof)) return false;
   const key = `captcha:proof:${digest(proof)}`;
   const stored = consume ? await take(key) : await redis.get(key);
-  return stored === purpose;
+  return Boolean(stored && safeEqual(stored, proofValue(purpose, target)));
 }
 
 export async function markEmailCaptchaVerified(email: string): Promise<void> {
