@@ -1,4 +1,6 @@
-import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import svgCaptcha from "svg-captcha";
+import sharp from "sharp";
 import redis from "@/lib/redis";
 
 export type CaptchaPurpose = "login-email" | "login-password" | "register";
@@ -30,29 +32,31 @@ async function take(key: string): Promise<string | null> {
   return typeof value === "string" ? value : null;
 }
 
-function buildSvg(answer: string): string {
-  const glyphs = [...answer].map((character, index) => {
-    const x = 18 + index * 24 + randomInt(-2, 3);
-    const y = 34 + randomInt(-3, 4);
-    const rotate = randomInt(-18, 19);
-    return `<text x="${x}" y="${y}" transform="rotate(${rotate} ${x} ${y})" font-family="Arial,sans-serif" font-size="25" font-weight="700" fill="#172033">${character}</text>`;
-  }).join("");
-  const lines = Array.from({ length: 6 }, () => (
-    `<line x1="${randomInt(0, 145)}" y1="${randomInt(0, 48)}" x2="${randomInt(0, 145)}" y2="${randomInt(0, 48)}" stroke="#64748b" stroke-width="1" opacity="0.55" />`
-  )).join("");
-  const dots = Array.from({ length: 28 }, () => (
-    `<circle cx="${randomInt(2, 143)}" cy="${randomInt(2, 46)}" r="${randomInt(1, 3)}" fill="#94a3b8" opacity="0.65" />`
-  )).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="145" height="48" viewBox="0 0 145 48" role="img" aria-label="图形验证码"><rect width="145" height="48" rx="6" fill="#f8fafc"/>${dots}${lines}${glyphs}</svg>`;
+async function buildCaptchaImage(): Promise<{ answer: string; image: string }> {
+  const captcha = svgCaptcha.create({
+    size: 5,
+    charPreset: CAPTCHA_ALPHABET,
+    width: 145,
+    height: 48,
+    fontSize: 26,
+    color: true,
+    noise: 3,
+    background: "#f8fafc",
+  });
+  const png = await sharp(Buffer.from(captcha.data)).png().toBuffer();
+  return {
+    answer: captcha.text,
+    image: `data:image/png;base64,${png.toString("base64")}`,
+  };
 }
 
 export async function issueCaptcha(purpose: CaptchaPurpose) {
   const id = randomToken(18);
-  const answer = Array.from({ length: 5 }, () => CAPTCHA_ALPHABET[randomInt(0, CAPTCHA_ALPHABET.length)]).join("");
+  const { answer, image } = await buildCaptchaImage();
   await redis.set(`captcha:challenge:${id}`, `${purpose}:${answer}`, "EX", CAPTCHA_TTL_SECONDS);
   return {
     captchaId: id,
-    image: `data:image/svg+xml;base64,${Buffer.from(buildSvg(answer)).toString("base64")}`,
+    image,
     expiresIn: CAPTCHA_TTL_SECONDS,
   };
 }
